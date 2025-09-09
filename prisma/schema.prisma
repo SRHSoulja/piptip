@@ -1,0 +1,227 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  discordId     String   @unique
+  agwAddress    String?
+  wins          Int      @default(0)
+  losses        Int      @default(0)
+  ties          Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Gaming relations
+  challenger   Match[]       @relation("Challenger")
+  joiner       Match[]       @relation("Joiner")
+  
+  // Tipping relations
+  tipsSent     Tip[]         @relation("TipFrom")
+  tipsReceived Tip[]         @relation("TipTo")
+  
+  // Group tipping relations
+  groupTipsCreated GroupTip[]      @relation("GroupTipCreator") 
+  groupTipsClaimed GroupTipClaim[] @relation("GroupTipClaims")
+  
+  // Balance relations
+  balances     UserBalance[]
+
+  @@index([agwAddress])
+  @@index([createdAt])
+}
+
+model Match {
+  id             Int       @id @default(autoincrement())
+  status         String
+  wagerAtomic    Decimal   @default(0) // human units
+  potAtomic      Decimal   @default(0) // human units
+  tokenId        Int       // which token this match uses
+  challengerId   Int
+  joinerId       Int?
+  challengerMove String?
+  joinerMove     String?
+  result         String?
+  rakeAtomic     Decimal   @default(0) // human units
+  winnerUserId   Int?
+  messageId      String?
+  channelId      String?
+  offerDeadline  DateTime?
+  createdAt      DateTime  @default(now())
+
+  Challenger User  @relation("Challenger", fields: [challengerId], references: [id])
+  Joiner     User? @relation("Joiner", fields: [joinerId], references: [id])
+  Token      Token @relation(fields: [tokenId], references: [id])
+
+  @@index([status, offerDeadline])
+  @@index([createdAt])
+}
+
+model Tip {
+  id           Int      @id @default(autoincrement())
+  fromUserId   Int
+  toUserId     Int
+  tokenId      Int      // which token was tipped
+  amountAtomic Decimal  @default(0) // human units
+  feeAtomic    Decimal  @default(0) // human units
+  note         String?
+  createdAt    DateTime @default(now())
+
+  From  User  @relation("TipFrom", fields: [fromUserId], references: [id])
+  To    User  @relation("TipTo", fields: [toUserId], references: [id])
+  Token Token @relation(fields: [tokenId], references: [id])
+
+  @@index([createdAt])
+}
+
+model GroupTip {
+  id            Int      @id @default(autoincrement())
+  creatorId     Int      // User who created the tip
+  tokenId       Int      // Which token
+  totalAmount   Decimal  // Total amount to split
+  duration      Int      // Duration in seconds
+  messageId     String?  // Discord message ID
+  channelId     String?  // Discord channel ID
+  guildId       String?  // Discord guild ID
+  status        String   // ACTIVE, EXPIRED, CANCELLED, FINALIZED
+  expiresAt     DateTime // When it expires
+  createdAt     DateTime @default(now())
+  
+  Creator   User             @relation("GroupTipCreator", fields: [creatorId], references: [id])
+  Token     Token            @relation(fields: [tokenId], references: [id])
+  claims    GroupTipClaim[]
+
+  @@index([status, expiresAt])
+  @@index([createdAt])
+}
+
+model GroupTipClaim {
+  id          Int      @id @default(autoincrement())
+  groupTipId  Int
+  userId      Int
+  claimedAt   DateTime @default(now())
+  
+  GroupTip    GroupTip @relation(fields: [groupTipId], references: [id])
+  User        User     @relation("GroupTipClaims", fields: [userId], references: [id])
+
+  @@unique([groupTipId, userId]) // One claim per user per group tip
+}
+
+model Token {
+  id               Int      @id @default(autoincrement())
+  address          String   @unique
+  symbol           String   @unique
+  decimals         Int
+  active           Boolean  @default(true)
+  minDeposit       Decimal  @default(50)
+  minWithdraw      Decimal  @default(50)
+  tipFeeBps        Int?
+  houseFeeBps      Int?
+  withdrawMaxPerTx Decimal?
+  withdrawDailyCap Decimal?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  // Relations
+  balances    UserBalance[]
+  matches     Match[]
+  tips        Tip[]
+  groupTips   GroupTip[]
+}
+
+model UserBalance {
+  id      Int     @id @default(autoincrement())
+  userId  Int
+  tokenId Int
+  amount  Decimal @default(0) // human units
+
+  User  User  @relation(fields: [userId], references: [id])
+  Token Token @relation(fields: [tokenId], references: [id])
+
+  @@unique([userId, tokenId])
+}
+
+//
+// Idempotency ledger for deposits.
+// Use the compound string key as the primary id to keep inserts cheap.
+//
+model ProcessedDeposit {
+  key       String   @id // e.g. `${txHash}:${from}:${valueAtomic}`
+  createdAt DateTime @default(now())
+}
+
+//
+// Cursor for watchers/webhooks.
+// Use the name as primary id (e.g. "treasury").
+//
+model DepositCursor {
+  name      String   @id
+  blockHex  String
+  updatedAt DateTime @updatedAt
+}
+
+model AppConfig {
+  id               Int      @id @default(autoincrement())
+  minDeposit       Decimal  @default(50)
+  minWithdraw      Decimal  @default(50)
+  withdrawMaxPerTx Decimal  @default(50)
+  withdrawDailyCap Decimal  @default(500)
+  houseFeeBps      Int      @default(200)
+  tipFeeBps        Int      @default(100)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ApprovedServer {
+  id        Int      @id @default(autoincrement())
+  guildId   String   @unique
+  note      String?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ad {
+  id        Int      @id @default(autoincrement())
+  text      String
+  url       String?
+  active    Boolean  @default(true)
+  weight    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// NOTE: SQLite: no enum/Json. Use String for 'type' and String for JSON blobs.
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  type        String // e.g. 'DEPOSIT' | 'WITHDRAW' | 'TIP' | ...
+  userId      Int?
+  otherUserId Int?
+  guildId     String?
+  tokenId     Int?     // which token this transaction involves
+  amount      Decimal
+  fee         Decimal  @default(0)
+  txHash      String?
+  metadata    String? // JSON serialized as string
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([guildId])
+  @@index([type])
+}
+
+model WebhookEvent {
+  id        Int      @id @default(autoincrement())
+  source    String
+  key       String   @unique
+  status    String // 'ok' | 'ignored' | 'duplicate' | 'bad-sig' ...
+  payload   String // JSON serialized as string
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
