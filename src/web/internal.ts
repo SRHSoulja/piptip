@@ -68,39 +68,41 @@ internalRouter.post("/credit", async (req: Request, res: Response) => {
       return res.status(400).json({ ok: false, error: "unknown or inactive token" });
     }
 
-    // Parse amount safely: require string or hex-string; reject unsafe JS numbers
+    // Parse amount safely: force string conversion for precision safety
     let amountAtomic: bigint;
     try {
-      if (typeof valueAtomic === "number") {
-        // Numbers can be >2^53 and lose precision; require string/hex from relay.
-        if (!Number.isSafeInteger(valueAtomic)) {
-          return res.status(400).json({ ok: false, error: "valueAtomic must be string (decimal or 0x-hex)" });
-        }
-        // If you really want to allow small integer numbers, you could:
-        // amountAtomic = BigInt(valueAtomic);
-        // but it's safer to enforce string inputs everywhere.
-        return res.status(400).json({ ok: false, error: "valueAtomic must be string (decimal or 0x-hex)" });
-      }
-
       const raw = String(valueAtomic).trim();
+      if (!raw) {
+        return res.status(400).json({ ok: false, error: "empty valueAtomic" });
+      }
       // BigInt handles both decimal and 0x-hex formats
       amountAtomic = BigInt(raw);
-    } catch {
-      return res.status(400).json({ ok: false, error: "bad valueAtomic" });
+      
+      // Ensure positive amount
+      if (amountAtomic <= 0n) {
+        return res.status(400).json({ ok: false, error: "valueAtomic must be positive" });
+      }
+    } catch (error) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "invalid valueAtomic format - must be decimal string or 0x-hex" 
+      });
     }
 
     // Build idempotency key early so we can mark even skipped deposits
     const key = `${tx}:${fromAddr}:${amountAtomic.toString()}`;
     try {
       await prisma.processedDeposit.create({ data: { key } });
-    } catch {
+    } catch (error) {
       // Unique violation => already processed
+      console.log(`Duplicate deposit detected: ${key}`);
       return res.status(200).json({ ok: true, duplicate: true });
     }
 
     // Enforce token-specific minimum (convert Decimal -> atomic correctly)
     const minAtomic = toAtomicDirect(String(tokenRow.minDeposit), tokenRow.decimals);
     if (amountAtomic < minAtomic) {
+      console.log(`Deposit below minimum: ${amountAtomic} < ${minAtomic} for ${tokenRow.symbol}`);
       return res.status(200).json({
         ok: true,
         skipped: `below minimum ${tokenRow.minDeposit} ${tokenRow.symbol}`,
@@ -110,6 +112,7 @@ internalRouter.post("/credit", async (req: Request, res: Response) => {
     // Credit only if wallet is linked
     const user = await prisma.user.findFirst({ where: { agwAddress: fromAddr } });
     if (!user) {
+      console.log(`Deposit from unlinked wallet: ${fromAddr}`);
       return res.status(200).json({ ok: true, ignored: "wallet not linked" });
     }
 
@@ -118,10 +121,26 @@ internalRouter.post("/credit", async (req: Request, res: Response) => {
       txHash: tx,
     });
 
+    // Log webhook events for monitoring
+    try {
+      await prisma.webhookEvent.create({
+        data: {
+          source: "alchemy",
+          key: `${tx}:${fromAddr}`,
+          status: "processed",
+          payload: JSON.stringify(req.body),
+        },
+      });
+    } catch (webhookLogError) {
+      console.error("Failed to log webhook event:", webhookLogError);
+      // Don't fail the deposit for logging issues
+    }
+
     console.log(
-      `💰 credited ${amountAtomic.toString()} ${tokenRow.symbol} to ${user.discordId} (tx ${tx})`
+      `Credited ${amountAtomic.toString()} ${tokenRow.symbol} to ${user.discordId} (tx ${tx})`
     );
-    // (optional CORS header on response)
+
+    // Set CORS header for response
     res.setHeader("Access-Control-Allow-Origin", "*");
     return res.json({
       ok: true,
@@ -131,8 +150,29 @@ internalRouter.post("/credit", async (req: Request, res: Response) => {
       amount: amountAtomic.toString(),
     });
   } catch (err: any) {
-    console.error("internal credit error:", err);
-    return res.status(500).json({ ok: false, error: err?.message ?? "server error" });
+    console.error("Internal credit error:", err);
+    
+    // Log failed webhook events for debugging
+    try {
+      await prisma.webhookEvent.create({
+        data: {
+          source: "alchemy",
+          key: `error:${Date.now()}`,
+          status: "error",
+          payload: JSON.stringify({ 
+            body: req.body, 
+            error: err?.message || String(err) 
+          }),
+        },
+      });
+    } catch (logError) {
+      console.error("Failed to log webhook error:", logError);
+    }
+
+    return res.status(500).json({ 
+      ok: false, 
+      error: err?.message ?? "server error" 
+    });
   }
 });
 

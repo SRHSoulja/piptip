@@ -23,6 +23,9 @@ export async function applyDeposit(input: ApplyDepositInput) {
   const tok  = input.token.toLowerCase();
   const amt  = BigInt(input.valueAtomic);
 
+  // Validate positive amount
+  if (amt <= 0n) return { ok: false, reason: "invalid amount" };
+
   if (!TREASURY || to !== TREASURY) return { ok: false, reason: "wrong treasury" };
 
   const tokenRow = await getTokenByAddress(tok);
@@ -30,8 +33,13 @@ export async function applyDeposit(input: ApplyDepositInput) {
 
   // Idempotency
   const key = `${input.tx}:${from}:${amt}`;
-  try { await prisma.processedDeposit.create({ data: { key } }); }
-  catch { return { ok: true, duplicate: true }; }
+  try { 
+    await prisma.processedDeposit.create({ data: { key } }); 
+  } catch (error) { 
+    // Log duplicate for monitoring if needed
+    console.log(`Duplicate deposit detected: ${key}`);
+    return { ok: true, duplicate: true }; 
+  }
 
   // Enforce per-token minimum from DB (Decimal -> atomic)
   const minAtomic = toAtomicDirect(String(tokenRow.minDeposit), tokenRow.decimals);
@@ -43,7 +51,7 @@ export async function applyDeposit(input: ApplyDepositInput) {
   const user = await prisma.user.findFirst({ where: { agwAddress: from } });
   if (!user) return { ok: true, ignored: "wallet not linked" };
 
-  // Credit balance & record (creditToken already writes Transaction rows if you do that there)
+  // Credit balance & record
   await creditToken(user.discordId, tokenRow.id, amt, "DEPOSIT", { txHash: input.tx });
 
   return { ok: true, credited: true, userId: user.id, token: tokenRow.symbol, amount: amt.toString() };
