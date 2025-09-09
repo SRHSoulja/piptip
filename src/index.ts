@@ -22,6 +22,7 @@ import pipStart from "./commands/pip_start.js";
 import pipTip from "./commands/pip_tip.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
+import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
 
 // shared command defs + registrar
 import { getCommandsJson } from "./services/commands_def.js";
@@ -46,9 +47,12 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
   return async (i: Interaction) => {
     // Start a 2s timer; if no reply yet, defer ephemeral to buy time.
     const timer = setTimeout(async () => {
-      // @ts-ignore - these exist on all repliable interactions
       if ("deferred" in i && !i.deferred && "replied" in i && !i.replied && "deferReply" in i) {
-        try { await (i as any).deferReply({ ephemeral: true }); } catch {}
+        try { 
+          await (i as any).deferReply({ ephemeral: true }); 
+        } catch (error) {
+          console.error("Auto-defer failed:", error);
+        }
       }
     }, 2000);
 
@@ -59,10 +63,16 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
       if ("isRepliable" in i && (i as any).isRepliable()) {
         try {
           // If we already deferred/replied, edit; otherwise reply.
-          // @ts-ignore
-          if (i.deferred || i.replied) await (i as any).editReply({ content: `Error: ${err?.message || err}` });
-          else await (i as any).reply({ content: `Error: ${err?.message || err}`, ephemeral: true });
-        } catch {}
+          if ("deferred" in i && "replied" in i) {
+            if ((i as any).deferred || (i as any).replied) {
+              await (i as any).editReply({ content: `Error: ${err?.message || err}` });
+            } else {
+              await (i as any).reply({ content: `Error: ${err?.message || err}`, ephemeral: true });
+            }
+          }
+        } catch (replyError) {
+          console.error("Error reply failed:", replyError);
+        }
       }
     } finally {
       clearTimeout(timer);
@@ -70,21 +80,25 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
   };
 }
 
-// gate interactions to approved guilds (DMs allowed but your cmds are guild-only)
+// Gate interactions to approved guilds (DMs allowed but your cmds are guild-only)
 async function isGuildApproved(guildId: string | null): Promise<boolean> {
   if (!guildId) return true;
-  const row = await prisma.approvedServer.findFirst({
-    where: { guildId, enabled: true },
-    select: { id: true },
-  });
-  return !!row;
+  try {
+    const row = await prisma.approvedServer.findFirst({
+      where: { guildId, enabled: true },
+      select: { id: true },
+    });
+    return !!row;
+  } catch (error) {
+    console.error("Guild approval check failed:", error);
+    return false;
+  }
 }
-
 
 // Simple visibility logs to trace flow
 bot.on(Events.InteractionCreate, (i: Interaction) => {
   if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
-    console.log("[INT]", (i as any).commandName, "from", (i as any).user?.id, "in", (i as any).guildId);
+    console.log("[CMD]", (i as any).commandName, "from", (i as any).user?.id, "in", (i as any).guildId);
   }
 });
 
@@ -120,11 +134,12 @@ bot.on(Events.InteractionCreate, async (i: Interaction) => {
 // Handle commands and buttons
 bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
   const gid = "guildId" in i ? (i as any).guildId : null;
+  
   if (gid && !(await isGuildApproved(gid))) {
-    if (i.isRepliable()) {
+    if ("isRepliable" in i && (i as any).isRepliable()) {
       await (i as any).reply({
-        content: "⛔ This server isn't approved to use PIPtip yet.",
-        ephemeral: true, // <-- use ephemeral, not flags
+        content: "This server isn't approved to use PIPtip yet.",
+        ephemeral: true,
       }).catch(() => {});
     }
     return;
@@ -134,11 +149,13 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
     switch ((i as any).commandName) {
       case "pip_register": return pipRegister(i as any);
       case "pip_withdraw": return pipWithdraw(i as any);
-      case "pip_profile":  return pipProfile(i as any);
-      case "pip_deposit":  return pipDeposit(i as any);
-      case "pip_start":    return pipStart(i as any);
-      case "pip_link":     return pipLink(i as any);
-      case "pip_tip":      return pipTip(i as any);
+      case "pip_profile": return pipProfile(i as any);
+      case "pip_deposit": return pipDeposit(i as any);
+      case "pip_start": return pipStart(i as any);
+      case "pip_link": return pipLink(i as any);
+      case "pip_tip": return pipTip(i as any);
+      default:
+        console.warn("Unknown command:", (i as any).commandName);
     }
   }
 
@@ -154,41 +171,62 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
       return handleGroupTipButton(i as any);
     }
     
-    // If no handler matches, you might want to log this
+    // If no handler matches, log this
     console.warn("Unknown button interaction:", customId);
   }
 }));
 
-// src/index.ts
-import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
-
 bot.once(Events.ClientReady, async () => {
-  console.log(`🤖 Logged in as ${bot.user?.tag}`);
-  await restoreGroupTipExpiryTimers(bot); // 👈 recover + schedule
+  console.log(`Bot logged in as ${bot.user?.tag}`);
+  try {
+    await restoreGroupTipExpiryTimers(bot);
+    console.log("Group tip timers restored");
+  } catch (error) {
+    console.error("Failed to restore group tip timers:", error);
+  }
 });
 
+// Global error handlers
+process.on("unhandledRejection", (error) => {
+  console.error("Unhandled promise rejection:", error);
+});
 
-// helpful global logs
-process.on("unhandledRejection", (e) => console.error("unhandledRejection", e));
-process.on("uncaughtException", (e) => console.error("uncaughtException", e));
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+  process.exit(1);
+});
 
 async function main() {
-  await ensurePrisma();
+  try {
+    await ensurePrisma();
+    console.log("Database connected");
 
-  // register slash commands to all approved guilds (or fallback)
-  const cmds = getCommandsJson();
-  await registerCommandsForApprovedGuilds(cmds);
+    // Register slash commands to all approved guilds (or fallback)
+    const cmds = getCommandsJson();
+    await registerCommandsForApprovedGuilds(cmds);
+    console.log("Commands registered");
 
-  await bot.login(TOKEN);
+    await bot.login(TOKEN);
+    console.log("Bot login initiated");
 
-  const server = app.listen(PORT, () => console.log(`🌐 Web up on ${PORT}`));
-  const shutdown = () => {
-    console.log("Shutting down…");
-    server.close(() => process.exit(0));
-    bot.destroy();
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+    const server = app.listen(PORT, () => {
+      console.log(`Web server running on port ${PORT}`);
+    });
+
+    const shutdown = () => {
+      console.log("Shutting down...");
+      server.close(() => {
+        bot.destroy();
+        process.exit(0);
+      });
+    };
+
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  } catch (error) {
+    console.error("Failed to start application:", error);
+    process.exit(1);
+  }
 }
 
 main();

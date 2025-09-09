@@ -36,19 +36,20 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
         return i.reply({ content: "Duration must be 1–60 minutes.", flags: MessageFlags.Ephemeral });
       }
 
-      // Charge first (no public reply yet)
+      // Defer FIRST, before any potentially failing operations
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+
+      // Now charge (after deferring)
       try {
         await debitToken(i.user.id, token.id, atomic + feeAtomic, "TIP", { guildId: i.guildId });
       } catch (err: any) {
         const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
         const msg = /insufficient|fund/i.test(err?.message || "")
-          ? `You don’t have enough ${token.symbol} to cover **${totalLine}**.`
+          ? `You don't have enough ${token.symbol} to cover **${totalLine}**.`
           : `Could not charge your balance: ${err?.message || err}`;
-        return i.reply({ content: `❌ ${msg}`, flags: MessageFlags.Ephemeral });
+        // Use editReply since we already deferred
+        return i.editReply({ content: `❌ ${msg}` });
       }
-
-      // Safe to open an (ephemeral) interaction
-      await i.deferReply({ flags: MessageFlags.Ephemeral });
 
       const creator = await prisma.user.upsert({
         where: { discordId: i.user.id },
@@ -141,7 +142,7 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
       const totalLine =
         `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
       const msg = /insufficient|fund/i.test(err?.message || "")
-        ? `You don’t have enough ${token.symbol} to send **${totalLine}**.`
+        ? `You don't have enough ${token.symbol} to send **${totalLine}**.`
         : `Transfer failed: ${err?.message || err}`;
       return i.editReply({ content: `❌ ${msg}` });
     }
