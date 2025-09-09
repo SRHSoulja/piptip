@@ -13,13 +13,17 @@ Point Alchemy to:
 Flow: verify signature → normalize → POST to Node `/internal/credit` with Bearer.
 
 ## 2) .env for /hooks
+
 Copy `.env.example` to `.env` and fill:
-    ALCHEMY_SIGNING_KEY=add_here
-    TREASURY_AGW_ADDRESS=add_here
-    NODE_INTERNAL_CREDIT_URL=http://127.0.0.1:3000/internal/credit
-    INTERNAL_BEARER=add_here
-    NODE_INTERNAL_BEARER=add_here
-    WEBHOOK_DEBUG=true
+
+```env
+ALCHEMY_SIGNING_KEY=add_here
+TREASURY_AGW_ADDRESS=add_here
+NODE_INTERNAL_CREDIT_URL=http://127.0.0.1:3000/internal/credit
+INTERNAL_BEARER=add_here
+NODE_INTERNAL_BEARER=add_here
+WEBHOOK_DEBUG=true
+
 
 ## 3) Server hardening
 Apache .htaccess (optional):
