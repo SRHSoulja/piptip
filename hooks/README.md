@@ -23,7 +23,7 @@ NODE_INTERNAL_CREDIT_URL=http://127.0.0.1:3000/internal/credit
 INTERNAL_BEARER=add_here
 NODE_INTERNAL_BEARER=add_here
 WEBHOOK_DEBUG=true
-
+```
 
 ## 3) Server hardening
 Apache .htaccess (optional):
