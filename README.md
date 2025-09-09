@@ -4,6 +4,16 @@ Discord tipping bot for the **Abstract Chain** — built for sending **Penguin**
 
 ---
 
+## ⚡ Quickstart in 60 Seconds
+    git clone https://github.com/SRHSoulja/piptip.git
+    cd piptip
+    npm install
+    cp .env.example .env   # configure your token + database
+    npx prisma migrate dev
+    npm run dev
+
+---
+
 ## ✨ Features (current)
 - Slash commands for onboarding and tipping (`/pip_start`, `/pip_register`, `/pip_tip`, etc.)
 - Wallet linking + on-chain deposit/withdraw flow (`/pip_link`, `/pip_deposit`, `/pip_withdraw`)
@@ -30,7 +40,40 @@ Discord tipping bot for the **Abstract Chain** — built for sending **Penguin**
 ## 🚀 Getting Started
 
 ### 1) Clone & install
-```bash
-git clone https://github.com/SRHSoulja/piptip.git
-cd piptip
-npm install
+    git clone https://github.com/SRHSoulja/piptip.git
+    cd piptip
+    npm install
+
+### 2) Environment
+Create a `.env` file in the root with your settings:
+
+    DISCORD_TOKEN=your-bot-token
+    DATABASE_URL=postgresql://user:pass@host:5432/dbname
+
+### 3) Prisma
+Run database migrations:
+
+    npx prisma migrate dev
+
+### 4) Run the bot
+Start the development server:
+
+    npm run dev
+
+---
+
+## 🧱 Tech
+- TypeScript  
+- discord.js  
+- Prisma + PostgreSQL  
+- Express  
+
+---
+
+## 🤝 Contributing
+Pull requests welcome! Open an issue to discuss bigger changes.  
+
+---
+
+## 📜 License
+MIT
