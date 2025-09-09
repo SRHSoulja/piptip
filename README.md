@@ -47,8 +47,40 @@ Discord tipping bot for the **Abstract Chain** — built for sending **Penguin**
 ### 2) Environment
 Create a `.env` file in the root with your settings:
 
-    DISCORD_TOKEN=your-bot-token
-    DATABASE_URL=postgresql://user:pass@host:5432/dbname
+    # Database
+    DATABASE_URL="file:./prisma/dev.db"
+    # DATABASE_URL="postgresql://postgres:password@host:5432/postgres"
+
+    # Discord Bot
+    DISCORD_TOKEN=add_here
+    DISCORD_CLIENT_ID=add_here
+    GUILD_ID=add_here
+
+    # Web server
+    PUBLIC_BASE_URL=http://localhost:3000
+    PORT=3000
+    SESSION_SECRET=add_here
+
+    # Abstract chain
+    ABSTRACT_RPC_URL="https://abstract-mainnet.g.alchemy.com/v2/add_here"
+    ABSTRACT_CHAIN_ID=2741
+    TREASURY_AGW_ADDRESS=add_here
+    AGW_SESSION_PRIVATE_KEY=add_here
+
+    # Token settings
+    TOKEN_ADDRESS=add_here
+    TOKEN_DECIMALS=18
+    HOUSE_FEE_BPS=200
+    TIP_FEE_BPS=100
+
+    # Internal auth
+    INTERNAL_BEARER=add_here
+    ADMIN_SECRET=add_here
+
+    # Withdraw settings
+    WITHDRAW_MAX_PER_TX=50
+    WITHDRAW_DAILY_CAP=500
+
 
 ### 3) Prisma
 Run database migrations:
