@@ -23,9 +23,19 @@ const isHexAddress = (s: string) => /^0x[a-fA-F0-9]{40}$/.test(s);
 
 export default async function pipWithdraw(i: ChatInputCommandInteraction) {
   try {
-    const tokenAddress = (i.options.getString("token", true) || "").toLowerCase();
+    const rawTokenAddress = i.options.getString("token", true) || "";
+    if (!rawTokenAddress || typeof rawTokenAddress !== "string") {
+      return i.reply({ content: "Invalid token address.", flags: MessageFlags.Ephemeral });
+    }
+    const tokenAddress = rawTokenAddress.trim().toLowerCase();
+    
     const amountHuman = i.options.getNumber("amount", true);
-    const overrideAddr = (i.options.getString("address") || "").trim();
+    if (!amountHuman || typeof amountHuman !== "number" || !isFinite(amountHuman) || amountHuman <= 0 || amountHuman > 1e15) {
+      return i.reply({ content: "Amount must be a valid positive number.", flags: MessageFlags.Ephemeral });
+    }
+    
+    const rawOverrideAddr = i.options.getString("address") || "";
+    const overrideAddr = rawOverrideAddr.trim().toLowerCase();
 
     // Load token
     const token = await getTokenByAddress(tokenAddress);

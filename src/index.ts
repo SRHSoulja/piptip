@@ -29,6 +29,7 @@ import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
 import { getCommandsJson } from "./services/commands_def.js";
 import { registerCommandsForApprovedGuilds } from "./services/command_registry.js";
 import { getActiveTokens } from "./services/token.js";
+import { setDiscordClient } from "./services/discord_users.js";
 
 const TOKEN = process.env.DISCORD_TOKEN!;
 const PORT = Number(process.env.PORT || 3000);
@@ -49,7 +50,7 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
     // auto-defer after 2s if nothing replied yet
     const timer = setTimeout(async () => {
       if ("deferred" in i && !i.deferred && "replied" in i && !i.replied && "deferReply" in i) {
-        try { await (i as any).deferReply({ ephemeral: true }); } catch (error) {
+        try { await (i as any).deferReply({ flags: 64 }); } catch (error) {
           console.error("Auto-defer failed:", error);
         }
       }
@@ -71,7 +72,7 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
             if ((i as any).deferred || (i as any).replied) {
               await (i as any).editReply({ content: `Error: ${err?.message || err}` });
             } else {
-              await (i as any).reply({ content: `Error: ${err?.message || err}`, ephemeral: true });
+              await (i as any).reply({ content: `Error: ${err?.message || err}`, flags: 64 });
             }
           }
         } catch (replyError) {
@@ -185,6 +186,10 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
 
 bot.once(Events.ClientReady, async () => {
   console.log(`Bot logged in as ${bot.user?.tag}`);
+  
+  // Set global client reference for admin routes
+  setDiscordClient(bot);
+  
   try {
     await restoreGroupTipExpiryTimers(bot);
     console.log("Group tip timers restored");

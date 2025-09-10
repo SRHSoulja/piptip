@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { JsonRpcProvider } from "ethers";
 import { PrismaClient } from "@prisma/client";
-import { bigToDec } from "../services/token.js";
+import { bigToDecDirect } from "../services/token.js";
 
 const prisma = new PrismaClient();
 
@@ -65,13 +65,42 @@ async function credit(fromAddr: string, valueAtomic: bigint, txHash: string) {
     return;
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { balanceAtomic: { increment: bigToDec(valueAtomic) } },
+  // Get token details for validation and multi-token support
+  const token = await prisma.token.findUnique({ where: { address: TOKEN } });
+  if (!token) {
+    console.error(`❌ Token ${TOKEN} not found in database`);
+    return;
+  }
+
+  // Check minimum deposit
+  const minDepositAtomic = BigInt(token.minDeposit.toString()) * (10n ** BigInt(token.decimals));
+  if (valueAtomic < minDepositAtomic) {
+    console.log(`🔎 deposit below minimum ignored: ${Number(valueAtomic) / 10 ** DECIMALS} < ${token.minDeposit}`);
+    return;
+  }
+
+  // Use new secure balance system
+  await prisma.userBalance.upsert({
+    where: { userId_tokenId: { userId: user.id, tokenId: token.id } },
+    update: { amount: { increment: bigToDecDirect(valueAtomic, token.decimals) } },
+    create: { userId: user.id, tokenId: token.id, amount: bigToDecDirect(valueAtomic, token.decimals) }
   });
 
-  const whole = Number(valueAtomic) / 10 ** DECIMALS;
-  console.log(`💰 credited ${whole} PENGU to ${user.discordId} (from ${fromAddr}) tx ${txHash}`);
+  // Add audit trail
+  await prisma.transaction.create({
+    data: {
+      type: "DEPOSIT",
+      userId: user.id,
+      tokenId: token.id,
+      amount: bigToDecDirect(valueAtomic, token.decimals),
+      fee: "0",
+      txHash: txHash,
+      metadata: `deposit from ${fromAddr}`
+    }
+  });
+
+  const whole = Number(valueAtomic) / 10 ** token.decimals;
+  console.log(`💰 credited ${whole} ${token.symbol} to ${user.discordId} (from ${fromAddr}) tx ${txHash}`);
 }
 
 type AlchemyTransfer = {

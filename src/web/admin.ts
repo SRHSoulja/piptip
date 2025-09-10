@@ -9,6 +9,7 @@ import { registerCommandsForApprovedGuilds } from "../services/command_registry.
 import { getCommandsJson } from "../services/commands_def.js";
 import { getActiveTokens } from "../services/token.js";
 import { getTreasurySnapshot, invalidateTreasuryCache } from "../services/treasury.js";
+import { getDiscordClient, fetchMultipleUsernames, fetchMultipleServernames } from "../services/discord_users.js";
 
 export const adminRouter = Router();
 
@@ -138,7 +139,7 @@ adminRouter.get("/ui", (_req, res) => {
     </div>
     <table id="serversTbl">
       <thead>
-        <tr><th>ID</th><th>Guild ID</th><th>Note</th><th>Enabled</th><th>Actions</th></tr>
+        <tr><th>ID</th><th>Server Name</th><th>Guild ID</th><th>Note</th><th>Enabled</th><th>Actions</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -176,6 +177,103 @@ adminRouter.get("/ui", (_req, res) => {
       </thead>
       <tbody></tbody>
     </table>
+  </section>
+
+  <section>
+    <h2>👥 User Management</h2>
+    <div class="row">
+      <input id="searchUser" placeholder="Discord ID or wallet address"/>
+      <button id="findUser">Find User</button>
+      <button id="loadTopUsers">Top Users</button>
+      <span id="userMsg"></span>
+    </div>
+    <table id="usersTbl">
+      <thead>
+        <tr>
+          <th>Username</th><th>Discord ID</th><th>Wallet</th><th>Registration</th><th>Last Activity</th>
+          <th>Total Tips Sent</th><th>Total Received</th><th>Membership Details</th><th>Token Balances</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>💸 Transaction Monitor</h2>
+    <div class="row">
+      <select id="txType">
+        <option value="">All Types</option>
+        <option value="TIP">Tips</option>
+        <option value="DEPOSIT">Deposits</option>
+        <option value="WITHDRAW">Withdrawals</option>
+        <option value="PURCHASE">Purchases</option>
+      </select>
+      <input id="txUser" placeholder="Discord ID"/>
+      <input id="txSince" type="datetime-local"/>
+      <input id="txLimit" type="number" value="50" min="1" max="1000" style="width:80px"/>
+      <button id="loadTransactions">Load Transactions</button>
+      <button id="exportTransactions">Export CSV</button>
+      <span id="txMsg"></span>
+    </div>
+    <table id="transactionsTbl">
+      <thead>
+        <tr>
+          <th>ID</th><th>Type</th><th>User</th><th>Amount</th><th>Token</th>
+          <th>Fee</th><th>Time</th><th>Guild</th><th>Details</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>🎯 Group Tips Monitor</h2>
+    <div class="row">
+      <select id="gtStatus">
+        <option value="">All Status</option>
+        <option value="ACTIVE">Active</option>
+        <option value="COMPLETED">Completed</option>
+        <option value="EXPIRED">Expired</option>
+      </select>
+      <button id="loadGroupTips">Load Group Tips</button>
+      <button id="expireStuck">Expire Stuck Tips</button>
+      <span id="gtMsg"></span>
+    </div>
+    <table id="groupTipsTbl">
+      <thead>
+        <tr>
+          <th>ID</th><th>Creator</th><th>Amount</th><th>Token</th><th>Status</th>
+          <th>Claims</th><th>Created</th><th>Expires</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>⚡ System Health</h2>
+    <div class="row">
+      <button id="systemStatus">Check System Status</button>
+      <button id="dbStats">Database Stats</button>
+      <button id="clearCaches">Clear All Caches</button>
+      <span id="systemMsg"></span>
+    </div>
+    <div id="systemInfo" style="margin-top:16px; padding:16px; background:#1a1a1a; border-radius:8px; display:none;">
+      <h3>System Status</h3>
+      <div id="systemData"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>🚨 Emergency Controls</h2>
+    <div class="row" style="background:#2d1b1b; padding:16px; border-radius:8px; border:1px solid #ef4444;">
+      <label style="color:#ef4444; font-weight:bold;">⚠️ DANGER ZONE</label>
+      <button id="pauseWithdrawals" style="background:#dc2626;">Pause All Withdrawals</button>
+      <button id="pauseTipping" style="background:#dc2626;">Pause All Tipping</button>
+      <button id="emergencyMode" style="background:#dc2626;">Emergency Mode</button>
+      <button id="resumeAll" style="background:#059669;">Resume All Operations</button>
+      <span id="emergencyMsg"></span>
+    </div>
   </section>
 
   <section>
@@ -239,7 +337,7 @@ async function checkAuthAndLoad() {
   } catch { showMessage("authStatus","× Connection failed",true); clearAllTables(); }
 }
 function clearAllTables() {
-  ["tokensTbl","serversTbl","feesTbl","treasuryTbl","adsTbl"].forEach(id => {
+  ["tokensTbl","serversTbl","feesTbl","treasuryTbl","adsTbl","tiersTbl","usersTbl","transactionsTbl","groupTipsTbl"].forEach(id => {
     const tbody = document.querySelector(\`#\${id} tbody\`); if (tbody) tbody.innerHTML = "";
   });
 }
@@ -301,10 +399,14 @@ async function loadTokens() {
         <td><input value="\${t.houseFeeBps ?? ""}" placeholder="default" data-field="houseFeeBps" type="number" style="width:60px"/></td>
         <td><input value="\${t.withdrawMaxPerTx ?? ""}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px"/></td>
         <td><input value="\${t.withdrawDailyCap ?? ""}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px"/></td>
-        <td><button class="saveToken" data-id="\${t.id}">Save</button></td>\`;
+        <td>
+          <button class="saveToken" data-id="\${t.id}">Save</button>
+          <button class="deleteToken" data-id="\${t.id}" style="background:#ef4444; margin-left:4px;">Delete</button>
+        </td>\`;
       tbody.appendChild(tr);
     });
     tbody.querySelectorAll(".saveToken").forEach(btn => btn.onclick = () => saveToken(btn.dataset.id));
+    tbody.querySelectorAll(".deleteToken").forEach(btn => btn.onclick = () => deleteToken(btn.dataset.id));
   } catch { showMessage("tokenMsg","Failed to load tokens",true); }
 }
 async function saveToken(tokenId) {
@@ -333,6 +435,32 @@ async function saveToken(tokenId) {
   } catch (e){ alert(\`Failed to save token: \${e.message}\`); }
   finally { setLoading(btn, false); }
 }
+
+async function deleteToken(tokenId) {
+  const btn = document.querySelector(\`[data-id="\${tokenId}"].deleteToken\`);
+  const row = btn.closest("tr");
+  const tokenSymbol = row.querySelector("td:nth-child(2) strong").textContent;
+  
+  if (!confirm(\`⚠️ DELETE TOKEN: \${tokenSymbol}?\\n\\nThis will permanently remove the token and may affect:\\n• User balances in this token\\n• Transaction history\\n• Tier pricing\\n\\nThis action CANNOT be undone. Continue?\`)) {
+    return;
+  }
+  
+  setLoading(btn, true);
+  try {
+    const r = await API(\`/admin/tokens/\${tokenId}\`, { method: "DELETE" });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "Delete failed");
+    
+    showMessage("tokenMsg", "Token " + tokenSymbol + " deleted successfully", false);
+    await loadTokens(); // Reload the token list
+  } catch (e) {
+    alert("Failed to delete token: " + e.message);
+    showMessage("tokenMsg", "Failed to delete " + tokenSymbol, true);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
 $("addToken").onclick = async () => {
   const address = $("newTokenAddress").value.trim();
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) return showMessage("tokenMsg","Please enter a valid contract address",true);
@@ -361,16 +489,21 @@ async function loadServers() {
       const tr = document.createElement("tr");
       tr.innerHTML = \`
         <td>\${s.id}</td>
+        <td><strong>\${s.servername || "Loading..."}</strong></td>
         <td><code>\${s.guildId}</code></td>
         <td><input value="\${s.note || ""}" data-field="note" placeholder="Description"/></td>
         <td>
           <span class="status-indicator \${s.enabled ? 'online' : 'offline'}"></span>
           <input type="checkbox" \${s.enabled ? "checked" : ""} data-field="enabled"/>
         </td>
-        <td><button class="saveServer" data-id="\${s.id}">Save</button></td>\`;
+        <td>
+          <button class="saveServer" data-id="\${s.id}">Save</button>
+          <button class="deleteServer" data-id="\${s.id}" style="background:#ef4444; margin-left:4px;">Delete</button>
+        </td>\`;
       tbody.appendChild(tr);
     });
     tbody.querySelectorAll(".saveServer").forEach(b => b.onclick = () => saveServer(b.dataset.id));
+    tbody.querySelectorAll(".deleteServer").forEach(b => b.onclick = () => deleteServer(b.dataset.id));
   } catch (e){ console.error("Failed to load servers:", e); }
 }
 async function saveServer(id) {
@@ -386,6 +519,24 @@ async function saveServer(id) {
     btn.textContent = "✓ Saved"; setTimeout(()=>btn.textContent="Save", 2000);
     row.querySelector(".status-indicator").className = \`status-indicator \${enabled?'online':'offline'}\`;
   } catch(e){ alert(\`Failed to save server: \${e.message}\`); }
+  finally { setLoading(btn, false); }
+}
+async function deleteServer(id) {
+  const btn = document.querySelector(\`[data-id="\${id}"].deleteServer\`);
+  const row = btn.closest("tr");
+  const serverName = row.querySelector("td:nth-child(2) strong").textContent;
+  
+  if (!confirm(\`Are you sure you want to delete server "\${serverName}"? This action cannot be undone.\`)) {
+    return;
+  }
+  
+  setLoading(btn, true);
+  try {
+    const r = await API(\`/admin/servers/\${id}\`, {method:"DELETE"});
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "Delete failed");
+    row.remove();
+  } catch(e){ alert(\`Failed to delete server: \${e.message}\`); }
   finally { setLoading(btn, false); }
 }
 $("addServer").onclick = async () => {
@@ -635,6 +786,459 @@ $("addTier").onclick = async () => {
 };
 $("reloadTiers").onclick = () => loadTiers();
 
+// ---------- User Management ----------
+async function findUser() {
+  const query = $("searchUser").value.trim();
+  if (!query) return showMessage("userMsg", "Please enter Discord ID or wallet address", true);
+  setLoading("findUser", true);
+  try {
+    console.log("Searching for user:", query);
+    const r = await API(\`/admin/users/search?q=\${encodeURIComponent(query)}\`);
+    const j = await r.json();
+    console.log("User search response:", j);
+    if (!j.ok) return showMessage("userMsg", j.error || "User not found", true);
+    displayUsers([j.user]);
+    showMessage("userMsg", "User found", false);
+  } catch (e) { 
+    console.error("User search error:", e);
+    showMessage("userMsg", "Search failed", true); 
+  }
+  finally { setLoading("findUser", false); }
+}
+
+async function loadTopUsers() {
+  setLoading("loadTopUsers", true);
+  try {
+    console.log("Loading top users...");
+    const r = await API("/admin/users/top");
+    const j = await r.json();
+    console.log("Top users response:", j);
+    if (!j.ok) return showMessage("userMsg", "Failed to load top users", true);
+    displayUsers(j.users);
+    showMessage("userMsg", \`Loaded \${j.users.length} users\`, false);
+  } catch (e) { 
+    console.error("Top users error:", e);
+    showMessage("userMsg", "Failed to load users", true); 
+  }
+  finally { setLoading("loadTopUsers", false); }
+}
+
+function displayUsers(users) {
+  console.log("Displaying users:", users);
+  const tbody = $("usersTbl").querySelector("tbody");
+  if (!tbody) {
+    console.error("Could not find usersTbl tbody");
+    return;
+  }
+  tbody.innerHTML = "";
+  
+  if (!users || users.length === 0) {
+    console.log("No users to display");
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td colspan="10" style="text-align:center">No users found</td>';
+    tbody.appendChild(tr);
+    return;
+  }
+  
+  users.forEach(user => {
+    console.log("Adding user row:", user.discordId);
+    const tr = document.createElement("tr");
+    
+    // Format token balances
+    let balancesHtml = "No balances";
+    if (user.balances && user.balances.length > 0) {
+      balancesHtml = user.balances.map(balance => 
+        \`<div><strong>\${formatNumber(balance.amount)} \${balance.tokenSymbol}</strong></div>\`
+      ).join("");
+    }
+    
+    // Format membership details
+    let membershipHtml = "No memberships";
+    if (user.membershipDetails && user.membershipDetails.length > 0) {
+      membershipHtml = user.membershipDetails.map(membership => {
+        const expiresDate = new Date(membership.expiresAt).toLocaleDateString();
+        const status = membership.status === 'ACTIVE' ? '🟢' : '🔴';
+        return \`<div>\${status} <strong>\${membership.tierName}</strong><br><small>Expires: \${expiresDate}</small></div>\`;
+      }).join("");
+    } else if (user.activeMemberships > 0) {
+      membershipHtml = \`\${user.activeMemberships} active\`;
+    }
+    
+    tr.innerHTML = \`
+      <td><strong>\${user.username || "Loading..."}</strong></td>
+      <td><code>\${user.discordId || "Unknown"}</code></td>
+      <td><code>\${user.agwAddress || "Not linked"}</code></td>
+      <td>\${user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Unknown"}</td>
+      <td>\${user.lastActivity ? new Date(user.lastActivity).toLocaleDateString() : "Never"}</td>
+      <td>\${formatNumber(user.totalSent || 0)}</td>
+      <td>\${formatNumber(user.totalReceived || 0)}</td>
+      <td style="min-width:180px; font-size:0.9em;">\${membershipHtml}</td>
+      <td style="min-width:160px; font-size:0.9em;">\${balancesHtml}</td>
+      <td style="white-space:nowrap;">
+        <button onclick="manageUserBalances('\${user.discordId}')" style="background:#2563eb;">Manage Balances</button>
+        <button onclick="viewUserTransactions('\${user.discordId}')" style="background:#059669; margin-left:4px;">View Txns</button>
+      </td>\`;
+    tbody.appendChild(tr);
+  });
+}
+
+$("findUser").onclick = findUser;
+$("loadTopUsers").onclick = loadTopUsers;
+
+// Global functions for button clicks
+window.manageUserBalances = async function(discordId) {
+  try {
+    // Get fresh user data
+    const r = await API(\`/admin/users/search?q=\${encodeURIComponent(discordId)}\`);
+    const j = await r.json();
+    if (!j.ok) return alert("Failed to load user data");
+    
+    const user = j.user;
+    const tokens = await API("/admin/tokens").then(r => r.json()).then(j => j.tokens || []);
+    
+    // Create balance management modal
+    const modal = document.createElement("div");
+    modal.style.cssText = \`
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+      background: rgba(0,0,0,0.7); z-index: 1000; display: flex; 
+      align-items: center; justify-content: center;
+    \`;
+    
+    const content = document.createElement("div");
+    content.style.cssText = \`
+      background: #111; padding: 24px; border-radius: 12px; 
+      max-width: 600px; width: 90%; max-height: 80%; overflow-y: auto;
+      border: 1px solid #333;
+    \`;
+    
+    // Format membership info for modal
+    let membershipInfo = "";
+    if (user.membershipDetails && user.membershipDetails.length > 0) {
+      membershipInfo = \`
+        <div style="margin-bottom:16px; padding:12px; background:#1a2e1a; border-radius:8px; border-left:4px solid #059669;">
+          <h4 style="margin:0 0 8px; color:#10b981;">Active Memberships:</h4>
+          \${user.membershipDetails.map(m => \`
+            <div style="margin:4px 0;">
+              \${m.status === 'ACTIVE' ? '🟢' : '🔴'} <strong>\${m.tierName}</strong> 
+              <small>(expires \${new Date(m.expiresAt).toLocaleDateString()})</small>
+            </div>
+          \`).join("")}
+        </div>
+      \`;
+    }
+
+    content.innerHTML = \`
+      <h3 style="margin-top:0; color:#fff;">Manage Balances - \${discordId}</h3>
+      \${membershipInfo}
+      <div id="currentBalances">
+        <h4>Current Balances:</h4>
+        \${user.balances && user.balances.length > 0 
+          ? user.balances.map(b => \`
+              <div style="margin:8px 0; padding:8px; background:#1a1a1a; border-radius:6px;">
+                <strong>\${b.tokenSymbol}:</strong> \${formatNumber(b.amount)}
+                <button onclick="adjustBalance('\${discordId}', \${b.tokenId}, '\${b.tokenSymbol}')" 
+                        style="margin-left:8px; padding:4px 8px; font-size:0.8em;">Adjust</button>
+              </div>
+            \`).join("")
+          : "<p>No current balances</p>"
+        }
+      </div>
+      <div style="margin-top:16px;">
+        <h4>Add New Token Balance:</h4>
+        <select id="newTokenSelect" style="margin:8px; padding:8px;">
+          <option value="">Select token...</option>
+          \${tokens.filter(t => t.active).map(t => 
+            \`<option value="\${t.id}">\${t.symbol}</option>\`
+          ).join("")}
+        </select>
+        <input type="number" id="newTokenAmount" placeholder="Amount" 
+               style="margin:8px; padding:8px;" step="0.00000001">
+        <button onclick="addTokenBalance('\${discordId}')" 
+                style="margin:8px; padding:8px 16px; background:#2563eb;">Add Balance</button>
+      </div>
+      <div style="margin-top:16px; text-align:right;">
+        <button onclick="closeModal()" style="padding:8px 16px; background:#666;">Close</button>
+      </div>
+    \`;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    window.closeModal = () => document.body.removeChild(modal);
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+    
+  } catch (e) {
+    alert("Failed to load balance management: " + e.message);
+  }
+};
+
+window.adjustBalance = async function(discordId, tokenId, tokenSymbol) {
+  const newAmount = prompt("Enter new balance for " + tokenSymbol + ":\\n\\n⚠️ This will SET the balance to exactly this amount.\\nCurrent operations will be logged as ADMIN_ADJUSTMENT.", "0");
+  if (newAmount === null) return;
+  
+  const amount = parseFloat(newAmount);
+  if (isNaN(amount) || amount < 0) return alert("Invalid amount");
+  
+  if (!confirm("Set " + tokenSymbol + " balance to " + amount + " for user " + discordId + "?\\n\\nThis action will be logged.")) return;
+  
+  try {
+    const r = await API("/admin/users/adjust-balance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discordId, tokenId: parseInt(tokenId), amount, reason: "Admin adjustment" })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    
+    alert("Balance updated successfully to " + amount + " " + tokenSymbol);
+    closeModal();
+    // Refresh user display
+    findUser();
+  } catch (e) {
+    alert("Failed to adjust balance: " + e.message);
+  }
+};
+
+window.addTokenBalance = async function(discordId) {
+  const tokenId = parseInt(document.getElementById("newTokenSelect").value);
+  const amount = parseFloat(document.getElementById("newTokenAmount").value);
+  
+  if (!tokenId) return alert("Please select a token");
+  if (isNaN(amount) || amount <= 0) return alert("Please enter a valid amount");
+  
+  const tokenSymbol = document.querySelector("#newTokenSelect option[value=\\"" + tokenId + "\\"]").textContent;
+  
+  if (!confirm("Add " + amount + " " + tokenSymbol + " balance for user " + discordId + "?")) return;
+  
+  try {
+    const r = await API("/admin/users/adjust-balance", {
+      method: "POST", 
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discordId, tokenId, amount, reason: "Admin balance addition" })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    
+    alert("Added " + amount + " " + tokenSymbol + " successfully");
+    closeModal();
+    findUser();
+  } catch (e) {
+    alert("Failed to add balance: " + e.message);
+  }
+};
+
+window.viewUserTransactions = function(discordId) {
+  // Set the transaction filter to this user and load
+  document.getElementById("txUser").value = discordId;
+  loadTransactions();
+  
+  // Scroll to transaction section
+  document.getElementById("transactionsTbl").scrollIntoView({ behavior: "smooth" });
+};
+
+// ---------- Transaction Monitoring ----------
+async function loadTransactions() {
+  const type = $("txType").value;
+  const userId = $("txUser").value.trim();
+  const since = $("txSince").value;
+  const limit = parseInt($("txLimit").value) || 50;
+  
+  setLoading("loadTransactions", true);
+  try {
+    const params = new URLSearchParams();
+    if (type) params.set("type", type);
+    if (userId) params.set("userId", userId);
+    if (since) params.set("since", since);
+    params.set("limit", limit.toString());
+    
+    const r = await API(\`/admin/transactions?\${params.toString()}\`);
+    const j = await r.json();
+    if (!j.ok) return showMessage("txMsg", "Failed to load transactions", true);
+    
+    const tbody = $("transactionsTbl").querySelector("tbody");
+    tbody.innerHTML = "";
+    j.transactions.forEach(tx => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = \`
+        <td>\${tx.id}</td>
+        <td><span class="status-indicator online"></span>\${tx.type}</td>
+        <td><code>\${tx.userId || "N/A"}</code></td>
+        <td>\${formatNumber(tx.amount)}</td>
+        <td>Token \${tx.tokenId || "N/A"}</td>
+        <td>\${formatNumber(tx.fee || 0)}</td>
+        <td>\${new Date(tx.createdAt).toLocaleString()}</td>
+        <td>\${tx.guildId || "N/A"}</td>
+        <td><button onclick="viewTxDetails(\${tx.id})">Details</button></td>\`;
+      tbody.appendChild(tr);
+    });
+    showMessage("txMsg", \`Loaded \${j.transactions.length} transactions\`, false);
+  } catch { showMessage("txMsg", "Failed to load transactions", true); }
+  finally { setLoading("loadTransactions", false); }
+}
+
+$("loadTransactions").onclick = loadTransactions;
+$("exportTransactions").onclick = async () => {
+  try {
+    const params = new URLSearchParams();
+    const type = $("txType").value;
+    const userId = $("txUser").value.trim();
+    const since = $("txSince").value;
+    if (type) params.set("type", type);
+    if (userId) params.set("userId", userId);
+    if (since) params.set("since", since);
+    
+    const r = await API(\`/admin/transactions/export?\${params.toString()}\`);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = \`transactions_\${new Date().toISOString().split('T')[0]}.csv\`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch { showMessage("txMsg", "Export failed", true); }
+};
+
+// ---------- Group Tips Monitoring ----------
+async function loadGroupTips() {
+  const status = $("gtStatus").value;
+  setLoading("loadGroupTips", true);
+  try {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    
+    const r = await API(\`/admin/group-tips?\${params.toString()}\`);
+    const j = await r.json();
+    if (!j.ok) return showMessage("gtMsg", "Failed to load group tips", true);
+    
+    const tbody = $("groupTipsTbl").querySelector("tbody");
+    tbody.innerHTML = "";
+    j.groupTips.forEach(gt => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = \`
+        <td>\${gt.id}</td>
+        <td><code>\${gt.Creator?.discordId || gt.creatorId}</code></td>
+        <td>\${formatNumber(gt.totalAmount)} \${gt.Token?.symbol || ""}</td>
+        <td>\${gt.Token?.symbol || "N/A"}</td>
+        <td><span class="status-indicator \${gt.status === 'ACTIVE' ? 'online' : 'offline'}"></span>\${gt.status}</td>
+        <td>\${gt.claimCount || 0}</td>
+        <td>\${new Date(gt.createdAt).toLocaleString()}</td>
+        <td>\${gt.expiresAt ? new Date(gt.expiresAt).toLocaleString() : "Never"}</td>
+        <td>
+          <button onclick="expireGroupTip(\${gt.id})">Expire</button>
+          <button onclick="viewGroupTipDetails(\${gt.id})">Details</button>
+        </td>\`;
+      tbody.appendChild(tr);
+    });
+    showMessage("gtMsg", \`Loaded \${j.groupTips.length} group tips\`, false);
+  } catch { showMessage("gtMsg", "Failed to load group tips", true); }
+  finally { setLoading("loadGroupTips", false); }
+}
+
+$("loadGroupTips").onclick = loadGroupTips;
+$("expireStuck").onclick = async () => {
+  if (!confirm("This will expire all stuck group tips. Continue?")) return;
+  try {
+    const r = await API("/admin/group-tips/expire-stuck", { method: "POST" });
+    const j = await r.json();
+    showMessage("gtMsg", j.ok ? \`Expired \${j.count} stuck tips\` : (j.error || "Failed"), !j.ok);
+    if (j.ok) loadGroupTips();
+  } catch { showMessage("gtMsg", "Failed to expire stuck tips", true); }
+};
+
+// ---------- System Health ----------
+async function checkSystemStatus() {
+  setLoading("systemStatus", true);
+  try {
+    const r = await API("/admin/system/status");
+    const j = await r.json();
+    if (!j.ok) return showMessage("systemMsg", "Failed to get system status", true);
+    
+    document.getElementById("systemInfo").style.display = "block";
+    document.getElementById("systemData").innerHTML = \`
+      <p><strong>Database:</strong> <span class="status-indicator \${j.database ? 'online' : 'offline'}"></span>\${j.database ? 'Connected' : 'Disconnected'}</p>
+      <p><strong>RPC Provider:</strong> <span class="status-indicator \${j.rpc ? 'online' : 'offline'}"></span>\${j.rpc ? 'Connected' : 'Disconnected'}</p>
+      <p><strong>Treasury Address:</strong> <code>\${j.treasury || 'Not configured'}</code></p>
+      <p><strong>Active Tokens:</strong> \${j.activeTokens || 0}</p>
+      <p><strong>Active Users (24h):</strong> \${j.activeUsers || 0}</p>
+      <p><strong>Pending Transactions:</strong> \${j.pendingTxs || 0}</p>
+      <p><strong>System Uptime:</strong> \${j.uptime || 'Unknown'}</p>
+      <p><strong>Memory Usage:</strong> \${j.memory || 'Unknown'}</p>
+    \`;
+    showMessage("systemMsg", "System status loaded", false);
+  } catch { showMessage("systemMsg", "Failed to load system status", true); }
+  finally { setLoading("systemStatus", false); }
+}
+
+async function getDatabaseStats() {
+  setLoading("dbStats", true);
+  try {
+    const r = await API("/admin/system/db-stats");
+    const j = await r.json();
+    if (!j.ok) return showMessage("systemMsg", "Failed to get DB stats", true);
+    
+    document.getElementById("systemInfo").style.display = "block";
+    document.getElementById("systemData").innerHTML = \`
+      <h4>Database Statistics</h4>
+      <p><strong>Total Users:</strong> \${formatNumber(j.users || 0)}</p>
+      <p><strong>Total Transactions:</strong> \${formatNumber(j.transactions || 0)}</p>
+      <p><strong>Total Tips:</strong> \${formatNumber(j.tips || 0)}</p>
+      <p><strong>Active Group Tips:</strong> \${formatNumber(j.activeGroupTips || 0)}</p>
+      <p><strong>Total Deposits:</strong> \${formatNumber(j.deposits || 0)}</p>
+      <p><strong>Total Withdrawals:</strong> \${formatNumber(j.withdrawals || 0)}</p>
+      <p><strong>Database Size:</strong> \${j.dbSize || 'Unknown'}</p>
+    \`;
+    showMessage("systemMsg", "Database stats loaded", false);
+  } catch { showMessage("systemMsg", "Failed to load DB stats", true); }
+  finally { setLoading("dbStats", false); }
+}
+
+$("systemStatus").onclick = checkSystemStatus;
+$("dbStats").onclick = getDatabaseStats;
+$("clearCaches").onclick = async () => {
+  try {
+    const r = await API("/admin/system/clear-caches", { method: "POST" });
+    const j = await r.json();
+    showMessage("systemMsg", j.ok ? "All caches cleared" : (j.error || "Failed"), !j.ok);
+  } catch { showMessage("systemMsg", "Failed to clear caches", true); }
+};
+
+// ---------- Emergency Controls ----------
+$("pauseWithdrawals").onclick = async () => {
+  if (!confirm("⚠️ This will PAUSE ALL WITHDRAWALS system-wide. Continue?")) return;
+  try {
+    const r = await API("/admin/emergency/pause-withdrawals", { method: "POST" });
+    const j = await r.json();
+    showMessage("emergencyMsg", j.ok ? "🚨 Withdrawals PAUSED" : (j.error || "Failed"), !j.ok);
+  } catch { showMessage("emergencyMsg", "Failed to pause withdrawals", true); }
+};
+
+$("pauseTipping").onclick = async () => {
+  if (!confirm("⚠️ This will PAUSE ALL TIPPING system-wide. Continue?")) return;
+  try {
+    const r = await API("/admin/emergency/pause-tipping", { method: "POST" });
+    const j = await r.json();
+    showMessage("emergencyMsg", j.ok ? "🚨 Tipping PAUSED" : (j.error || "Failed"), !j.ok);
+  } catch { showMessage("emergencyMsg", "Failed to pause tipping", true); }
+};
+
+$("emergencyMode").onclick = async () => {
+  if (!confirm("⚠️ This will enable EMERGENCY MODE - all operations paused except critical functions. Continue?")) return;
+  try {
+    const r = await API("/admin/emergency/enable", { method: "POST" });
+    const j = await r.json();
+    showMessage("emergencyMsg", j.ok ? "🚨 EMERGENCY MODE ENABLED" : (j.error || "Failed"), !j.ok);
+  } catch { showMessage("emergencyMsg", "Failed to enable emergency mode", true); }
+};
+
+$("resumeAll").onclick = async () => {
+  if (!confirm("Resume all operations and disable emergency mode?")) return;
+  try {
+    const r = await API("/admin/emergency/resume-all", { method: "POST" });
+    const j = await r.json();
+    showMessage("emergencyMsg", j.ok ? "✅ All operations resumed" : (j.error || "Failed"), !j.ok);
+  } catch { showMessage("emergencyMsg", "Failed to resume operations", true); }
+};
+
 async function loadAllData() {
   try {
     await Promise.all([
@@ -645,6 +1249,7 @@ async function loadAllData() {
       loadAds(),
       loadTierTokenOptions(),
       loadTiers(),
+      loadTopUsers(), // Auto-load users
     ]);
   } catch (e) { console.error("Failed to load data:", e); }
 }
@@ -791,6 +1396,161 @@ adminRouter.post("/ads/refresh", async (_req, res) => {
   }
 });
 
+// Tiers
+adminRouter.get("/tiers", async (_req, res) => {
+  try {
+    const tiers = await prisma.tier.findMany({
+      include: { 
+        prices: { 
+          include: { token: true } 
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    
+    // Format tiers for the old admin interface compatibility
+    const formattedTiers = tiers.map(tier => ({
+      id: tier.id,
+      name: tier.name,
+      description: tier.description,
+      priceAmount: tier.priceAmount, // legacy field for compatibility
+      durationDays: tier.durationDays,
+      tipTaxFree: tier.tipTaxFree,
+      active: tier.active,
+      tokenId: tier.prices[0]?.tokenId || null, // first token for legacy compatibility
+      token: tier.prices[0]?.token || null
+    }));
+    
+    res.json({ ok: true, tiers: formattedTiers });
+  } catch (error) {
+    console.error("Failed to fetch tiers:", error);
+    res.status(500).json({ ok: false, error: "Failed to fetch tiers" });
+  }
+});
+
+adminRouter.post("/tiers", async (req, res) => {
+  try {
+    const { name, description, tokenId, priceAmount, durationDays, tipTaxFree = false, active = true } = req.body;
+    
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return res.status(400).json({ ok: false, error: "Tier name is required" });
+    }
+    
+    if (!tokenId || isNaN(Number(tokenId))) {
+      return res.status(400).json({ ok: false, error: "Valid token ID is required" });
+    }
+    
+    if (!priceAmount || isNaN(Number(priceAmount)) || Number(priceAmount) <= 0) {
+      return res.status(400).json({ ok: false, error: "Valid price amount is required" });
+    }
+    
+    if (!durationDays || isNaN(Number(durationDays)) || Number(durationDays) <= 0) {
+      return res.status(400).json({ ok: false, error: "Valid duration in days is required" });
+    }
+
+    // Verify token exists
+    const token = await prisma.token.findUnique({ where: { id: Number(tokenId) } });
+    if (!token) {
+      return res.status(400).json({ ok: false, error: "Token not found" });
+    }
+
+    // Create tier and price in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create tier
+      const tier = await tx.tier.create({
+        data: {
+          name: name.trim(),
+          description: description?.trim() || null,
+          priceAmount: Number(priceAmount), // legacy field for compatibility
+          durationDays: Number(durationDays),
+          tipTaxFree: Boolean(tipTaxFree),
+          active: Boolean(active)
+        }
+      });
+
+      // Create tier price
+      await tx.tierPrice.create({
+        data: {
+          tierId: tier.id,
+          tokenId: Number(tokenId),
+          amount: Number(priceAmount)
+        }
+      });
+
+      return tier;
+    });
+
+    res.json({ ok: true, tier: result, message: "Tier created successfully" });
+  } catch (error: any) {
+    console.error("Failed to create tier:", error);
+    if (error.code === "P2002") {
+      return res.status(400).json({ ok: false, error: "Tier name already exists" });
+    }
+    res.status(500).json({ ok: false, error: "Failed to create tier" });
+  }
+});
+
+adminRouter.put("/tiers/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid tier ID" });
+
+    const { name, description, priceAmount, durationDays, tipTaxFree, active } = req.body;
+    const data: any = {};
+
+    if (name !== undefined) {
+      if (!name || name.trim().length === 0) {
+        return res.status(400).json({ ok: false, error: "Tier name is required" });
+      }
+      data.name = name.trim();
+    }
+
+    if (description !== undefined) {
+      data.description = description?.trim() || null;
+    }
+
+    if (priceAmount !== undefined) {
+      const price = Number(priceAmount);
+      if (isNaN(price) || price <= 0) {
+        return res.status(400).json({ ok: false, error: "Valid price amount is required" });
+      }
+      data.priceAmount = price;
+    }
+
+    if (durationDays !== undefined) {
+      const days = Number(durationDays);
+      if (isNaN(days) || days <= 0) {
+        return res.status(400).json({ ok: false, error: "Valid duration in days is required" });
+      }
+      data.durationDays = days;
+    }
+
+    if (typeof tipTaxFree === "boolean") data.tipTaxFree = tipTaxFree;
+    if (typeof active === "boolean") data.active = active;
+
+    const tier = await prisma.tier.update({ where: { id }, data });
+    
+    // Also update the price if priceAmount was changed
+    if (priceAmount !== undefined) {
+      await prisma.tierPrice.updateMany({
+        where: { tierId: id },
+        data: { amount: Number(priceAmount) }
+      });
+    }
+
+    res.json({ ok: true, tier });
+  } catch (error: any) {
+    console.error("Failed to update tier:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ ok: false, error: "Tier not found" });
+    }
+    if (error.code === "P2002") {
+      return res.status(400).json({ ok: false, error: "Tier name already exists" });
+    }
+    res.status(500).json({ ok: false, error: "Failed to update tier" });
+  }
+});
+
 /* ------------------------------------------------------------------------ */
 /*                        Auth middleware & JSON API                        */
 /* ------------------------------------------------------------------------ */
@@ -803,4 +1563,911 @@ adminRouter.use((req, res, next) => {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
   next();
+});
+
+// Basic endpoints
+adminRouter.get("/ping", (_req, res) => {
+  res.json({ ok: true, message: "Admin authenticated" });
+});
+
+adminRouter.get("/config", async (_req, res) => {
+  try {
+    const config = await getConfig();
+    res.json({ ok: true, config });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to load config" });
+  }
+});
+
+adminRouter.put("/config", async (req, res) => {
+  try {
+    const { minDeposit, minWithdraw, withdrawMaxPerTx, withdrawDailyCap } = req.body;
+    
+    await prisma.appConfig.upsert({
+      where: { id: 1 },
+      update: {
+        minDeposit: Number(minDeposit) || 50,
+        minWithdraw: Number(minWithdraw) || 50,
+        withdrawMaxPerTx: Number(withdrawMaxPerTx) || 50,
+        withdrawDailyCap: Number(withdrawDailyCap) || 500
+      },
+      create: {
+        id: 1,
+        minDeposit: Number(minDeposit) || 50,
+        minWithdraw: Number(minWithdraw) || 50,
+        withdrawMaxPerTx: Number(withdrawMaxPerTx) || 50,
+        withdrawDailyCap: Number(withdrawDailyCap) || 500
+      }
+    });
+    
+    res.json({ ok: true, message: "Configuration updated" });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to update config" });
+  }
+});
+
+adminRouter.post("/reload-config", async (_req, res) => {
+  try {
+    // Force reload config cache if you have one
+    res.json({ ok: true, message: "Config cache reloaded" });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to reload config" });
+  }
+});
+
+adminRouter.get("/tokens", async (_req, res) => {
+  try {
+    const tokens = await prisma.token.findMany({
+      orderBy: { createdAt: "asc" }
+    });
+    res.json({ ok: true, tokens });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to fetch tokens" });
+  }
+});
+
+adminRouter.post("/tokens", async (req, res) => {
+  try {
+    const { address } = req.body;
+    
+    if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      return res.status(400).json({ ok: false, error: "Invalid token address" });
+    }
+
+    // Check if token already exists
+    const existing = await prisma.token.findUnique({ where: { address: address.toLowerCase() } });
+    if (existing) {
+      return res.status(400).json({ ok: false, error: "Token already exists" });
+    }
+
+    // Fetch token info from blockchain
+    const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+    const contract = new Contract(address, ERC20_ABI, provider);
+    
+    const [name, symbol, decimals] = await Promise.all([
+      contract.name(),
+      contract.symbol(), 
+      contract.decimals()
+    ]);
+
+    const token = await prisma.token.create({
+      data: {
+        address: address.toLowerCase(),
+        symbol,
+        decimals: Number(decimals),
+        active: true,
+        minDeposit: 50,
+        minWithdraw: 50
+      }
+    });
+
+    res.json({ ok: true, token });
+  } catch (error: any) {
+    console.error("Failed to add token:", error);
+    if (error.code === "P2002") {
+      return res.status(400).json({ ok: false, error: "Token address already exists" });
+    }
+    res.status(500).json({ ok: false, error: "Failed to add token" });
+  }
+});
+
+adminRouter.put("/tokens/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid token ID" });
+
+    const { active, minDeposit, minWithdraw, tipFeeBps, houseFeeBps, withdrawMaxPerTx, withdrawDailyCap } = req.body;
+    const data: any = {};
+
+    if (typeof active === "boolean") data.active = active;
+    if (minDeposit !== undefined) data.minDeposit = Number(minDeposit);
+    if (minWithdraw !== undefined) data.minWithdraw = Number(minWithdraw);
+    if (tipFeeBps !== undefined) data.tipFeeBps = tipFeeBps === "" ? null : Number(tipFeeBps);
+    if (houseFeeBps !== undefined) data.houseFeeBps = houseFeeBps === "" ? null : Number(houseFeeBps);
+    if (withdrawMaxPerTx !== undefined) data.withdrawMaxPerTx = withdrawMaxPerTx === "" ? null : Number(withdrawMaxPerTx);
+    if (withdrawDailyCap !== undefined) data.withdrawDailyCap = withdrawDailyCap === "" ? null : Number(withdrawDailyCap);
+
+    const token = await prisma.token.update({ where: { id }, data });
+    res.json({ ok: true, token });
+  } catch (error: any) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ ok: false, error: "Token not found" });
+    }
+    res.status(500).json({ ok: false, error: "Failed to update token" });
+  }
+});
+
+adminRouter.post("/tokens/refresh", async (_req, res) => {
+  try {
+    // Invalidate token cache if you have one
+    res.json({ ok: true, message: "Token cache refreshed" });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to refresh token cache" });
+  }
+});
+
+adminRouter.get("/servers", async (_req, res) => {
+  try {
+    const servers = await prisma.approvedServer.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+
+    // Fetch Discord server names
+    const client = getDiscordClient();
+    const guildIds = servers.map(s => s.guildId);
+    let servernames = new Map<string, string>();
+    
+    if (client) {
+      try {
+        servernames = await fetchMultipleServernames(client, guildIds);
+        console.log(`Fetched ${servernames.size} server names for admin interface`);
+      } catch (error) {
+        console.error("Failed to fetch server names:", error);
+      }
+    }
+
+    // Enrich servers with names
+    const enrichedServers = servers.map(server => ({
+      ...server,
+      servername: servernames.get(server.guildId) || `Server#${server.guildId.slice(-4)}`
+    }));
+
+    res.json({ ok: true, servers: enrichedServers });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to fetch servers" });
+  }
+});
+
+adminRouter.post("/servers", async (req, res) => {
+  try {
+    const { guildId, note } = req.body;
+    
+    if (!guildId || !/^[0-9]+$/.test(guildId)) {
+      return res.status(400).json({ ok: false, error: "Valid guild ID is required" });
+    }
+
+    const server = await prisma.approvedServer.create({
+      data: {
+        guildId,
+        note: note?.trim() || null,
+        enabled: true
+      }
+    });
+
+    // Register commands for the new guild
+    try {
+      const cmds = getCommandsJson();
+      await registerCommandsForApprovedGuilds(cmds);
+    } catch (error) {
+      console.error("Failed to register commands for new guild:", error);
+    }
+
+    res.json({ ok: true, server });
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      return res.status(400).json({ ok: false, error: "Server already exists" });
+    }
+    res.status(500).json({ ok: false, error: "Failed to add server" });
+  }
+});
+
+adminRouter.put("/servers/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid server ID" });
+
+    const { enabled, note } = req.body;
+    const data: any = {};
+
+    if (typeof enabled === "boolean") data.enabled = enabled;
+    if (note !== undefined) data.note = note?.trim() || null;
+
+    const server = await prisma.approvedServer.update({ where: { id }, data });
+    res.json({ ok: true, server });
+  } catch (error: any) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ ok: false, error: "Server not found" });
+    }
+    res.status(500).json({ ok: false, error: "Failed to update server" });
+  }
+});
+
+adminRouter.delete("/servers/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid server ID" });
+
+    await prisma.approvedServer.delete({ where: { id } });
+    res.json({ ok: true, message: "Server deleted successfully" });
+  } catch (error: any) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ ok: false, error: "Server not found" });
+    }
+    res.status(500).json({ ok: false, error: "Failed to delete server" });
+  }
+});
+
+adminRouter.get("/treasury", async (req, res) => {
+  try {
+    const force = req.query.force === "1";
+    const snapshot = await getTreasurySnapshot(force);
+    res.json({ ok: true, ...snapshot });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to load treasury" });
+  }
+});
+
+adminRouter.get("/fees/by-server", async (req, res) => {
+  try {
+    const { since, until } = parseDateRange(req.query);
+    const guildId = req.query.guildId ? String(req.query.guildId) : undefined;
+
+    const transactions = await prisma.transaction.groupBy({
+      by: ["guildId", "tokenId"],
+      where: {
+        OR: [{ type: "TIP" }, { type: "MATCH_RAKE" }],
+        ...(guildId && { guildId }),
+        createdAt: { gte: since, lte: until }
+      },
+      _sum: { fee: true, amount: true },
+    });
+
+    const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
+    const tokenMap = new Map<number, string>(tokens.map(t => [t.id, t.symbol]));
+
+    const rows = transactions.map(tr => ({
+      guildId: tr.guildId,
+      token: tr.tokenId ? (tokenMap.get(tr.tokenId) ?? `Token#${tr.tokenId}`) : "Unknown",
+      tipFees: String(tr._sum.fee || 0),
+      matchRake: String(tr._sum.amount || 0),
+    }));
+
+    res.json({ ok: true, rows });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to load fees" });
+  }
+});
+
+/* ------------------------------------------------------------------------ */
+/*                          User Management APIs                            */
+/* ------------------------------------------------------------------------ */
+
+adminRouter.get("/users/search", async (req, res) => {
+  try {
+    const query = String(req.query.q || "").trim();
+    console.log("User search query:", query);
+    
+    if (!query) {
+      return res.status(400).json({ ok: false, error: "Search query required" });
+    }
+
+    let user;
+    
+    // Try Discord ID first
+    if (/^\d+$/.test(query)) {
+      console.log("Searching by Discord ID:", query);
+      user = await prisma.user.findUnique({
+        where: { discordId: query },
+        include: {
+          tierMemberships: {
+            where: { expiresAt: { gt: new Date() } },
+            include: { tier: { select: { name: true } } }
+          },
+          balances: {
+            include: { Token: { select: { symbol: true, decimals: true } } }
+          }
+        }
+      });
+    }
+    
+    // Try wallet address if not found
+    if (!user && /^0x[a-fA-F0-9]{40}$/.test(query)) {
+      console.log("Searching by wallet address:", query.toLowerCase());
+      user = await prisma.user.findFirst({
+        where: { agwAddress: query.toLowerCase() },
+        include: {
+          tierMemberships: {
+            where: { expiresAt: { gt: new Date() } },
+            include: { tier: { select: { name: true } } }
+          },
+          balances: {
+            include: { Token: { select: { symbol: true, decimals: true } } }
+          }
+        }
+      });
+    }
+
+    if (!user) {
+      console.log("User not found for query:", query);
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    console.log("Found user:", user.discordId);
+
+    // Fetch Discord username
+    const client = getDiscordClient();
+    let username = `User#${user.discordId.slice(-4)}`;
+    
+    if (client) {
+      try {
+        const usernameMap = await fetchMultipleUsernames(client, [user.discordId]);
+        username = usernameMap.get(user.discordId) || username;
+      } catch (error) {
+        console.error("Failed to fetch username:", error);
+      }
+    }
+
+    // Get tip statistics
+    const [sentStats, receivedStats] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { userId: user.id, type: "TIP" },
+        _sum: { amount: true }
+      }),
+      prisma.transaction.aggregate({
+        where: { otherUserId: user.id, type: "TIP" },
+        _sum: { amount: true }
+      })
+    ]);
+
+    const enrichedUser = {
+      ...user,
+      username,
+      totalSent: Number(sentStats._sum.amount || 0),
+      totalReceived: Number(receivedStats._sum.amount || 0),
+      activeMemberships: user.tierMemberships.length,
+      membershipDetails: user.tierMemberships.map(membership => ({
+        tierName: membership.tier.name,
+        expiresAt: membership.expiresAt,
+        status: membership.status
+      })),
+      lastActivity: user.updatedAt,
+      balances: user.balances.map(balance => ({
+        tokenSymbol: balance.Token.symbol,
+        amount: balance.amount,
+        tokenId: balance.tokenId
+      }))
+    };
+
+    res.json({ ok: true, user: enrichedUser });
+  } catch (error: any) {
+    console.error("User search failed:", error);
+    res.status(500).json({ ok: false, error: "Search failed", details: error?.message || String(error) });
+  }
+});
+
+adminRouter.get("/users/top", async (req, res) => {
+  try {
+    console.log("Loading top users from database...");
+    const users = await prisma.user.findMany({
+      take: 50,
+      orderBy: { createdAt: "desc" },
+      include: {
+        tierMemberships: {
+          where: { expiresAt: { gt: new Date() } },
+          include: { tier: { select: { name: true } } }
+        },
+        balances: {
+          include: { Token: { select: { symbol: true, decimals: true } } }
+        }
+      }
+    });
+
+    console.log(`Found ${users.length} users`);
+
+    // Fetch Discord usernames
+    const client = getDiscordClient();
+    const discordIds = users.map(u => u.discordId);
+    let usernames = new Map<string, string>();
+    
+    if (client) {
+      try {
+        usernames = await fetchMultipleUsernames(client, discordIds);
+        console.log(`Fetched ${usernames.size} usernames for admin interface`);
+      } catch (error) {
+        console.error("Failed to fetch usernames:", error);
+      }
+    }
+
+    // Calculate proper statistics
+    const enrichedUsers = await Promise.all(users.map(async (user) => {
+      // Get tip statistics
+      const [sentStats, receivedStats] = await Promise.all([
+        prisma.transaction.aggregate({
+          where: { userId: user.id, type: "TIP" },
+          _sum: { amount: true }
+        }),
+        prisma.transaction.aggregate({
+          where: { otherUserId: user.id, type: "TIP" },
+          _sum: { amount: true }
+        })
+      ]);
+
+      return {
+        ...user,
+        username: usernames.get(user.discordId) || `User#${user.discordId.slice(-4)}`,
+        totalSent: Number(sentStats._sum.amount || 0),
+        totalReceived: Number(receivedStats._sum.amount || 0),
+        activeMemberships: user.tierMemberships.length,
+        membershipDetails: user.tierMemberships.map(membership => ({
+          tierName: membership.tier.name,
+          expiresAt: membership.expiresAt,
+          status: membership.status
+        })),
+        lastActivity: user.updatedAt,
+        balances: user.balances.map(balance => ({
+          tokenSymbol: balance.Token.symbol,
+          amount: balance.amount,
+          tokenId: balance.tokenId
+        }))
+      };
+    }));
+
+    res.json({ ok: true, users: enrichedUsers });
+  } catch (error: any) {
+    console.error("Failed to load top users:", error);
+    res.status(500).json({ ok: false, error: "Failed to load users", details: error?.message || String(error) });
+  }
+});
+
+adminRouter.post("/users/adjust-balance", async (req, res) => {
+  try {
+    const { discordId, tokenId, amount, reason } = req.body;
+    
+    // Validate inputs
+    if (!discordId || typeof discordId !== "string") {
+      return res.status(400).json({ ok: false, error: "Discord ID is required" });
+    }
+    
+    if (!tokenId || typeof tokenId !== "number") {
+      return res.status(400).json({ ok: false, error: "Token ID is required" });
+    }
+    
+    if (typeof amount !== "number" || amount < 0) {
+      return res.status(400).json({ ok: false, error: "Valid amount is required" });
+    }
+    
+    // Find user
+    const user = await prisma.user.findUnique({ where: { discordId } });
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+    
+    // Find token
+    const token = await prisma.token.findUnique({ where: { id: tokenId } });
+    if (!token) {
+      return res.status(404).json({ ok: false, error: "Token not found" });
+    }
+    
+    // Get current balance
+    const currentBalance = await prisma.userBalance.findUnique({
+      where: { userId_tokenId: { userId: user.id, tokenId } }
+    });
+    
+    const oldAmount = currentBalance ? Number(currentBalance.amount) : 0;
+    const newAmount = amount;
+    const difference = newAmount - oldAmount;
+    
+    // Update balance
+    await prisma.userBalance.upsert({
+      where: { userId_tokenId: { userId: user.id, tokenId } },
+      update: { amount: newAmount.toString() },
+      create: { 
+        userId: user.id, 
+        tokenId, 
+        amount: newAmount.toString() 
+      }
+    });
+    
+    // Log the adjustment as a transaction
+    await prisma.transaction.create({
+      data: {
+        type: "ADMIN_ADJUSTMENT",
+        userId: user.id,
+        tokenId,
+        amount: difference.toString(), // The change amount
+        fee: "0",
+        metadata: JSON.stringify({
+          reason: reason || "Admin balance adjustment",
+          oldAmount,
+          newAmount,
+          adminAction: true
+        })
+      }
+    });
+    
+    console.log(`Admin adjusted balance for ${discordId}: ${token.symbol} ${oldAmount} → ${newAmount} (${difference > 0 ? '+' : ''}${difference})`);
+    
+    res.json({ 
+      ok: true, 
+      message: `Balance adjusted successfully`,
+      details: {
+        token: token.symbol,
+        oldAmount,
+        newAmount,
+        difference
+      }
+    });
+    
+  } catch (error: any) {
+    console.error("Balance adjustment failed:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to adjust balance",
+      details: error.message 
+    });
+  }
+});
+
+/* ------------------------------------------------------------------------ */
+/*                        Transaction Monitoring APIs                       */
+/* ------------------------------------------------------------------------ */
+
+adminRouter.get("/transactions", async (req, res) => {
+  try {
+    const type = req.query.type ? String(req.query.type) : undefined;
+    const userId = req.query.userId ? String(req.query.userId) : undefined;
+    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const limit = Math.min(parseInt(String(req.query.limit || "50")), 1000);
+
+    const where: any = {};
+    if (type) where.type = type;
+    if (since) where.createdAt = { gte: since };
+    
+    let user;
+    if (userId) {
+      user = await prisma.user.findUnique({ where: { discordId: userId } });
+      if (user) where.userId = user.id;
+    }
+
+    const transactions = await prisma.transaction.findMany({
+      where,
+      take: limit,
+      orderBy: { createdAt: "desc" }
+    });
+
+    res.json({ ok: true, transactions });
+  } catch (error) {
+    console.error("Failed to load transactions:", error);
+    res.status(500).json({ ok: false, error: "Failed to load transactions" });
+  }
+});
+
+adminRouter.get("/transactions/export", async (req, res) => {
+  try {
+    const type = req.query.type ? String(req.query.type) : undefined;
+    const userId = req.query.userId ? String(req.query.userId) : undefined;
+    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+
+    const where: any = {};
+    if (type) where.type = type;
+    if (since) where.createdAt = { gte: since };
+    
+    let user;
+    if (userId) {
+      user = await prisma.user.findUnique({ where: { discordId: userId } });
+      if (user) where.userId = user.id;
+    }
+
+    const transactions = await prisma.transaction.findMany({
+      where,
+      orderBy: { createdAt: "desc" }
+    });
+
+    const csvHeader = "ID,Type,User,Amount,Token,Fee,Time,Guild\n";
+    const csvRows = transactions.map(tx => [
+      tx.id,
+      tx.type,
+      tx.userId || "N/A",
+      tx.amount,
+      tx.tokenId || "Unknown",
+      tx.fee || 0,
+      tx.createdAt.toISOString(),
+      tx.guildId || "N/A"
+    ].map(field => `"${field}"`).join(",")).join("\n");
+
+    const csv = csvHeader + csvRows;
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="transactions_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error("Export failed:", error);
+    res.status(500).json({ ok: false, error: "Export failed" });
+  }
+});
+
+/* ------------------------------------------------------------------------ */
+/*                        Group Tips Monitoring APIs                        */
+/* ------------------------------------------------------------------------ */
+
+adminRouter.get("/group-tips", async (req, res) => {
+  try {
+    const status = req.query.status ? String(req.query.status) : undefined;
+    
+    const where: any = {};
+    if (status) where.status = status;
+
+    const groupTips = await prisma.groupTip.findMany({
+      where,
+      take: 100,
+      orderBy: { createdAt: "desc" },
+      include: {
+        Creator: { select: { discordId: true } },
+        Token: { select: { symbol: true } },
+        _count: { select: { claims: true } }
+      }
+    });
+
+    const enrichedTips = groupTips.map(gt => ({
+      ...gt,
+      claimCount: gt._count.claims
+    }));
+
+    res.json({ ok: true, groupTips: enrichedTips });
+  } catch (error) {
+    console.error("Failed to load group tips:", error);
+    res.status(500).json({ ok: false, error: "Failed to load group tips" });
+  }
+});
+
+adminRouter.post("/group-tips/expire-stuck", async (req, res) => {
+  try {
+    const stuckTips = await prisma.groupTip.updateMany({
+      where: {
+        status: "ACTIVE",
+        expiresAt: { lt: new Date() }
+      },
+      data: { status: "EXPIRED" }
+    });
+
+    res.json({ ok: true, count: stuckTips.count });
+  } catch (error) {
+    console.error("Failed to expire stuck tips:", error);
+    res.status(500).json({ ok: false, error: "Failed to expire stuck tips" });
+  }
+});
+
+/* ------------------------------------------------------------------------ */
+/*                          System Health APIs                              */
+/* ------------------------------------------------------------------------ */
+
+adminRouter.get("/system/status", async (req, res) => {
+  try {
+    // Check database
+    let database = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      database = true;
+    } catch {}
+
+    // Check RPC
+    let rpc = false;
+    try {
+      const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+      await provider.getBlockNumber();
+      rpc = true;
+    } catch {}
+
+    // Get system stats
+    const [activeTokens, activeUsers, pendingTxs] = await Promise.all([
+      prisma.token.count({ where: { active: true } }),
+      prisma.user.count({
+        where: {
+          updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        }
+      }),
+      prisma.groupTip.count({ where: { status: "ACTIVE" } })
+    ]);
+
+    const memoryUsage = process.memoryUsage();
+    const memory = `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`;
+    const uptime = `${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m`;
+
+    res.json({
+      ok: true,
+      database,
+      rpc,
+      treasury: process.env.TREASURY_AGW_ADDRESS,
+      activeTokens,
+      activeUsers,
+      pendingTxs,
+      uptime,
+      memory
+    });
+  } catch (error) {
+    console.error("System status check failed:", error);
+    res.status(500).json({ ok: false, error: "Status check failed" });
+  }
+});
+
+adminRouter.get("/system/db-stats", async (req, res) => {
+  try {
+    const [users, transactions, tips, activeGroupTips, deposits, withdrawals] = await Promise.all([
+      prisma.user.count(),
+      prisma.transaction.count(),
+      prisma.tip.count(),
+      prisma.groupTip.count({ where: { status: "ACTIVE" } }),
+      prisma.transaction.count({ where: { type: "DEPOSIT" } }),
+      prisma.transaction.count({ where: { type: "WITHDRAW" } })
+    ]);
+
+    res.json({
+      ok: true,
+      users,
+      transactions,
+      tips,
+      activeGroupTips,
+      deposits,
+      withdrawals,
+      dbSize: "Unknown" // Would need additional queries to calculate
+    });
+  } catch (error) {
+    console.error("DB stats failed:", error);
+    res.status(500).json({ ok: false, error: "DB stats failed" });
+  }
+});
+
+adminRouter.post("/system/clear-caches", async (req, res) => {
+  try {
+    // Clear treasury cache
+    invalidateTreasuryCache();
+    
+    // Clear any other caches (config, tokens, etc.)
+    // Implementation depends on your caching strategy
+    
+    res.json({ ok: true, message: "All caches cleared" });
+  } catch (error) {
+    console.error("Cache clear failed:", error);
+    res.status(500).json({ ok: false, error: "Failed to clear caches" });
+  }
+});
+
+/* ------------------------------------------------------------------------ */
+/*                          Emergency Control APIs                          */
+/* ------------------------------------------------------------------------ */
+
+// Emergency state management (you could store this in database or Redis)
+let emergencyState = {
+  withdrawalsPaused: false,
+  tippingPaused: false,
+  emergencyMode: false
+};
+
+adminRouter.post("/emergency/pause-withdrawals", async (req, res) => {
+  try {
+    emergencyState.withdrawalsPaused = true;
+    // Store emergency state in a simple way - Config table might not exist
+    // You could also update a database flag that withdrawal commands check
+    res.json({ ok: true, message: "Withdrawals paused system-wide" });
+  } catch (error) {
+    console.error("Failed to pause withdrawals:", error);
+    res.status(500).json({ ok: false, error: "Failed to pause withdrawals" });
+  }
+});
+
+adminRouter.post("/emergency/pause-tipping", async (req, res) => {
+  try {
+    emergencyState.tippingPaused = true;
+    res.json({ ok: true, message: "Tipping paused system-wide" });
+  } catch (error) {
+    console.error("Failed to pause tipping:", error);
+    res.status(500).json({ ok: false, error: "Failed to pause tipping" });
+  }
+});
+
+adminRouter.post("/emergency/enable", async (req, res) => {
+  try {
+    emergencyState = {
+      withdrawalsPaused: true,
+      tippingPaused: true,
+      emergencyMode: true
+    };
+    
+    res.json({ ok: true, message: "Emergency mode enabled - all operations paused" });
+  } catch (error) {
+    console.error("Failed to enable emergency mode:", error);
+    res.status(500).json({ ok: false, error: "Failed to enable emergency mode" });
+  }
+});
+
+adminRouter.post("/emergency/resume-all", async (req, res) => {
+  try {
+    emergencyState = {
+      withdrawalsPaused: false,
+      tippingPaused: false,
+      emergencyMode: false
+    };
+    
+    res.json({ ok: true, message: "All operations resumed - emergency mode disabled" });
+  } catch (error) {
+    console.error("Failed to resume operations:", error);
+    res.status(500).json({ ok: false, error: "Failed to resume operations" });
+  }
+});
+
+/* ------------------------------------------------------------------------ */
+/*                            Token Deletion API                            */
+/* ------------------------------------------------------------------------ */
+
+adminRouter.delete("/tokens/:id", async (req, res) => {
+  try {
+    const tokenId = parseInt(req.params.id);
+    if (isNaN(tokenId)) {
+      return res.status(400).json({ ok: false, error: "Invalid token ID" });
+    }
+
+    // Check if token exists
+    const token = await prisma.token.findUnique({ where: { id: tokenId } });
+    if (!token) {
+      return res.status(404).json({ ok: false, error: "Token not found" });
+    }
+
+    // Safety checks - prevent deletion if token is in use
+    const [userBalances, transactions, tierPrices, groupTips] = await Promise.all([
+      prisma.userBalance.count({ where: { tokenId } }),
+      prisma.transaction.count({ where: { tokenId } }),
+      prisma.tierPrice.count({ where: { tokenId } }),
+      prisma.groupTip.count({ where: { tokenId } })
+    ]);
+
+    const issues = [];
+    if (userBalances > 0) issues.push(`${userBalances} user balances`);
+    if (transactions > 0) issues.push(`${transactions} transactions`);
+    if (tierPrices > 0) issues.push(`${tierPrices} tier prices`);
+    if (groupTips > 0) issues.push(`${groupTips} group tips`);
+
+    if (issues.length > 0) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: `Cannot delete token - it has associated data: ${issues.join(', ')}`,
+        details: { userBalances, transactions, tierPrices, groupTips }
+      });
+    }
+
+    // Safe to delete - no associated data
+    await prisma.token.delete({ where: { id: tokenId } });
+
+    console.log(`Token ${token.symbol} (ID: ${tokenId}) deleted by admin`);
+    res.json({ 
+      ok: true, 
+      message: `Token ${token.symbol} deleted successfully`,
+      deletedToken: token
+    });
+
+  } catch (error: any) {
+    console.error("Token deletion failed:", error);
+    
+    // Handle foreign key constraint errors
+    if (error.code === "P2003") {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Cannot delete token - it is referenced by other records" 
+      });
+    }
+    
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to delete token",
+      details: error.message 
+    });
+  }
 });

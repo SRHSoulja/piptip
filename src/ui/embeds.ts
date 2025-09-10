@@ -3,23 +3,115 @@ import { EmbedBuilder } from "discord.js";
 import type { PipMove } from "../services/matches.js";
 import { fmtDec } from "../services/token.js";
 
-export function profileEmbed(u: {
+export function profileEmbed(data: {
+  user?: { username: string; displayName?: string | null; avatarURL?: (options?: any) => string | null };
   agwAddress?: string | null;
-  balanceAtomic: any; // Now expects formatted string like "50 PENGU, 100 USDC" or Prisma.Decimal for legacy
-  wins: number; losses: number; ties: number;
+  balanceText?: string;
+  balanceAtomic?: any; // Legacy support
+  wins: number; 
+  losses: number; 
+  ties: number;
+  membershipText?: string;
+  tippingStats?: {
+    sentText: string;
+    receivedText: string;
+    sentCount: number;
+    receivedCount: number;
+  };
+  groupTipActivity?: {
+    created: number;
+    claimed: number;
+  };
+  recentActivity?: string;
+  createdAt?: Date;
+  hasActiveMembership?: boolean;
 }) {
-  // Handle both new multi-token format (string) and legacy format (Decimal)
-  const balanceDisplay = typeof u.balanceAtomic === 'string' 
-    ? u.balanceAtomic 
-    : fmtDec(u.balanceAtomic);
+  // Handle balance display - support both new and legacy formats
+  let balanceDisplay = "0 tokens";
+  if (data.balanceText) {
+    balanceDisplay = data.balanceText;
+  } else if (data.balanceAtomic) {
+    balanceDisplay = typeof data.balanceAtomic === 'string' 
+      ? data.balanceAtomic 
+      : fmtDec(data.balanceAtomic);
+  }
 
-  return new EmbedBuilder()
-    .setTitle("Penguin Ice Pebble Profile")
-    .addFields(
-      { name: "Wallet", value: u.agwAddress ?? "Not linked", inline: false },
-      { name: "Balance", value: balanceDisplay, inline: true },
-      { name: "Record", value: `${u.wins}W ${u.losses}L ${u.ties}T`, inline: true },
+  const embed = new EmbedBuilder()
+    .setTitle("🐧🧊🪨 PIPTip Profile")
+    .setColor(data.hasActiveMembership ? 0xFFD700 : 0x5865F2) // Gold for premium, Discord blue for regular
+    .setTimestamp();
+
+  // Set user avatar as thumbnail if available
+  if (data.user?.avatarURL) {
+    const avatarUrl = data.user.avatarURL({ size: 128 });
+    if (avatarUrl) embed.setThumbnail(avatarUrl);
+  }
+
+  // Basic info section
+  embed.addFields(
+    { name: "💳 Wallet", value: data.agwAddress ?? "Not linked", inline: false },
+    { name: "💰 Balance", value: balanceDisplay, inline: true },
+    { name: "🎮 Game Record", value: `${data.wins}W ${data.losses}L ${data.ties}T`, inline: true }
+  );
+
+  // Account info
+  if (data.createdAt) {
+    const accountAge = `<t:${Math.floor(data.createdAt.getTime() / 1000)}:R>`;
+    embed.addFields({ name: "📅 Member Since", value: accountAge, inline: true });
+  }
+
+  // Membership status
+  if (data.membershipText) {
+    const membershipEmoji = data.hasActiveMembership ? "⭐" : "🔓";
+    embed.addFields({ 
+      name: `${membershipEmoji} Membership Status`, 
+      value: data.membershipText, 
+      inline: false 
+    });
+  }
+
+  // Tipping statistics
+  if (data.tippingStats) {
+    const { sentText, receivedText, sentCount, receivedCount } = data.tippingStats;
+    
+    embed.addFields(
+      { 
+        name: "💸 Tips Sent", 
+        value: sentText, 
+        inline: true 
+      },
+      { 
+        name: "💝 Tips Received", 
+        value: receivedText, 
+        inline: true 
+      },
+      { 
+        name: "📊 Total Activity", 
+        value: `${sentCount + receivedCount} total tips\n${sentCount} sent • ${receivedCount} received`, 
+        inline: true 
+      }
     );
+  }
+
+  // Group tip activity
+  if (data.groupTipActivity) {
+    embed.addFields({
+      name: "🎉 Group Tips",
+      value: `Created: ${data.groupTipActivity.created}\nClaimed: ${data.groupTipActivity.claimed}`,
+      inline: true
+    });
+  }
+
+  // Recent activity
+  if (data.recentActivity) {
+    embed.addFields({
+      name: "📊 Recent Activity",
+      value: data.recentActivity,
+      inline: false
+    });
+  }
+
+  return embed;
 }
 
 /** Public offer embed */
