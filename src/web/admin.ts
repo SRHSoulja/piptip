@@ -7,9 +7,11 @@ import { registerCommandsForApprovedGuilds } from "../services/command_registry.
 import { getCommandsJson } from "../services/commands_def.js";
 import { prisma } from "../services/db.js";
 import { getActiveTokens } from "../services/token.js";
+import { getTreasurySnapshot, invalidateTreasuryCache } from "../services/treasury.js";
 import { ABSTRACT_RPC_URL } from "../config.js";
 
 export const adminRouter = Router();
+
 // Read lazily so .env is loaded and hot-reloads work
 const getAdminSecret = () => (process.env.ADMIN_SECRET ?? "").trim();
 
@@ -19,7 +21,7 @@ const ERC20_ABI = [
   "function decimals() view returns (uint8)"
 ];
 
-// ---------- Lightweight UI (public so HTML can load) ----------
+// ---------- Admin UI Route (public so HTML can load) ----------
 adminRouter.get("/ui", (_req, res) => {
   res.type("html").send(`
 <!doctype html>
@@ -29,330 +31,731 @@ adminRouter.get("/ui", (_req, res) => {
 <title>PIPtip Admin</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <style>
-  :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-  body { margin: 24px; }
-  h1 { margin: 0 0 12px; }
-  section { border: 1px solid #333; border-radius: 12px; padding: 16px; margin: 16px 0; }
-  label { display: inline-block; min-width: 220px; }
-  input, select, button { padding: 6px 10px; margin: 6px 6px 6px 0; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th, td { border-bottom: 1px solid #2a2a2a; padding: 6px 8px; text-align: left; }
-  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .ok { color: #6ee782; }
-  .err { color: #ff7b7b; }
-  code { background:#222; padding:2px 6px; border-radius:6px; }
+  :root { 
+    color-scheme: dark; 
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; 
+  }
+  body { margin: 24px; background: #0a0a0a; color: #e5e5e5; }
+  h1 { margin: 0 0 12px; color: #fff; }
+  h2 { margin: 16px 0 12px; color: #fff; }
+  section { 
+    border: 1px solid #333; 
+    border-radius: 12px; 
+    padding: 16px; 
+    margin: 16px 0; 
+    background: #111;
+  }
+  label { 
+    display: inline-block; 
+    min-width: 220px; 
+    font-weight: 500;
+  }
+  input, select, button { 
+    padding: 8px 12px; 
+    margin: 6px 6px 6px 0; 
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #222;
+    color: #e5e5e5;
+  }
+  button {
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+    border: none;
+  }
+  button:hover { background: #1d4ed8; }
+  button:disabled { 
+    background: #374151; 
+    cursor: not-allowed; 
+    opacity: 0.6;
+  }
+  table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin-top: 10px; 
+  }
+  th, td { 
+    border-bottom: 1px solid #2a2a2a; 
+    padding: 8px; 
+    text-align: left; 
+  }
+  th { 
+    background: #1a1a1a; 
+    font-weight: 600;
+  }
+  .row { 
+    display: flex; 
+    gap: 12px; 
+    flex-wrap: wrap; 
+    align-items: center; 
+  }
+  .ok { color: #10b981; font-weight: 500; }
+  .err { color: #ef4444; font-weight: 500; }
+  code { 
+    background: #1a1a1a; 
+    padding: 2px 6px; 
+    border-radius: 4px; 
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.9em;
+  }
+  .loading { opacity: 0.6; }
+  .status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  .status-indicator.online { background: #10b981; }
+  .status-indicator.offline { background: #ef4444; }
 </style>
 </head>
 <body>
-  <h1>PIPtip Admin</h1>
+  <h1>🎯 PIPtip Admin</h1>
 
   <section>
     <div class="row">
       <label>Admin Secret</label>
       <input id="secret" type="password" placeholder="Paste ADMIN_SECRET"/>
-      <button id="saveSecret">Save</button>
+      <button id="saveSecret">Save & Connect</button>
       <span id="authStatus"></span>
     </div>
   </section>
 
   <section>
-    <h2>Configuration</h2>
+    <h2>⚙️ Configuration</h2>
     <div id="cfgForm" class="row">
-      <label>Min Deposit</label><input id="minDeposit" type="number" min="0" step="0.0000000001"/>
-      <label>Min Withdraw</label><input id="minWithdraw" type="number" min="0" step="0.0000000001"/>
-      <label>Max Withdraw / tx (0 = none)</label><input id="withdrawMaxPerTx" type="number" min="0" step="0.0000000001"/>
-      <label>Daily Withdraw Cap (0 = none)</label><input id="withdrawDailyCap" type="number" min="0" step="0.0000000001"/>
+      <label>Min Deposit</label>
+      <input id="minDeposit" type="number" min="0" step="0.0000000001"/>
+      
+      <label>Min Withdraw</label>
+      <input id="minWithdraw" type="number" min="0" step="0.0000000001"/>
+      
+      <label>Max Withdraw / tx (0 = none)</label>
+      <input id="withdrawMaxPerTx" type="number" min="0" step="0.0000000001"/>
+      
+      <label>Daily Withdraw Cap (0 = none)</label>
+      <input id="withdrawDailyCap" type="number" min="0" step="0.0000000001"/>
+      
       <button id="saveCfg">Save Config</button>
       <button id="reloadCfg">Reload Cache</button>
       <span id="cfgMsg"></span>
     </div>
   </section>
 
-
   <section>
-    <h2>Tokens</h2>
+    <h2>🪙 Tokens</h2>
     <div class="row">
-      <button id="refreshTokens">Refresh Token Cache</button>
+      <input id="newTokenAddress" placeholder="0x..." maxlength="42"/>
+      <button id="addToken">Add Token</button>
+      <button id="refreshTokens">Refresh Cache</button>
+      <span id="tokenMsg"></span>
     </div>
-<table id="tokensTbl"><thead>
-<tr>
-  <th>ID</th><th>Symbol</th><th>Address</th><th>Decimals</th>
-  <th>Active</th><th>MinDep</th><th>MinWdr</th>
-  <th>TipFee(bps)</th><th>House(bps)</th>
-  <th>Max/Tx</th><th>DailyCap</th><th>Save</th>
-</tr>
-</thead><tbody></tbody></table>
+    <table id="tokensTbl">
+      <thead>
+        <tr>
+          <th>ID</th><th>Symbol</th><th>Address</th><th>Decimals</th>
+          <th>Active</th><th>MinDep</th><th>MinWdr</th>
+          <th>TipFee(bps)</th><th>House(bps)</th>
+          <th>Max/Tx</th><th>DailyCap</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </section>
 
   <section>
-    <h2>Servers</h2>
+    <h2>🖥️ Servers</h2>
     <div class="row">
-      <input id="newGuildId" placeholder="Guild ID"/>
-      <input id="newGuildNote" placeholder="Note"/>
-      <button id="addServer">Add/Enable</button>
+      <input id="newGuildId" placeholder="Guild ID" pattern="[0-9]+"/>
+      <input id="newGuildNote" placeholder="Server description"/>
+      <button id="addServer">Add Server</button>
     </div>
-    <table id="serversTbl"><thead>
-      <tr><th>ID</th><th>Guild</th><th>Note</th><th>Enabled</th><th>Save</th></tr>
-    </thead><tbody></tbody></table>
+    <table id="serversTbl">
+      <thead>
+        <tr><th>ID</th><th>Guild ID</th><th>Note</th><th>Enabled</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </section>
 
   <section>
-  <h2>Treasury Balances</h2>
-  <div class="row">
-    <button id="reloadTreasury">Reload</button>
-    <span id="treasuryMsg"></span>
-  </div>
-  <table id="treasuryTbl"><thead>
-    <tr><th>Asset</th><th>Balance</th></tr>
-  </thead><tbody></tbody></table>
-</section>
+    <h2>💰 Treasury Balances</h2>
+    <div class="row">
+      <button id="reloadTreasury">Refresh Balances</button>
+      <span id="treasuryMsg"></span>
+    </div>
+    <table id="treasuryTbl">
+      <thead>
+        <tr><th>Asset</th><th>Balance</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
 
   <section>
-    <h2>House Earnings (Tip Fees + Match Rake)</h2>
+    <h2>📊 House Earnings</h2>
+    <p>Tip fees and match rake collected by the platform</p>
     <div class="row">
-      <label>Since (YYYY-MM-DD)</label><input id="feesSince" placeholder="2025-09-01"/>
-      <label>Until (YYYY-MM-DD)</label><input id="feesUntil" placeholder="2025-09-08"/>
-      <label>Guild (optional)</label><input id="feesGuild" placeholder="1234567890"/>
+      <label>From Date</label>
+      <input id="feesSince" type="date"/>
+      
+      <label>To Date</label>
+      <input id="feesUntil" type="date"/>
+      
+      <label>Guild (optional)</label>
+      <input id="feesGuild" placeholder="Guild ID"/>
+      
       <button id="loadFees">Load Summary</button>
       <button id="csvFees">Download CSV</button>
       <span id="feesMsg"></span>
     </div>
-    <table id="feesTbl"><thead>
-      <tr><th>Guild</th><th>Token</th><th>Tip Fees</th><th>Match Rake</th><th>Total</th></tr>
-    </thead><tbody></tbody></table>
+    <table id="feesTbl">
+      <thead>
+        <tr><th>Guild</th><th>Token</th><th>Tip Fees</th><th>Match Rake</th><th>Total</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
     <p><small>
-      Tip fees are taken from <code>Transaction.fee</code> where <code>type="TIP"</code>.<br/>
-      Match rake uses <code>Transaction.amount</code> where <code>type="MATCH_RAKE"</code>.
+      <strong>Tip fees:</strong> Platform commission from tips<br/>
+      <strong>Match rake:</strong> Platform take from completed matches
     </small></p>
   </section>
 
 <script>
-const $ = (id)=>document.getElementById(id);
-const API = (path, opts={}) => {
+// Utility functions
+const $ = (id) => document.getElementById(id);
+const API = async (path, opts = {}) => {
   const secret = localStorage.getItem("pip_admin_secret") || "";
-  const headers = Object.assign({ "Authorization": "Bearer " + secret }, opts.headers||{});
-  return fetch(path, Object.assign({}, opts, { headers }));
+  const headers = { 
+    "Authorization": \`Bearer \${secret}\`,
+    ...opts.headers 
+  };
+  
+  try {
+    const response = await fetch(path, { ...opts, headers });
+    return response;
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
 };
-function fmt(n){ return Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 8 }); }
 
-// ---- AUTH GATE ----
+const showMessage = (elementId, message, isError = false) => {
+  const el = $(elementId);
+  if (el) {
+    el.textContent = message;
+    el.className = isError ? "err" : "ok";
+  }
+};
+
+const setLoading = (elementId, isLoading) => {
+  const el = $(elementId);
+  if (el) {
+    el.disabled = isLoading;
+    el.classList.toggle('loading', isLoading);
+  }
+};
+
+const formatNumber = (n) => {
+  const num = Number(n ?? 0);
+  return num.toLocaleString(undefined, { 
+    maximumFractionDigits: 8,
+    minimumFractionDigits: 0
+  });
+};
+
+const setDefaultDates = () => {
+  const today = new Date();
+  const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  
+  $("feesSince").value = weekAgo.toISOString().split('T')[0];
+  $("feesUntil").value = today.toISOString().split('T')[0];
+};
+
+// Authentication
 async function checkAuthAndLoad() {
   try {
-    const r = await API("/admin/ping");
-    const j = await r.json().catch(()=>({ ok:false }));
-    $("authStatus").textContent = j.ok ? "✓ Auth OK" : "× Not authorized";
-    $("authStatus").className = j.ok ? "ok" : "err";
-    if (j.ok) {
-      // only load data once authorized
-      await loadAll();
+    const response = await API("/admin/ping");
+    const data = await response.json();
+    
+    if (data.ok) {
+      showMessage("authStatus", "✓ Connected", false);
+      await loadAllData();
     } else {
-      // clear tables if unauthorized
-      (document.querySelector("#tokensTbl tbody")||{}).innerHTML = "";
-      (document.querySelector("#serversTbl tbody")||{}).innerHTML = "";
-      (document.querySelector("#feesTbl tbody")||{}).innerHTML = "";
+      showMessage("authStatus", "× Not authorized", true);
+      clearAllTables();
     }
-  } catch {
-    $("authStatus").textContent = "× Not authorized";
-    $("authStatus").className = "err";
+  } catch (error) {
+    showMessage("authStatus", "× Connection failed", true);
+    clearAllTables();
   }
 }
-$("saveSecret").onclick = ()=>{ 
-  localStorage.setItem("pip_admin_secret", $("secret").value.trim()); 
+
+function clearAllTables() {
+  ["tokensTbl", "serversTbl", "feesTbl", "treasuryTbl"].forEach(tableId => {
+    const tbody = document.querySelector(\`#\${tableId} tbody\`);
+    if (tbody) tbody.innerHTML = "";
+  });
+}
+
+$("saveSecret").onclick = () => {
+  const secret = $("secret").value.trim();
+  if (!secret) {
+    showMessage("authStatus", "Please enter admin secret", true);
+    return;
+  }
+  localStorage.setItem("pip_admin_secret", secret);
   checkAuthAndLoad();
 };
 
-
-// ---- CONFIG ----
-async function loadCfg() {
-  const r = await API("/admin/config");
-  const j = await r.json().catch(() => ({ ok: false }));
-  if (!j.ok) { $("cfgMsg").textContent = "Load failed"; $("cfgMsg").className = "err"; return; }
-  const c = j.config || {};
-  ["minDeposit","minWithdraw","withdrawMaxPerTx","withdrawDailyCap"].forEach(k => {
-    if ($(k)) $(k).value = c[k] ?? "";
-  });
+// Configuration Management
+async function loadConfig() {
+  try {
+    const response = await API("/admin/config");
+    const data = await response.json();
+    
+    if (data.ok && data.config) {
+      const config = data.config;
+      ["minDeposit", "minWithdraw", "withdrawMaxPerTx", "withdrawDailyCap"].forEach(key => {
+        const input = $(key);
+        if (input) input.value = config[key] ?? "";
+      });
+    }
+  } catch (error) {
+    showMessage("cfgMsg", "Failed to load configuration", true);
+  }
 }
 
 $("saveCfg").onclick = async () => {
-  const body = {
-    minDeposit: Number($("minDeposit").value),
-    minWithdraw: Number($("minWithdraw").value),
-    withdrawMaxPerTx: Number($("withdrawMaxPerTx").value),
-    withdrawDailyCap: Number($("withdrawDailyCap").value),
-  };
-  const r = await API("/admin/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const j = await r.json();
-  $("cfgMsg").textContent = j.ok ? "Saved" : (j.error || "Save failed");
-  $("cfgMsg").className = j.ok ? "ok" : "err";
-};
-
-
-$("reloadCfg").onclick = () => API("/admin/reload-config", { method:"POST" })
-  .then(() => { $("cfgMsg").textContent = "Cache reloaded"; $("cfgMsg").className = "ok"; });
-
+  setLoading("saveCfg", true);
   
-// ---- TOKENS ----
+  try {
+    const configData = {
+      minDeposit: Number($("minDeposit").value),
+      minWithdraw: Number($("minWithdraw").value),
+      withdrawMaxPerTx: Number($("withdrawMaxPerTx").value),
+      withdrawDailyCap: Number($("withdrawDailyCap").value),
+    };
+    
+    const response = await API("/admin/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(configData)
+    });
+    
+    const data = await response.json();
+    showMessage("cfgMsg", data.ok ? "Configuration saved" : data.error || "Save failed", !data.ok);
+  } catch (error) {
+    showMessage("cfgMsg", "Network error", true);
+  } finally {
+    setLoading("saveCfg", false);
+  }
+};
+
+$("reloadCfg").onclick = async () => {
+  try {
+    await API("/admin/reload-config", { method: "POST" });
+    showMessage("cfgMsg", "Cache reloaded successfully", false);
+  } catch (error) {
+    showMessage("cfgMsg", "Reload failed", true);
+  }
+};
+
+// Token Management
 async function loadTokens() {
-  const r = await API("/admin/tokens");
-  const j = await r.json().catch(()=>({ok:false}));
-  const tb = $("tokensTbl").querySelector("tbody");
-  tb.innerHTML = "";
-  if (!j.ok) { console.warn("Failed to load tokens", j.error); return; }
+  try {
+    const response = await API("/admin/tokens");
+    const data = await response.json();
+    
+    if (!data.ok) {
+      showMessage("tokenMsg", "Failed to load tokens", true);
+      return;
+    }
 
-  j.tokens.forEach((t) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = \`
-  <td>\${t.id}</td>
-  <td>\${t.symbol}</td>
-  <td><code>\${t.address}</code></td>
-  <td>\${t.decimals}</td>
-  <td><input type="checkbox" \${t.active ? "checked" : ""} data-k="active"/></td>
-  <td><input value="\${t.minDeposit}" data-k="minDeposit" size="8"/></td>
-  <td><input value="\${t.minWithdraw}" data-k="minWithdraw" size="8"/></td>
-  <td><input value="\${t.tipFeeBps ?? ""}" placeholder="default" data-k="tipFeeBps" size="6"/></td>
-  <td><input value="\${t.houseFeeBps ?? ""}" placeholder="default" data-k="houseFeeBps" size="6"/></td>
-  <td><input value="\${t.withdrawMaxPerTx ?? ""}" placeholder="default" data-k="withdrawMaxPerTx" size="8"/></td>
-  <td><input value="\${t.withdrawDailyCap ?? ""}" placeholder="default" data-k="withdrawDailyCap" size="8"/></td>
-  <td><button data-id="\${t.id}" class="saveToken">Save</button></td>
-\`;
+    const tbody = $("tokensTbl").querySelector("tbody");
+    tbody.innerHTML = "";
 
-    tb.appendChild(tr);
-  });
+    data.tokens.forEach(token => {
+      const row = document.createElement("tr");
+      row.innerHTML = \`
+        <td>\${token.id}</td>
+        <td><strong>\${token.symbol}</strong></td>
+        <td><code>\${token.address}</code></td>
+        <td>\${token.decimals}</td>
+        <td><input type="checkbox" \${token.active ? "checked" : ""} data-field="active"/></td>
+        <td><input value="\${token.minDeposit}" data-field="minDeposit" type="number" step="0.01" style="width:80px"/></td>
+        <td><input value="\${token.minWithdraw}" data-field="minWithdraw" type="number" step="0.01" style="width:80px"/></td>
+        <td><input value="\${token.tipFeeBps ?? ""}" placeholder="default" data-field="tipFeeBps" type="number" style="width:60px"/></td>
+        <td><input value="\${token.houseFeeBps ?? ""}" placeholder="default" data-field="houseFeeBps" type="number" style="width:60px"/></td>
+        <td><input value="\${token.withdrawMaxPerTx ?? ""}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px"/></td>
+        <td><input value="\${token.withdrawDailyCap ?? ""}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px"/></td>
+        <td><button class="saveToken" data-id="\${token.id}">Save</button></td>
+      \`;
+      tbody.appendChild(row);
+    });
 
-  tb.querySelectorAll(".saveToken").forEach((btn) => {
-    btn.onclick = async () => {
-const row = btn.closest("tr");
-const v = (sel) => row.querySelector(sel).value.trim();
+    // Add event listeners for save buttons
+    tbody.querySelectorAll(".saveToken").forEach(button => {
+      button.onclick = () => saveToken(button.dataset.id);
+    });
 
-const body = {
-  active: row.querySelector('input[data-k="active"]').checked,
-  minDeposit: Number(v('input[data-k="minDeposit"]')),
-  minWithdraw: Number(v('input[data-k="minWithdraw"]')),
-  tipFeeBps: (() => { const x = v('input[data-k="tipFeeBps"]'); return x === "" ? null : Number(x); })(),
-  houseFeeBps: (() => { const x = v('input[data-k="houseFeeBps"]'); return x === "" ? null : Number(x); })(),
-  withdrawMaxPerTx: (() => { const x = v('input[data-k="withdrawMaxPerTx"]'); return x === "" ? null : Number(x); })(),
-  withdrawDailyCap: (() => { const x = v('input[data-k="withdrawDailyCap"]'); return x === "" ? null : Number(x); })(),
-};
+  } catch (error) {
+    showMessage("tokenMsg", "Failed to load tokens", true);
+  }
+}
 
-const r = await API("/admin/tokens/" + btn.dataset.id, {
-  method: "PUT",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(body),
-});
-alert((await r.json()).ok ? "Saved" : "Save failed");
+async function saveToken(tokenId) {
+  const button = document.querySelector(\`[data-id="\${tokenId}"].saveToken\`);
+  const row = button.closest("tr");
+  
+  setLoading(button, true);
+  
+  try {
+    const getValue = (field) => {
+      const input = row.querySelector(\`[data-field="\${field}"]\`);
+      if (input.type === "checkbox") return input.checked;
+      const value = input.value.trim();
+      return value === "" ? null : Number(value);
     };
-  });
-}
-$("refreshTokens").onclick = ()=>API("/admin/tokens/refresh", { method:"POST" }).then(loadTokens);
 
-// ---- SERVERS ----
-async function loadServers() {
-  const r = await API("/admin/servers"); 
-  const j = await r.json().catch(()=>({ok:false}));
-  const tb = $("serversTbl").querySelector("tbody"); 
-  tb.innerHTML="";
-  if(!j.ok) return;
-  j.servers.forEach(s=>{
-    const tr = document.createElement("tr");
-    tr.innerHTML = \`
-      <td>\${s.id}</td>
-      <td><code>\${s.guildId}</code></td>
-      <td><input value="\${s.note||""}" data-k="note" size="20"/></td>
-      <td><input type="checkbox" \${s.enabled?"checked":""} data-k="enabled"/></td>
-      <td><button data-id="\${s.id}" class="saveSrv">Save</button></td>
-    \`;
-    tb.appendChild(tr);
-  });
-  tb.querySelectorAll(".saveSrv").forEach(btn=>{
-    btn.onclick = async ()=>{
-      const tr = btn.closest("tr");
-      const enabled = tr.querySelector('input[data-k="enabled"]').checked;
-      const note = tr.querySelector('input[data-k="note"]').value;
-      const r = await API("/admin/servers/"+btn.dataset.id, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ enabled, note }) });
-      alert((await r.json()).ok ? "Saved" : "Save failed");
+    const updateData = {
+      active: getValue("active"),
+      minDeposit: getValue("minDeposit"),
+      minWithdraw: getValue("minWithdraw"),
+      tipFeeBps: getValue("tipFeeBps"),
+      houseFeeBps: getValue("houseFeeBps"),
+      withdrawMaxPerTx: getValue("withdrawMaxPerTx"),
+      withdrawDailyCap: getValue("withdrawDailyCap"),
     };
-  });
+
+    const response = await API(\`/admin/tokens/\${tokenId}\`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updateData),
+    });
+
+    const data = await response.json();
+    
+    if (data.ok) {
+      button.textContent = "✓ Saved";
+      setTimeout(() => { button.textContent = "Save"; }, 2000);
+    } else {
+      throw new Error(data.error || "Save failed");
+    }
+  } catch (error) {
+    alert(\`Failed to save token: \${error.message}\`);
+  } finally {
+    setLoading(button, false);
+  }
 }
-$("addServer").onclick = async ()=>{
-  const body = { guildId: $("newGuildId").value.trim(), note: $("newGuildNote").value.trim() };
-  if(!body.guildId) return alert("Guild ID required");
-  const r = await API("/admin/servers", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
-  alert((await r.json()).ok ? "Added/Enabled" : "Failed");
-  loadServers();
-};
 
-// ---- FEES ----
-async function loadFees() {
-  const qs = new URLSearchParams();
-  const s=$("feesSince").value.trim(), u=$("feesUntil").value.trim(), g=$("feesGuild").value.trim();
-  if(s) qs.set("since", s); if(u) qs.set("until", u); if(g) qs.set("guildId", g);
-  const r = await API("/admin/fees/by-server?"+qs.toString()); 
-  const j = await r.json().catch(()=>({ok:false, rows:[]}));
-  const tb = $("feesTbl").querySelector("tbody"); tb.innerHTML="";
-  if(!j.ok) { $("feesMsg").textContent="Load failed"; $("feesMsg").className="err"; return; }
-  j.rows.forEach(x=>{
-    const tr=document.createElement("tr");
-    tr.innerHTML = \`<td>\${x.guildId || "-"}</td><td>\${x.token}</td><td>\${fmt(x.tipFees)}</td><td>\${fmt(x.matchRake)}</td><td>\${fmt((+x.tipFees)+(+x.matchRake))}</td>\`;
-    tb.appendChild(tr);
-  });
-  $("feesMsg").textContent = "Loaded";
-  $("feesMsg").className = "ok";
-}
-$("loadFees").onclick = loadFees;
-
-$("csvFees").onclick = async ()=>{
-  const qs = new URLSearchParams();
-  const s=$("feesSince").value.trim(), u=$("feesUntil").value.trim(), g=$("feesGuild").value.trim();
-  if(s) qs.set("since", s); if(u) qs.set("until", u); if(g) qs.set("guildId", g);
-  const resp = await API("/admin/fees/export.csv?"+qs.toString());
-  const blob = await resp.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href=url; a.download="house_fees.csv"; a.click();
-  URL.revokeObjectURL(url);
-};
-
-// ---- TREASURY ----
-async function loadTreasury(force) {
-  if (force === undefined) force = false;
-  var r = await API('/admin/treasury' + (force ? '?force=1' : ''));
-  var j;
-  try { j = await r.json(); } catch (e) { j = { ok: false }; }
-
-  var tb = document.querySelector('#treasuryTbl tbody');
-  if (tb) tb.innerHTML = '';
-
-  if (!j.ok) {
-    $('treasuryMsg').textContent = 'Load failed';
-    $('treasuryMsg').className = 'err';
+$("addToken").onclick = async () => {
+  const address = $("newTokenAddress").value.trim();
+  
+  if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    showMessage("tokenMsg", "Please enter a valid contract address", true);
     return;
   }
+  
+  setLoading("addToken", true);
+  
+  try {
+    const response = await API("/admin/tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address })
+    });
+    
+    const data = await response.json();
+    
+    if (data.ok) {
+      showMessage("tokenMsg", \`Added \${data.token.symbol} token\`, false);
+      $("newTokenAddress").value = "";
+      await loadTokens();
+    } else {
+      showMessage("tokenMsg", data.error || "Failed to add token", true);
+    }
+  } catch (error) {
+    showMessage("tokenMsg", "Network error", true);
+  } finally {
+    setLoading("addToken", false);
+  }
+};
 
-  var trEth = document.createElement('tr');
-  trEth.innerHTML = '<td>ETH (gas)</td><td>' + j.ethHuman + '</td>';
-  if (tb) tb.appendChild(trEth);
+$("refreshTokens").onclick = async () => {
+  try {
+    await API("/admin/tokens/refresh", { method: "POST" });
+    await loadTokens();
+    showMessage("tokenMsg", "Token cache refreshed", false);
+  } catch (error) {
+    showMessage("tokenMsg", "Refresh failed", true);
+  }
+};
 
-  (j.tokens || []).forEach(function (t) {
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + t.symbol + '</td><td>' + t.human + '</td>';
-    if (tb) tb.appendChild(tr);
-  });
+// Server Management
+async function loadServers() {
+  try {
+    const response = await API("/admin/servers");
+    const data = await response.json();
+    
+    if (!data.ok) return;
 
-  $('treasuryMsg').textContent = 'As of ' + new Date(j.ts).toLocaleTimeString();
-  $('treasuryMsg').className = 'ok';
+    const tbody = $("serversTbl").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    data.servers.forEach(server => {
+      const row = document.createElement("tr");
+      row.innerHTML = \`
+        <td>\${server.id}</td>
+        <td><code>\${server.guildId}</code></td>
+        <td><input value="\${server.note || ""}" data-field="note" placeholder="Description"/></td>
+        <td>
+          <span class="status-indicator \${server.enabled ? 'online' : 'offline'}"></span>
+          <input type="checkbox" \${server.enabled ? "checked" : ""} data-field="enabled"/>
+        </td>
+        <td><button class="saveServer" data-id="\${server.id}">Save</button></td>
+      \`;
+      tbody.appendChild(row);
+    });
+
+    tbody.querySelectorAll(".saveServer").forEach(button => {
+      button.onclick = () => saveServer(button.dataset.id);
+    });
+
+  } catch (error) {
+    console.error("Failed to load servers:", error);
+  }
 }
 
-$('reloadTreasury').onclick = function () { loadTreasury(true); };
+async function saveServer(serverId) {
+  const button = document.querySelector(\`[data-id="\${serverId}"].saveServer\`);
+  const row = button.closest("tr");
+  
+  setLoading(button, true);
+  
+  try {
+    const enabled = row.querySelector('[data-field="enabled"]').checked;
+    const note = row.querySelector('[data-field="note"]').value.trim();
 
+    const response = await API(\`/admin/servers/\${serverId}\`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled, note })
+    });
 
-// ---- BOOT ----
-async function loadAll(){ 
-  await Promise.all([loadCfg(), loadTokens(), loadServers()]); 
+    const data = await response.json();
+    
+    if (data.ok) {
+      button.textContent = "✓ Saved";
+      setTimeout(() => { button.textContent = "Save"; }, 2000);
+      
+      // Update status indicator
+      const indicator = row.querySelector(".status-indicator");
+      indicator.className = \`status-indicator \${enabled ? 'online' : 'offline'}\`;
+    } else {
+      throw new Error(data.error || "Save failed");
+    }
+  } catch (error) {
+    alert(\`Failed to save server: \${error.message}\`);
+  } finally {
+    setLoading(button, false);
+  }
 }
-(() => { 
-  $("secret").value = localStorage.getItem("pip_admin_secret")||""; 
-  checkAuthAndLoad(); 
+
+$("addServer").onclick = async () => {
+  const guildId = $("newGuildId").value.trim();
+  const note = $("newGuildNote").value.trim();
+  
+  if (!guildId || !/^[0-9]+$/.test(guildId)) {
+    alert("Please enter a valid Guild ID");
+    return;
+  }
+  
+  setLoading("addServer", true);
+  
+  try {
+    const response = await API("/admin/servers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guildId, note })
+    });
+    
+    const data = await response.json();
+    
+    if (data.ok) {
+      $("newGuildId").value = "";
+      $("newGuildNote").value = "";
+      await loadServers();
+    } else {
+      alert(data.error || "Failed to add server");
+    }
+  } catch (error) {
+    alert("Network error");
+  } finally {
+    setLoading("addServer", false);
+  }
+};
+
+// Treasury Management
+async function loadTreasury(force = false) {
+  try {
+    const response = await API(\`/admin/treasury\${force ? '?force=1' : ''}\`);
+    const data = await response.json();
+
+    const tbody = $("treasuryTbl").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    if (!data.ok) {
+      showMessage("treasuryMsg", "Failed to load treasury", true);
+      return;
+    }
+
+    // Add ETH row
+    const ethRow = document.createElement("tr");
+    ethRow.innerHTML = \`<td><strong>ETH (gas)</strong></td><td>\${data.ethHuman}</td>\`;
+    tbody.appendChild(ethRow);
+
+    // Add token rows
+    (data.tokens || []).forEach(token => {
+      const row = document.createElement("tr");
+      row.innerHTML = \`<td><strong>\${token.symbol}</strong></td><td>\${token.human}</td>\`;
+      tbody.appendChild(row);
+    });
+
+    showMessage("treasuryMsg", \`Updated at \${new Date(data.ts).toLocaleTimeString()}\`, false);
+  } catch (error) {
+    showMessage("treasuryMsg", "Failed to load treasury", true);
+  }
+}
+
+$("reloadTreasury").onclick = () => loadTreasury(true);
+
+// Fee Analytics
+async function loadFees() {
+  const since = $("feesSince").value;
+  const until = $("feesUntil").value;
+  const guildId = $("feesGuild").value.trim();
+  
+  setLoading("loadFees", true);
+  
+  try {
+    const params = new URLSearchParams();
+    if (since) params.set("since", since);
+    if (until) params.set("until", until);
+    if (guildId) params.set("guildId", guildId);
+
+    const response = await API(\`/admin/fees/by-server?\${params.toString()}\`);
+    const data = await response.json();
+
+    if (!data.ok) {
+      showMessage("feesMsg", "Failed to load fees", true);
+      return;
+    }
+
+    const tbody = $("feesTbl").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    let totalTipFees = 0;
+    let totalMatchRake = 0;
+
+    data.rows.forEach(row => {
+      const tipFees = parseFloat(row.tipFees);
+      const matchRake = parseFloat(row.matchRake);
+      const total = tipFees + matchRake;
+      
+      totalTipFees += tipFees;
+      totalMatchRake += matchRake;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = \`
+        <td>\${row.guildId || "Unknown"}</td>
+        <td><strong>\${row.token}</strong></td>
+        <td>\${formatNumber(tipFees)}</td>
+        <td>\${formatNumber(matchRake)}</td>
+        <td><strong>\${formatNumber(total)}</strong></td>
+      \`;
+      tbody.appendChild(tr);
+    });
+
+    // Add totals row
+    if (data.rows.length > 1) {
+      const totalRow = document.createElement("tr");
+      totalRow.style.borderTop = "2px solid #444";
+      totalRow.style.fontWeight = "bold";
+      totalRow.innerHTML = \`
+        <td colspan="2"><strong>TOTAL</strong></td>
+        <td><strong>\${formatNumber(totalTipFees)}</strong></td>
+        <td><strong>\${formatNumber(totalMatchRake)}</strong></td>
+        <td><strong>\${formatNumber(totalTipFees + totalMatchRake)}</strong></td>
+      \`;
+      tbody.appendChild(totalRow);
+    }
+
+    showMessage("feesMsg", \`Loaded \${data.rows.length} entries\`, false);
+  } catch (error) {
+    showMessage("feesMsg", "Failed to load fees", true);
+  } finally {
+    setLoading("loadFees", false);
+  }
+}
+
+$("loadFees").onclick = loadFees;
+
+$("csvFees").onclick = async () => {
+  try {
+    const params = new URLSearchParams();
+    const since = $("feesSince").value;
+    const until = $("feesUntil").value;
+    const guildId = $("feesGuild").value.trim();
+    
+    if (since) params.set("since", since);
+    if (until) params.set("until", until);
+    if (guildId) params.set("guildId", guildId);
+
+    const response = await API(\`/admin/fees/export.csv?\${params.toString()}\`);
+    const blob = await response.blob();
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = \`house_fees_\${since || 'all'}_to_\${until || 'now'}.csv\`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    showMessage("feesMsg", "Export failed", true);
+  }
+};
+
+// Main initialization
+async function loadAllData() {
+  try {
+    await Promise.all([
+      loadConfig(),
+      loadTokens(),
+      loadServers(),
+      loadTreasury()
+    ]);
+  } catch (error) {
+    console.error("Failed to load data:", error);
+  }
+}
+
+// Initialize app
+(() => {
+  // Restore saved secret
+  const savedSecret = localStorage.getItem("pip_admin_secret");
+  if (savedSecret) {
+    $("secret").value = savedSecret;
+  }
+  
+  // Set default date range
+  setDefaultDates();
+  
+  // Check auth and load data
+  checkAuthAndLoad();
 })();
-
 
 </script>
 </body>
@@ -360,90 +763,164 @@ async function loadAll(){
   `);
 });
 
-// ---------- All routes below require ADMIN secret ----------
+// ---------- Authentication Middleware ----------
 adminRouter.use((req, res, next) => {
-  const got = (req.headers.authorization ?? "").trim();
-  const expected = `Bearer ${getAdminSecret()}`;
-  if (!getAdminSecret() || got !== expected) {
-    return res.status(401).json({ ok: false, error: "unauthorized" });
+  const authHeader = req.headers.authorization?.trim();
+  const expectedAuth = `Bearer ${getAdminSecret()}`;
+  
+  if (!getAdminSecret() || authHeader !== expectedAuth) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
+  
   next();
 });
 
+// ---------- Health Check ----------
+adminRouter.get("/ping", (_req, res) => {
+  res.json({ ok: true, timestamp: new Date().toISOString() });
+});
 
-// health
-adminRouter.get("/ping", (_req, res) => res.json({ ok: true }));
-
-// reload AppConfig cache
+// ---------- Cache Management ----------
 adminRouter.post("/reload-config", async (_req, res) => {
   try {
     await getConfig(true);
-    res.json({ ok: true, reloaded: "config" });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "reload-config failed" });
+    res.json({ ok: true, message: "Configuration cache reloaded" });
+  } catch (error: any) {
+    res.status(500).json({ 
+      ok: false, 
+      error: error?.message || "Failed to reload configuration" 
+    });
   }
 });
 
-// re-register slash commands
 adminRouter.post("/reload-commands", async (_req, res) => {
   try {
     const commands = getCommandsJson();
     await registerCommandsForApprovedGuilds(commands);
-    res.json({ ok: true, reloaded: "commands" });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "reload-commands failed" });
+    res.json({ ok: true, message: "Commands reloaded and registered" });
+  } catch (error: any) {
+    res.status(500).json({ 
+      ok: false, 
+      error: error?.message || "Failed to reload commands" 
+    });
   }
 });
 
 adminRouter.post("/reload-all", async (_req, res) => {
   try {
-    await (await import("../config.js")).getConfig(true);
+    await getConfig(true);
     const commands = getCommandsJson();
     await registerCommandsForApprovedGuilds(commands);
-    res.json({ ok: true, reloaded: ["config", "commands"] });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "reload-all failed" });
+    res.json({ 
+      ok: true, 
+      message: "All caches reloaded",
+      reloaded: ["config", "commands"] 
+    });
+  } catch (error: any) {
+    res.status(500).json({ 
+      ok: false, 
+      error: error?.message || "Failed to reload all caches" 
+    });
   }
 });
 
-// ============= TOKEN MANAGEMENT =============
+// ---------- Token Management ----------
 adminRouter.get("/tokens", async (_req, res) => {
   try {
-    const tokens = await prisma.token.findMany({ orderBy: { createdAt: "desc" } });
+    const tokens = await prisma.token.findMany({ 
+      orderBy: { createdAt: "desc" } 
+    });
     res.json({ ok: true, tokens });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to fetch tokens" });
+  } catch (error: any) {
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to fetch tokens" 
+    });
   }
 });
 
 adminRouter.post("/tokens", async (req, res) => {
   try {
     const { address, minDeposit = 1, minWithdraw = 1 } = req.body;
+    
+    // Validate address format
     if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
-      return res.status(400).json({ ok: false, error: "Invalid contract address" });
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Invalid contract address format" 
+      });
     }
+    
     const normalizedAddress = address.toLowerCase();
-    const existing = await prisma.token.findUnique({ where: { address: normalizedAddress } });
-    if (existing) return res.status(400).json({ ok: false, error: "Token already exists" });
+    
+    // Check if token already exists
+    const existingToken = await prisma.token.findUnique({ 
+      where: { address: normalizedAddress } 
+    });
+    
+    if (existingToken) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Token already exists in system" 
+      });
+    }
 
+    // Fetch token metadata from blockchain
     const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
     const contract = new Contract(normalizedAddress, ERC20_ABI, provider);
-    const [_name, symbol, decimals] = await Promise.all([contract.name(), contract.symbol(), contract.decimals()]);
+    
+    const [name, symbol, decimals] = await Promise.all([
+      contract.name(),
+      contract.symbol(),
+      contract.decimals()
+    ]);
+
+    // Create token in database
     const token = await prisma.token.create({
-      data: { address: normalizedAddress, symbol, decimals: Number(decimals), minDeposit: String(minDeposit), minWithdraw: String(minWithdraw), active: true }
+      data: {
+        address: normalizedAddress,
+        symbol: symbol.toString(),
+        decimals: Number(decimals),
+        minDeposit: String(minDeposit),
+        minWithdraw: String(minWithdraw),
+        active: true
+      }
     });
-res.json({ ok: true, token, message: `Added ${symbol} token` });
+
+    res.json({ 
+      ok: true, 
+      token, 
+      message: `Successfully added ${symbol} token` 
+    });
+    
   } catch (error: any) {
+    console.error("Token creation error:", error);
+    
+    if (error.message?.includes("call revert") || error.message?.includes("execution reverted")) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid token contract or not deployed on Abstract network"
+      });
+    }
+    
     res.status(500).json({
       ok: false,
-      error: error.message?.includes("call revert") ? "Invalid token contract or not deployed on Abstract" : "Failed to add token"
+      error: "Failed to add token - please check contract address"
     });
   }
 });
 
 adminRouter.put("/tokens/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const tokenId = parseInt(req.params.id);
+    
+    if (isNaN(tokenId)) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Invalid token ID" 
+      });
+    }
+
     const {
       active,
       minDeposit,
@@ -454,311 +931,568 @@ adminRouter.put("/tokens/:id", async (req, res) => {
       houseFeeBps,
     } = req.body;
 
-    const token = await prisma.token.update({
-      where: { id },
-      data: {
-        ...(typeof active === "boolean" && { active }),
+    // Build update data object
+    const updateData: any = {};
+    
+    if (typeof active === "boolean") {
+      updateData.active = active;
+    }
+    
+    if (minDeposit !== undefined) {
+      updateData.minDeposit = String(minDeposit);
+    }
+    
+    if (minWithdraw !== undefined) {
+      updateData.minWithdraw = String(minWithdraw);
+    }
+    
+    if (withdrawMaxPerTx !== undefined) {
+      updateData.withdrawMaxPerTx = withdrawMaxPerTx === null || withdrawMaxPerTx === "" 
+        ? null 
+        : String(withdrawMaxPerTx);
+    }
+    
+    if (withdrawDailyCap !== undefined) {
+      updateData.withdrawDailyCap = withdrawDailyCap === null || withdrawDailyCap === "" 
+        ? null 
+        : String(withdrawDailyCap);
+    }
+    
+    if (tipFeeBps !== undefined) {
+      updateData.tipFeeBps = tipFeeBps === null || tipFeeBps === "" 
+        ? null 
+        : Number(tipFeeBps);
+    }
+    
+    if (houseFeeBps !== undefined) {
+      updateData.houseFeeBps = houseFeeBps === null || houseFeeBps === "" 
+        ? null 
+        : Number(houseFeeBps);
+    }
 
-        ...(minDeposit !== undefined && { minDeposit: String(minDeposit) }),
-        ...(minWithdraw !== undefined && { minWithdraw: String(minWithdraw) }),
-
-        ...(withdrawMaxPerTx !== undefined && {
-          withdrawMaxPerTx:
-            withdrawMaxPerTx === null || withdrawMaxPerTx === ""
-              ? null
-              : String(withdrawMaxPerTx),
-        }),
-        ...(withdrawDailyCap !== undefined && {
-          withdrawDailyCap:
-            withdrawDailyCap === null || withdrawDailyCap === ""
-              ? null
-              : String(withdrawDailyCap),
-        }),
-
-        // NEW: fee overrides (Int? in Prisma)
-        ...(tipFeeBps !== undefined && {
-          tipFeeBps:
-            tipFeeBps === null || tipFeeBps === "" ? null : Number(tipFeeBps),
-        }),
-        ...(houseFeeBps !== undefined && {
-          houseFeeBps:
-            houseFeeBps === null || houseFeeBps === ""
-              ? null
-              : Number(houseFeeBps),
-        }),
-      },
+    const updatedToken = await prisma.token.update({
+      where: { id: tokenId },
+      data: updateData
     });
 
-    res.json({ ok: true, token });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to update token" });
+    res.json({ ok: true, token: updatedToken });
+    
+  } catch (error: any) {
+    console.error("Token update error:", error);
+    
+    if (error.code === 'P2025') {
+      return res.status(404).json({ 
+        ok: false, 
+        error: "Token not found" 
+      });
+    }
+    
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to update token" 
+    });
   }
 });
-
-
 
 adminRouter.post("/tokens/refresh", async (_req, res) => {
   try {
     await getActiveTokens(true);
-    res.json({ ok: true, message: "Token cache refreshed" });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to refresh cache" });
+    invalidateTreasuryCache(); // Also refresh treasury since tokens changed
+    res.json({ ok: true, message: "Token cache refreshed successfully" });
+  } catch (error: any) {
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to refresh token cache" 
+    });
   }
 });
 
-// ============= SERVER MANAGEMENT =============
+// ---------- Server Management ----------
 adminRouter.get("/servers", async (_req, res) => {
   try {
-    const servers = await prisma.approvedServer.findMany({ orderBy: { createdAt: "desc" } });
+    const servers = await prisma.approvedServer.findMany({ 
+      orderBy: { createdAt: "desc" } 
+    });
     res.json({ ok: true, servers });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to fetch servers" });
+  } catch (error: any) {
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to fetch servers" 
+    });
   }
 });
 
 adminRouter.post("/servers", async (req, res) => {
   try {
     const { guildId, note = "" } = req.body;
-    if (!guildId) return res.status(400).json({ ok: false, error: "Guild ID required" });
+    
+    if (!guildId || !/^[0-9]+$/.test(guildId)) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Valid Guild ID is required" 
+      });
+    }
+
     const server = await prisma.approvedServer.upsert({
       where: { guildId },
-      update: { enabled: true, note },
-      create: { guildId, note, enabled: true }
+      update: { 
+        enabled: true, 
+        note: note.trim() 
+      },
+      create: { 
+        guildId, 
+        note: note.trim(), 
+        enabled: true 
+      }
     });
-    res.json({ ok: true, server });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to add server" });
+
+    res.json({ 
+      ok: true, 
+      server, 
+      message: server ? "Server added successfully" : "Server updated" 
+    });
+    
+  } catch (error: any) {
+    console.error("Server creation error:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to add server" 
+    });
   }
 });
 
 adminRouter.put("/servers/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const serverId = parseInt(req.params.id);
+    
+    if (isNaN(serverId)) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Invalid server ID" 
+      });
+    }
+
     const { enabled, note } = req.body;
+    
+    const updateData: any = {};
+    if (typeof enabled === "boolean") {
+      updateData.enabled = enabled;
+    }
+    if (note !== undefined) {
+      updateData.note = note.trim();
+    }
+
     const server = await prisma.approvedServer.update({
-      where: { id },
-      data: {
-        ...(typeof enabled === "boolean" && { enabled }),
-        ...(note !== undefined && { note })
-      }
+      where: { id: serverId },
+      data: updateData
     });
+
     res.json({ ok: true, server });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to update server" });
+    
+  } catch (error: any) {
+    console.error("Server update error:", error);
+    
+    if (error.code === 'P2025') {
+      return res.status(404).json({ 
+        ok: false, 
+        error: "Server not found" 
+      });
+    }
+    
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to update server" 
+    });
   }
 });
 
-// ============= CONFIG =============
+// ---------- Configuration Management ----------
 adminRouter.get("/config", async (_req, res) => {
   try {
-    const config = await prisma.appConfig.findFirst({ orderBy: { id: "desc" } });
+    const config = await prisma.appConfig.findFirst({ 
+      orderBy: { id: "desc" } 
+    });
     res.json({ ok: true, config });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to fetch config" });
+  } catch (error: any) {
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to fetch configuration" 
+    });
   }
 });
 
 adminRouter.put("/config", async (req, res) => {
   try {
-    const { tipFeeBps, houseFeeBps, minDeposit, minWithdraw, withdrawMaxPerTx, withdrawDailyCap } = req.body;
+    const { 
+      tipFeeBps, 
+      houseFeeBps, 
+      minDeposit, 
+      minWithdraw, 
+      withdrawMaxPerTx, 
+      withdrawDailyCap 
+    } = req.body;
+
+    // Get current config ID or use default
     let configId = 1;
-    const existing = await prisma.appConfig.findFirst({ orderBy: { id: "desc" } });
-    if (existing) configId = existing.id;
+    const existingConfig = await prisma.appConfig.findFirst({ 
+      orderBy: { id: "desc" } 
+    });
+    
+    if (existingConfig) {
+      configId = existingConfig.id;
+    }
+
+    // Build update data
+    const updateData: any = {};
+    const createData = {
+      tipFeeBps: 100,
+      houseFeeBps: 200,
+      minDeposit: "50",
+      minWithdraw: "50",
+      withdrawMaxPerTx: "50",
+      withdrawDailyCap: "500"
+    };
+
+    if (tipFeeBps !== undefined) {
+      updateData.tipFeeBps = Number(tipFeeBps);
+      createData.tipFeeBps = Number(tipFeeBps);
+    }
+    
+    if (houseFeeBps !== undefined) {
+      updateData.houseFeeBps = Number(houseFeeBps);
+      createData.houseFeeBps = Number(houseFeeBps);
+    }
+    
+    if (minDeposit !== undefined) {
+      updateData.minDeposit = String(minDeposit);
+      createData.minDeposit = String(minDeposit);
+    }
+    
+    if (minWithdraw !== undefined) {
+      updateData.minWithdraw = String(minWithdraw);
+      createData.minWithdraw = String(minWithdraw);
+    }
+    
+    if (withdrawMaxPerTx !== undefined) {
+      updateData.withdrawMaxPerTx = String(withdrawMaxPerTx);
+      createData.withdrawMaxPerTx = String(withdrawMaxPerTx);
+    }
+    
+    if (withdrawDailyCap !== undefined) {
+      updateData.withdrawDailyCap = String(withdrawDailyCap);
+      createData.withdrawDailyCap = String(withdrawDailyCap);
+    }
 
     const config = await prisma.appConfig.upsert({
       where: { id: configId },
-      update: {
-        ...(tipFeeBps !== undefined && { tipFeeBps: Number(tipFeeBps) }),
-        ...(houseFeeBps !== undefined && { houseFeeBps: Number(houseFeeBps) }),
-        ...(minDeposit !== undefined && { minDeposit: String(minDeposit) }),
-        ...(minWithdraw !== undefined && { minWithdraw: String(minWithdraw) }),
-        ...(withdrawMaxPerTx !== undefined && { withdrawMaxPerTx: String(withdrawMaxPerTx) }),
-        ...(withdrawDailyCap !== undefined && { withdrawDailyCap: String(withdrawDailyCap) })
-      },
-      create: {
-        tipFeeBps: Number(tipFeeBps || 100),
-        houseFeeBps: Number(houseFeeBps || 200),
-        minDeposit: String(minDeposit || 50),
-        minWithdraw: String(minWithdraw || 50),
-        withdrawMaxPerTx: String(withdrawMaxPerTx || 50),
-        withdrawDailyCap: String(withdrawDailyCap || 500)
-      }
+      update: updateData,
+      create: createData
     });
 
-    res.json({ ok: true, config, message: "Configuration updated" });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to update config" });
+    res.json({ 
+      ok: true, 
+      config, 
+      message: "Configuration updated successfully" 
+    });
+    
+  } catch (error: any) {
+    console.error("Config update error:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to update configuration" 
+    });
   }
 });
 
-// ============= HOUSE EARNINGS (fees & rake) =============
-function parseRange(q: any) {
-  const since = q.since ? new Date(q.since) : new Date(Date.now() - 7 * 864e5);
-  const until = q.until ? new Date(q.until) : new Date();
+// ---------- Fee Analytics ----------
+interface DateRange {
+  since: Date;
+  until: Date;
+}
+
+function parseDateRange(query: any): DateRange {
+  const since = query.since 
+    ? new Date(query.since) 
+    : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+    
+  const until = query.until 
+    ? new Date(query.until) 
+    : new Date(); // now
+
   return { since, until };
 }
 
 adminRouter.get("/fees/by-server", async (req, res) => {
   try {
-    const { since, until } = parseRange(req.query);
+    const { since, until } = parseDateRange(req.query);
     const guildId = req.query.guildId ? String(req.query.guildId) : undefined;
 
-    const tipFees = await prisma.transaction.groupBy({
+    // Get tip fees
+    const tipFeesQuery = await prisma.transaction.groupBy({
       by: ["guildId", "tokenId"],
       where: {
         type: "TIP",
-        ...(guildId ? { guildId } : {}),
+        ...(guildId && { guildId }),
         createdAt: { gte: since, lte: until }
       },
       _sum: { fee: true }
     });
 
-    const rake = await prisma.transaction.groupBy({
+    // Get match rake
+    const matchRakeQuery = await prisma.transaction.groupBy({
       by: ["guildId", "tokenId"],
       where: {
         type: "MATCH_RAKE",
-        ...(guildId ? { guildId } : {}),
+        ...(guildId && { guildId }),
         createdAt: { gte: since, lte: until }
       },
       _sum: { amount: true }
     });
 
-const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
-const tokMap = new Map<number, string>(tokens.map(t => [t.id, t.symbol]));
+    // Get token symbols
+    const tokens = await prisma.token.findMany({ 
+      select: { id: true, symbol: true } 
+    });
+    const tokenMap = new Map<number, string>(
+      tokens.map(t => [t.id, t.symbol])
+    );
 
-// use a normalized key that tolerates null tokenId
-const key = (g: string | null | undefined, t: number | null) => `${g || ""}:${t ?? "null"}`;
+    // Create lookup map for match rake
+    const createKey = (guildId: string | null, tokenId: number | null) => 
+      `${guildId || "null"}:${tokenId || "null"}`;
+      
+    const rakeMap = new Map<string, string>();
+    matchRakeQuery.forEach(rake => {
+      const key = createKey(rake.guildId, rake.tokenId);
+      rakeMap.set(key, String(rake._sum.amount || 0));
+    });
 
-const rakeMap = new Map<string, string>();
-rake.forEach(r => rakeMap.set(key(r.guildId, r.tokenId), String(r._sum.amount || 0)));
+    // Combine data
+    const rows = tipFeesQuery.map(tipFee => {
+      const key = createKey(tipFee.guildId, tipFee.tokenId);
+      const tokenLabel = tipFee.tokenId 
+        ? (tokenMap.get(tipFee.tokenId) ?? `Token#${tipFee.tokenId}`)
+        : "Unknown Token";
 
-const rows = tipFees.map(f => ({
-  guildId: f.guildId,
-  token: f.tokenId != null ? (tokMap.get(f.tokenId) ?? `#${f.tokenId}`) : "#no-token",
-  tipFees: String(f._sum.fee || 0),
-  matchRake: rakeMap.get(key(f.guildId, f.tokenId)) || "0"
-}));
+      return {
+        guildId: tipFee.guildId,
+        token: tokenLabel,
+        tipFees: String(tipFee._sum.fee || 0),
+        matchRake: rakeMap.get(key) || "0"
+      };
+    });
 
-
-    res.json({ ok: true, rows, since, until });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "fees/by-server failed" });
+    res.json({ 
+      ok: true, 
+      rows, 
+      since: since.toISOString(), 
+      until: until.toISOString(),
+      summary: {
+        totalEntries: rows.length,
+        dateRange: `${since.toDateString()} to ${until.toDateString()}`
+      }
+    });
+    
+  } catch (error: any) {
+    console.error("Fees by server error:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to fetch fee data by server" 
+    });
   }
 });
 
 adminRouter.get("/fees/summary", async (req, res) => {
   try {
-    const { since, until } = parseRange(req.query);
+    const { since, until } = parseDateRange(req.query);
 
+    // Get aggregated tip fees by token
     const tipFees = await prisma.transaction.groupBy({
       by: ["tokenId"],
-      where: { type: "TIP", createdAt: { gte: since, lte: until } },
+      where: { 
+        type: "TIP", 
+        createdAt: { gte: since, lte: until } 
+      },
       _sum: { fee: true }
     });
 
-    const rake = await prisma.transaction.groupBy({
+    // Get aggregated match rake by token
+    const matchRake = await prisma.transaction.groupBy({
       by: ["tokenId"],
-      where: { type: "MATCH_RAKE", createdAt: { gte: since, lte: until } },
+      where: { 
+        type: "MATCH_RAKE", 
+        createdAt: { gte: since, lte: until } 
+      },
       _sum: { amount: true }
     });
 
-const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
-const tokMap = new Map<number, string>(tokens.map(t => [t.id, t.symbol]));
-const rakeMap = new Map<number | null, string>(
-  rake.map(r => [r.tokenId, String(r._sum.amount || 0)])
-);
+    // Get token symbols
+    const tokens = await prisma.token.findMany({ 
+      select: { id: true, symbol: true } 
+    });
+    const tokenMap = new Map<number, string>(
+      tokens.map(t => [t.id, t.symbol])
+    );
 
-const rows = tipFees.map(f => ({
-  token: f.tokenId != null ? (tokMap.get(f.tokenId) ?? `#${f.tokenId}`) : "#no-token",
-  tipFees: String(f._sum.fee || 0),
-  matchRake: rakeMap.get(f.tokenId ?? null) || "0"
-}));
+    // Create rake lookup
+    const rakeMap = new Map<number | null, string>(
+      matchRake.map(r => [r.tokenId, String(r._sum.amount || 0)])
+    );
 
+    // Combine data
+    const rows = tipFees.map(fee => {
+      const tokenLabel = fee.tokenId 
+        ? (tokenMap.get(fee.tokenId) ?? `Token#${fee.tokenId}`)
+        : "Unknown Token";
 
-    res.json({ ok: true, rows, since, until });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "fees/summary failed" });
+      return {
+        token: tokenLabel,
+        tipFees: String(fee._sum.fee || 0),
+        matchRake: rakeMap.get(fee.tokenId) || "0"
+      };
+    });
+
+    res.json({ 
+      ok: true, 
+      rows, 
+      since: since.toISOString(), 
+      until: until.toISOString() 
+    });
+    
+  } catch (error: any) {
+    console.error("Fees summary error:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to fetch fee summary" 
+    });
   }
 });
 
 adminRouter.get("/fees/export.csv", async (req, res) => {
   try {
-    const { since, until } = parseRange(req.query);
+    const { since, until } = parseDateRange(req.query);
     const guildId = req.query.guildId ? String(req.query.guildId) : undefined;
 
-    const byServer = await prisma.transaction.groupBy({
+    // Get combined transaction data
+    const transactions = await prisma.transaction.groupBy({
       by: ["guildId", "tokenId"],
       where: {
         OR: [{ type: "TIP" }, { type: "MATCH_RAKE" }],
-        ...(guildId ? { guildId } : {}),
+        ...(guildId && { guildId }),
         createdAt: { gte: since, lte: until }
       },
       _sum: { fee: true, amount: true }
     });
 
-const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
-const tokMap = new Map<number, string>(tokens.map(t => [t.id, t.symbol]));
+    // Get token symbols
+    const tokens = await prisma.token.findMany({ 
+      select: { id: true, symbol: true } 
+    });
+    const tokenMap = new Map<number, string>(
+      tokens.map(t => [t.id, t.symbol])
+    );
 
-let csv = "guildId,token,tipFees,matchRake,total\n";
-byServer.forEach((r) => {
-  const tip = String(r._sum.fee || 0);
-  const rake = String(r._sum.amount || 0);
-  const total = (parseFloat(tip) + parseFloat(rake)).toString();
-
-  // tokenId can be null in groupBy; make a safe label
-  const tokenLabel =
-    r.tokenId != null ? (tokMap.get(r.tokenId) ?? `#${r.tokenId}`) : "#no-token";
-
-  csv += `${r.guildId ?? ""},${tokenLabel},${tip},${rake},${total}\n`;
-});
-
+    // Build CSV
+    let csv = "guildId,token,tipFees,matchRake,total,dateRange\n";
+    
+    transactions.forEach(transaction => {
+      const tipFees = String(transaction._sum.fee || 0);
+      const matchRake = String(transaction._sum.amount || 0);
+      const total = (parseFloat(tipFees) + parseFloat(matchRake)).toString();
+      
+      const tokenLabel = transaction.tokenId 
+        ? (tokenMap.get(transaction.tokenId) ?? `Token#${transaction.tokenId}`)
+        : "Unknown";
+      
+      const dateRange = `${since.toDateString()} to ${until.toDateString()}`;
+      
+      csv += `"${transaction.guildId || ""}","${tokenLabel}","${tipFees}","${matchRake}","${total}","${dateRange}"\n`;
+    });
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", "attachment; filename=house_fees.csv");
+    res.setHeader("Content-Disposition", 'attachment; filename="house_fees_export.csv"');
     res.send(csv);
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "fees/export.csv failed" });
+    
+  } catch (error: any) {
+    console.error("CSV export error:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to export CSV" 
+    });
   }
 });
 
-// ============= BASIC ANALYTICS =============
-adminRouter.get("/stats", async (_req, res) => {
-  try {
-    const [totalUsers, totalMatches, totalTips, activeTokens, recentMatches, topTippers] =
-      await Promise.all([
-        prisma.user.count(),
-        prisma.match.count(),
-        prisma.tip.count(),
-        prisma.token.count({ where: { active: true } }),
-        prisma.match.count({ where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } }),
-        prisma.user.findMany({ orderBy: { wins: "desc" }, take: 5, select: { discordId: true, wins: true, losses: true } })
-      ]);
-
-    res.json({ ok: true, stats: { totalUsers, totalMatches, totalTips, activeTokens, recentMatches, topTippers } });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to fetch stats" });
-  }
-});
-
-import { getTreasurySnapshot, invalidateTreasuryCache } from "../services/treasury.js";
-
+// ---------- Treasury Management ----------
 adminRouter.get("/treasury", async (req, res) => {
   try {
-    const force = String(req.query.force || "") === "1";
-    const snap = await getTreasurySnapshot(force);
-    res.json({ ok: true, ...snap });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "treasury failed" });
+    const forceRefresh = String(req.query.force || "") === "1";
+    const treasuryData = await getTreasurySnapshot(forceRefresh);
+    
+    res.json({ 
+      ok: true, 
+      ...treasuryData,
+      lastUpdated: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    console.error("Treasury fetch error:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to fetch treasury data" 
+    });
   }
 });
 
-// If you refresh tokens, also invalidate the treasury cache (optional)
-adminRouter.post("/tokens/refresh", async (_req, res) => {
+// ---------- System Analytics ----------
+adminRouter.get("/stats", async (_req, res) => {
   try {
-    await getActiveTokens(true);
-    invalidateTreasuryCache();
-    res.json({ ok: true, message: "Token cache refreshed" });
-  } catch {
-    res.status(500).json({ ok: false, error: "Failed to refresh cache" });
+    const [
+      totalUsers,
+      totalMatches,
+      totalTips,
+      activeTokens,
+      recentMatches,
+      topUsers
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.match.count(),
+      prisma.tip.count(),
+      prisma.token.count({ where: { active: true } }),
+      prisma.match.count({ 
+        where: { 
+          createdAt: { 
+            gte: new Date(Date.now() - 24 * 60 * 60 * 1000) 
+          } 
+        } 
+      }),
+      prisma.user.findMany({ 
+        orderBy: { wins: "desc" }, 
+        take: 5, 
+        select: { 
+          discordId: true, 
+          wins: true, 
+          losses: true 
+        } 
+      })
+    ]);
+
+    const stats = {
+      totalUsers,
+      totalMatches,
+      totalTips,
+      activeTokens,
+      recentMatches,
+      topUsers,
+      generatedAt: new Date().toISOString()
+    };
+
+    res.json({ ok: true, stats });
+    
+  } catch (error: any) {
+    console.error("Stats fetch error:", error);
+    res.status(500).json({ 
+      ok: false, 
+      error: "Failed to fetch system statistics" 
+    });
   }
 });

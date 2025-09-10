@@ -1,4 +1,5 @@
 // src/commands/pip_tip.ts
+import { getActiveAd } from "../services/ads.js";
 import { MessageFlags, type ChatInputCommandInteraction, type User } from "discord.js";
 import { prisma } from "../services/db.js";
 import { getTokenByAddress, toAtomicDirect, formatAmount, bigToDecDirect } from "../services/token.js";
@@ -58,6 +59,8 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
       });
 
       const expiresAt = new Date(Date.now() + durationMin * 60 * 1000);
+      
+      // Create the group tip
       const groupTip = await prisma.groupTip.create({
         data: {
           creatorId: creator.id,
@@ -84,6 +87,8 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
         });
       }
 
+      // Create embed with ads
+      const ad = await getActiveAd();
       const embed = groupTipEmbed({
         creator: `<@${i.user.id}>`,
         amount: formatAmount(atomic, token),
@@ -91,6 +96,7 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
         claimCount: 0,
         claimedBy: [],
         note,
+        ad: ad ?? undefined,
       });
 
       if (i.channel && i.channel.isTextBased() && "send" in i.channel) {
@@ -104,7 +110,9 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
           data: { messageId: msg.id, channelId: msg.channelId },
         });
         await scheduleGroupTipExpiry(i.client, groupTip.id);
+       console.log("Expiry scheduled, message should still have button");
 
+       
         await i.editReply({ content: "✅ Group tip created!" });
 
         const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
