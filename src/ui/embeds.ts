@@ -89,6 +89,7 @@ export function groupTipEmbed(data: {
   claimedBy: string[];
   note?: string;
   isExpired?: boolean;
+  ad?: { text: string; url?: string }; // ADD THIS LINE
 }) {
   let description = `${data.creator} is sharing ${data.amount}!`;
   if (data.note) description += `\n📝 ${data.note}`;
@@ -115,6 +116,15 @@ export function groupTipEmbed(data: {
     )
     .setTimestamp(data.expiresAt);
 
-  if (data.isExpired) e.setColor(0x999999);  // 👈 only set when expired
+  // ADD THIS SECTION:
+  if (data.ad) {
+    e.addFields({
+      name: "Sponsored",
+      value: data.ad.url ? `[${data.ad.text}](${data.ad.url})` : data.ad.text,
+      inline: false,
+    });
+  }
+
+  if (data.isExpired) e.setColor(0x999999);
   return e;
 }
