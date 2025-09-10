@@ -4,7 +4,12 @@ import { prisma } from "../services/db.js";
 const isAddress = (s: string) => /^0x[a-fA-F0-9]{40}$/.test(s);
 
 export default async function pipLink(i: ChatInputCommandInteraction) {
-  const addr = i.options.getString("address", true).toLowerCase();
+  const rawAddr = i.options.getString("address", true);
+  if (!rawAddr || typeof rawAddr !== "string") {
+    return i.reply({ content: "Invalid address format.", flags: 64 });
+  }
+  
+  const addr = rawAddr.trim().toLowerCase();
   if (!isAddress(addr)) return i.reply({ content: "Invalid address.", flags: 64 });
 
   // prevent sharing the same wallet

@@ -6,14 +6,25 @@ import { prisma } from "./db.js";
  * Works across all tokens.
  */
 export async function userHasActiveTaxFreeTier(userId: number, now = new Date()): Promise<boolean> {
-  const hit = await prisma.tierMembership.findFirst({
-    where: {
-      userId,
-      status: "ACTIVE",
-      expiresAt: { gt: now },
-      tier: { active: true, tipTaxFree: true },
-    },
-    select: { id: true },
-  });
-  return Boolean(hit);
+  try {
+    // Add timeout to prevent hanging queries
+    const hit = await Promise.race([
+      prisma.tierMembership.findFirst({
+        where: {
+          userId,
+          status: "ACTIVE",
+          expiresAt: { gt: now },
+          tier: { active: true, tipTaxFree: true },
+        },
+        select: { id: true },
+      }),
+      new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error("Tax-free tier check timeout")), 5000)
+      )
+    ]);
+    return Boolean(hit);
+  } catch (error) {
+    console.error(`Error checking tax-free tier for user ${userId}:`, error);
+    return false; // Default to taxed on error
+  }
 }

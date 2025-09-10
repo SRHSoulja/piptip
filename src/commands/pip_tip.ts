@@ -13,12 +13,17 @@ import { userHasActiveTaxFreeTier } from "../services/tiers.js";
 export default async function pipTip(i: ChatInputCommandInteraction) {
   try {
     const tipType = i.options.getString("type") || "direct";
-    const tokenAddress = (i.options.getString("token", true) || "").toLowerCase();
+    const rawTokenAddress = i.options.getString("token", true) || "";
+    if (!rawTokenAddress || typeof rawTokenAddress !== "string") {
+      return i.reply({ content: "Invalid token address.", flags: MessageFlags.Ephemeral });
+    }
+    const tokenAddress = rawTokenAddress.trim().toLowerCase();
     const amount = i.options.getNumber("amount", true);
-    const note = i.options.getString("note")?.slice(0, 200) || "";
+    const rawNote = i.options.getString("note") || "";
+    const note = rawNote.trim().slice(0, 200).replace(/[<>@&]/g, ""); // Remove potential Discord injection chars
 
-    if (!(amount > 0)) {
-      return i.reply({ content: "Amount must be greater than 0.", flags: MessageFlags.Ephemeral });
+    if (!amount || typeof amount !== "number" || !isFinite(amount) || amount <= 0 || amount > 1e15) {
+      return i.reply({ content: "Amount must be a valid positive number.", flags: MessageFlags.Ephemeral });
     }
 
     const token = await getTokenByAddress(tokenAddress);
@@ -36,8 +41,14 @@ const fromUser = await prisma.user.upsert({
   create: { discordId: i.user.id },
 });
 
-// tax-free?
-const taxFree = await userHasActiveTaxFreeTier(fromUser.id);
+// tax-free? Add error handling
+let taxFree = false;
+try {
+  taxFree = await userHasActiveTaxFreeTier(fromUser.id);
+} catch (error) {
+  console.error("Error checking tax-free status, defaulting to taxed:", error);
+  taxFree = false;
+}
 const feeBpsNum = taxFree ? 0 : (token.tipFeeBps ?? cfg?.tipFeeBps ?? 100);
 
 const feeBps = BigInt(feeBpsNum);
@@ -48,10 +59,11 @@ const feeAtomic = (atomic * feeBps) / 10000n;
 
     // ------------------------------- GROUP -------------------------------
     if (tipType === "group") {
-      const durationMin = i.options.getInteger("duration") ?? 5;
-      if (durationMin < 1 || durationMin > 60) {
+      const rawDuration = i.options.getInteger("duration") ?? 5;
+      if (!rawDuration || typeof rawDuration !== "number" || !isFinite(rawDuration) || rawDuration < 1 || rawDuration > 60) {
         return i.reply({ content: "Duration must be 1–60 minutes.", flags: MessageFlags.Ephemeral });
       }
+      const durationMin = Math.floor(rawDuration);
 
       // Defer FIRST, before any potentially failing operations
       await i.deferReply({ flags: MessageFlags.Ephemeral });
@@ -154,13 +166,17 @@ const toUser = await prisma.user.upsert({
 });
 
     // Try the transfer; return a descriptive line if insufficient
+    console.log(`[TIP] Attempting transfer: ${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} from ${i.user.id} to ${target.id}`);
+    
     try {
       await transferToken(i.user.id, target.id, token.id, atomic, "TIP", {
         guildId: i.guildId ?? undefined,
         feeAtomic,
         note,
       });
+      console.log(`[TIP] Transfer successful`);
     } catch (err: any) {
+      console.error("[TIP] Transfer failed:", err);
       const totalLine =
         `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
       const msg = /insufficient|fund/i.test(err?.message || "")

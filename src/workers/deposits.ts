@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { ethers, JsonRpcProvider } from "ethers";
 import { PrismaClient } from "@prisma/client";
-import { bigToDec } from "../services/token.js";
+import { bigToDecDirect } from "../services/token.js";
 
 const prisma = new PrismaClient();
 
@@ -21,17 +21,60 @@ const iface = new ethers.Interface([
 const transferTopic = iface.getEvent("Transfer")!.topicHash;
 
 async function credit(from: string, value: bigint, txHash: string) {
-  const user = await prisma.user.findFirst({ where: { agwAddress: from } });
+  // SECURITY FIX: Add duplicate transaction protection
+  const dedupeKey = `${txHash}:${from.toLowerCase()}:${value.toString()}`;
+  
+  try {
+    await prisma.processedDeposit.create({ data: { key: dedupeKey } });
+  } catch (e: any) {
+    if (e?.code === "P2002") {
+      console.log(`🔄 duplicate deposit ignored: ${txHash}`);
+      return;
+    }
+    throw e;
+  }
+
+  const user = await prisma.user.findFirst({ where: { agwAddress: from.toLowerCase() } });
   if (!user) {
     console.log(`🔎 deposit from unlinked wallet ${from} tx ${txHash}`);
     return;
   }
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { balanceAtomic: { increment: bigToDec(value) } }
+
+  // SECURITY FIX: Get token info and check minimum deposit
+  const token = await prisma.token.findUnique({ where: { address: TOKEN } });
+  if (!token) {
+    console.error(`❌ Token ${TOKEN} not found in database`);
+    return;
+  }
+
+  const minDepositAtomic = BigInt(token.minDeposit.toString()) * (10n ** BigInt(token.decimals));
+  if (value < minDepositAtomic) {
+    console.log(`🔎 deposit below minimum ignored: ${ethers.formatUnits(value, DECIMALS)} < ${token.minDeposit}`);
+    return;
+  }
+
+  // SECURITY FIX: Use new balance system instead of deprecated balanceAtomic
+  await prisma.userBalance.upsert({
+    where: { userId_tokenId: { userId: user.id, tokenId: token.id } },
+    update: { amount: { increment: bigToDecDirect(value, token.decimals) } },
+    create: { userId: user.id, tokenId: token.id, amount: bigToDecDirect(value, token.decimals) }
   });
+
+  // SECURITY: Log transaction for audit trail
+  await prisma.transaction.create({
+    data: {
+      type: "DEPOSIT",
+      userId: user.id,
+      tokenId: token.id,
+      amount: bigToDecDirect(value, token.decimals),
+      fee: "0",
+      txHash: txHash,
+      metadata: `deposit from ${from}`
+    }
+  });
+
   console.log(
-    `💰 credited ${ethers.formatUnits(value, DECIMALS)} PENGU to ${user.discordId} (from ${from}) tx ${txHash}`
+    `💰 credited ${ethers.formatUnits(value, DECIMALS)} ${token.symbol} to ${user.discordId} (from ${from}) tx ${txHash}`
   );
 }
 
