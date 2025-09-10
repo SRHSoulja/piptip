@@ -195,6 +195,36 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
+  <h2>🪧 Ads</h2>
+  <div class="row">
+    <input id="adText" placeholder="Ad text (max 500 chars)" style="width:420px" maxlength="500"/>
+    <input id="adUrl" placeholder="https://destination.example" style="width:320px"/>
+    <input id="adWeight" type="number" min="1" max="100" value="5" style="width:80px"/>
+    <label style="min-width:auto">
+      <input id="adActive" type="checkbox" checked/> Active
+    </label>
+    <button id="addAd">Add Ad</button>
+    <button id="reloadAds">Reload</button>
+    <button id="refreshAdsCache">Refresh Cache</button>
+    <span id="adsMsg"></span>
+  </div>
+
+  <table id="adsTbl">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Text</th>
+        <th>URL</th>
+        <th>Weight</th>
+        <th>Active</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+  <section>
     <h2>📊 House Earnings</h2>
     <p>Tip fees and match rake collected by the platform</p>
     <div class="row">
@@ -224,23 +254,174 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
 <script>
+// ---------- Ads Management ----------
+async function loadAds() {
+  try {
+    const r = await API("/admin/ads");
+    const j = await r.json();
+    if (!j.ok) { showMessage("adsMsg", "Failed to load ads", true); return; }
+
+    const tb = $("adsTbl").querySelector("tbody");
+    tb.innerHTML = "";
+
+    (j.ads || []).forEach(ad => {
+      const tr = document.createElement("tr");
+      tr.dataset.id = ad.id;
+
+      tr.innerHTML = \`
+        <td>\${ad.id}</td>
+        <td><input value="\${(ad.text || "").replace(/"/g, "&quot;")}" data-field="text" maxlength="500" style="width:420px"/></td>
+        <td><input value="\${ad.url || ""}" data-field="url" placeholder="https://..." style="width:320px"/></td>
+        <td><input value="\${ad.weight}" data-field="weight" type="number" min="1" max="100" style="width:80px"/></td>
+        <td style="white-space:nowrap">
+          <span class="status-indicator \${ad.active ? 'online' : 'offline'}"></span>
+          <input type="checkbox" \${ad.active ? "checked" : ""} data-field="active"/>
+        </td>
+        <td>
+          <button class="saveAd">Save</button>
+          <button class="deleteAd" style="background:#ef4444">Delete</button>
+        </td>
+      \`;
+      tb.appendChild(tr);
+    });
+
+    // Wire row buttons
+    tb.querySelectorAll(".saveAd").forEach(btn => {
+      btn.onclick = async (ev) => {
+        const row = ev.target.closest("tr");
+        const id = row.dataset.id;
+        await saveAd(id, row, btn);
+      };
+    });
+
+    tb.querySelectorAll(".deleteAd").forEach(btn => {
+      btn.onclick = async (ev) => {
+        const row = ev.target.closest("tr");
+        const id = row.dataset.id;
+        if (!confirm("Delete this ad?")) return;
+        setLoading(btn, true);
+        try {
+          const r = await API(\`/admin/ads/\${id}\`, { method: "DELETE" });
+          const j = await r.json();
+          if (!j.ok) throw new Error(j.error || "Delete failed");
+          row.remove();
+          showMessage("adsMsg", "Ad deleted", false);
+        } catch (e) {
+          showMessage("adsMsg", e.message || "Delete failed", true);
+        } finally {
+          setLoading(btn, false);
+        }
+      };
+    });
+
+    showMessage("adsMsg", \`Loaded \${j.ads.length} ads\`, false);
+  } catch {
+    showMessage("adsMsg", "Failed to load ads", true);
+  }
+}
+
+async function saveAd(id, row, buttonEl) {
+  const get = (name) => row.querySelector(\`[data-field="\${name}"]\`);
+
+  const text = get("text").value.trim();
+  const url = get("url").value.trim();
+  const weightStr = get("weight").value.trim();
+  const active = get("active").checked;
+
+  const body = { text, url, weight: Number(weightStr), active };
+
+  setLoading(buttonEl, true);
+  try {
+    const r = await API(\`/admin/ads/\${id}\`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "Save failed");
+
+    // Update status dot
+    const dot = row.querySelector(".status-indicator");
+    dot.className = \`status-indicator \${active ? 'online' : 'offline'}\`;
+
+    buttonEl.textContent = "✓ Saved";
+    setTimeout(() => { buttonEl.textContent = "Save"; }, 1500);
+    showMessage("adsMsg", "Ad saved", false);
+  } catch (e) {
+    showMessage("adsMsg", e.message || "Save failed", true);
+  } finally {
+    setLoading(buttonEl, false);
+  }
+}
+
+// Add new ad
+$("addAd").onclick = async () => {
+  const text = $("adText").value.trim();
+  const url = $("adUrl").value.trim();
+  const weight = Number($("adWeight").value || 5);
+  const active = $("adActive").checked;
+
+  if (!text) { showMessage("adsMsg", "Ad text is required", true); return; }
+  if (text.length > 500) { showMessage("adsMsg", "Ad text too long", true); return; }
+
+  setLoading("addAd", true);
+  try {
+    const r = await API("/admin/ads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, url, weight, active })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "Create failed");
+
+    $("adText").value = "";
+    $("adUrl").value = "";
+    $("adWeight").value = "5";
+    $("adActive").checked = true;
+
+    await loadAds();
+    showMessage("adsMsg", "Ad created", false);
+  } catch (e) {
+    showMessage("adsMsg", e.message || "Create failed", true);
+  } finally {
+    setLoading("addAd", false);
+  }
+};
+
+$("refreshAdsCache").onclick = async () => {
+  setLoading("refreshAdsCache", true);
+  try {
+    const r = await API("/admin/ads/refresh", { method: "POST" });
+    const j = await r.json();
+    showMessage("adsMsg", j.ok ? "Ad cache refreshed" : (j.error || "Refresh failed"), !j.ok);
+  } catch {
+    showMessage("adsMsg", "Refresh failed", true);
+  } finally {
+    setLoading("refreshAdsCache", false);
+  }
+};
+
+$("reloadAds").onclick = loadAds;
+
+// Utility functions
 // Utility functions
 const $ = (id) => document.getElementById(id);
+
 const API = async (path, opts = {}) => {
   const secret = localStorage.getItem("pip_admin_secret") || "";
-  const headers = { 
-    "Authorization": \`Bearer \${secret}\`,
-    ...opts.headers 
+  const headers = {
+    "Authorization": "Bearer " + secret,
+    ...(opts.headers || {})
   };
-  
   try {
     const response = await fetch(path, { ...opts, headers });
     return response;
   } catch (error) {
-    console.error('API request failed:', error);
+    console.error("API request failed:", error);
     throw error;
   }
 };
+
 
 const showMessage = (elementId, message, isError = false) => {
   const el = $(elementId);
@@ -294,11 +475,14 @@ async function checkAuthAndLoad() {
 }
 
 function clearAllTables() {
-  ["tokensTbl", "serversTbl", "feesTbl", "treasuryTbl"].forEach(tableId => {
+  ["tokensTbl", "serversTbl", "feesTbl", "treasuryTbl", "adsTbl"].forEach(tableId => {
     const tbody = document.querySelector(\`#\${tableId} tbody\`);
     if (tbody) tbody.innerHTML = "";
   });
 }
+
+
+
 
 $("saveSecret").onclick = () => {
   const secret = $("secret").value.trim();
@@ -735,12 +919,14 @@ async function loadAllData() {
       loadConfig(),
       loadTokens(),
       loadServers(),
-      loadTreasury()
+      loadTreasury(),
+      loadAds()          // <— add this
     ]);
   } catch (error) {
     console.error("Failed to load data:", error);
   }
 }
+
 
 // Initialize app
 (() => {
@@ -761,7 +947,6 @@ async function loadAllData() {
 </body>
 </html>
   `);
-});
 
 // ---------- Authentication Middleware ----------
 adminRouter.use((req, res, next) => {
@@ -1698,4 +1883,4 @@ adminRouter.get("/stats", async (_req, res) => {
       error: "Failed to fetch system statistics" 
     });
   }
-});
+});})

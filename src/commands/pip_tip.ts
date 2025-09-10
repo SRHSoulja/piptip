@@ -8,6 +8,7 @@ import { getConfig } from "../config.js";
 import { groupTipEmbed } from "../ui/embeds.js";
 import { groupTipClaimRow } from "../ui/components.js";
 import { scheduleGroupTipExpiry } from "../features/group_tip_expiry.js";
+import { userHasActiveTaxFreeTier } from "../services/tiers.js";
 
 export default async function pipTip(i: ChatInputCommandInteraction) {
   try {
@@ -25,10 +26,25 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
       return i.reply({ content: "Invalid or inactive token selected.", flags: MessageFlags.Ephemeral });
     }
 
-    const cfg = await getConfig();
-    const feeBps = BigInt(token.tipFeeBps ?? cfg?.tipFeeBps ?? 100);
-    const atomic = toAtomicDirect(amount, token.decimals);
-    const feeAtomic = (atomic * feeBps) / 10000n;
+// inside pipTip(), after you validate token and before fee math
+const cfg = await getConfig();
+
+// create/lookup sender ONCE, we'll reuse it
+const fromUser = await prisma.user.upsert({
+  where: { discordId: i.user.id },
+  update: {},
+  create: { discordId: i.user.id },
+});
+
+// tax-free?
+const taxFree = await userHasActiveTaxFreeTier(fromUser.id);
+const feeBpsNum = taxFree ? 0 : (token.tipFeeBps ?? cfg?.tipFeeBps ?? 100);
+
+const feeBps = BigInt(feeBpsNum);
+const atomic = toAtomicDirect(amount, token.decimals);
+const feeAtomic = (atomic * feeBps) / 10000n;
+
+
 
     // ------------------------------- GROUP -------------------------------
     if (tipType === "group") {
@@ -52,11 +68,8 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
         return i.editReply({ content: `❌ ${msg}` });
       }
 
-      const creator = await prisma.user.upsert({
-        where: { discordId: i.user.id },
-        update: {},
-        create: { discordId: i.user.id },
-      });
+      const creator = fromUser;
+
 
       const expiresAt = new Date(Date.now() + durationMin * 60 * 1000);
       
@@ -134,10 +147,11 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
 
     await i.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const [fromUser, toUser] = await Promise.all([
-      prisma.user.upsert({ where: { discordId: i.user.id }, update: {}, create: { discordId: i.user.id } }),
-      prisma.user.upsert({ where: { discordId: target.id }, update: {}, create: { discordId: target.id } }),
-    ]);
+const toUser = await prisma.user.upsert({
+  where: { discordId: target.id },
+  update: {},
+  create: { discordId: target.id },
+});
 
     // Try the transfer; return a descriptive line if insufficient
     try {

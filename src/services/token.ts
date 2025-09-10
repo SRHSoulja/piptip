@@ -2,6 +2,8 @@
 import "dotenv/config";
 import { formatUnits, parseUnits } from "ethers";
 import { prisma } from "./db.js";
+import { userHasActiveTaxFreeTier } from "./tiers.js";
+
 
 /** For legacy callers that still read a single TOKEN_ADDRESS */
 export const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS!;
@@ -154,4 +156,33 @@ export const fmtBig = fmt; // alias
 /** Format decimal (human units) with symbol - for UI display */
 export function fmtDec(dec: any, symbol = "PENGU"): string {
   return formatDecimal(dec, symbol);
+}
+
+/**
+ * Effective tip fee BPS for a given sender & token.
+ * - 0 if the user has any ACTIVE tier with tipTaxFree = true
+ * - otherwise token.tipFeeBps if set
+ * - otherwise the latest AppConfig.tipFeeBps
+ * - finally falls back to 100 if nothing set
+ */
+export async function getEffectiveTipFeeBps(
+  fromUserId: number,
+  tokenId: number
+): Promise<number> {
+  // 1) Tax-free membership?
+  if (await userHasActiveTaxFreeTier(fromUserId)) return 0;
+
+  // 2) Token-level override?
+  const token = await prisma.token.findUnique({
+    where: { id: tokenId },
+    select: { tipFeeBps: true },
+  });
+  if (token?.tipFeeBps != null) return token.tipFeeBps;
+
+  // 3) App default
+  const cfg = await prisma.appConfig.findFirst({
+    orderBy: { id: "desc" },
+    select: { tipFeeBps: true },
+  });
+  return cfg?.tipFeeBps ?? 100;
 }
