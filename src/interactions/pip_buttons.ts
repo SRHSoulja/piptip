@@ -2,7 +2,7 @@
 import type { ButtonInteraction } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { prisma } from "../services/db.js";
-import { PipMove, judge } from "../services/matches.js";
+import { PipMove, judge, label } from "../services/matches.js";
 import { publicJoinRow, cancelRow } from "../ui/components.js";
 import { matchOfferEmbed, matchResultEmbed } from "../ui/embeds.js";
 import { decToBigDirect, bigToDecDirect, formatAmount, formatDecimal } from "../services/token.js";
@@ -234,11 +234,22 @@ const final = await tx.match.update({
           embeds: [matchResultEmbed({
             challengerTag,
             joinerTag,
-            challengerMove: settled.challengerMove as string,
-            joinerMove: settled.joinerMove as string,
+            challengerMove: label(settled.challengerMove as PipMove),
+            joinerMove: label(settled.joinerMove as PipMove),
             resultLine: outcomeLine,
             payoutText: settled.result === "TIE" ? undefined : formatAmount(payoutBig, settled.Token),
             rakeText: settled.result === "TIE" ? undefined : formatAmount(rakeBig, settled.Token),
+            potText: formatAmount(potBig, settled.Token),
+            challengerStats: {
+              wins: settled.Challenger.wins,
+              losses: settled.Challenger.losses, 
+              ties: settled.Challenger.ties
+            },
+            joinerStats: settled.Joiner ? {
+              wins: settled.Joiner.wins,
+              losses: settled.Joiner.losses,
+              ties: settled.Joiner.ties
+            } : undefined,
             ad: ad ?? undefined,
           })],
           components: []
