@@ -1,6 +1,7 @@
 // src/index.ts
 import "dotenv/config";
 import express from "express";
+import { flushNoticesEphemeral } from "./services/notifier.js";
 import {
   Client,
   GatewayIntentBits,
@@ -45,24 +46,27 @@ const bot = new Client({ intents: [GatewayIntentBits.Guilds] });
 // --- Auto-ACK wrapper: prevents Discord timeouts globally ---
 function withAutoAck(fn: (i: Interaction) => Promise<any>) {
   return async (i: Interaction) => {
-    // Start a 2s timer; if no reply yet, defer ephemeral to buy time.
+    // auto-defer after 2s if nothing replied yet
     const timer = setTimeout(async () => {
       if ("deferred" in i && !i.deferred && "replied" in i && !i.replied && "deferReply" in i) {
-        try { 
-          await (i as any).deferReply({ ephemeral: true }); 
-        } catch (error) {
+        try { await (i as any).deferReply({ ephemeral: true }); } catch (error) {
           console.error("Auto-defer failed:", error);
         }
       }
     }, 2000);
 
     try {
+      // run your actual handler (the big switch)
       await fn(i);
+
+      // ✅ after the handler has replied/deferred, flush notices as an ephemeral follow-up
+      if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
+        await flushNoticesEphemeral(i as any).catch(() => {});
+      }
     } catch (err: any) {
       console.error("Handler error:", err);
       if ("isRepliable" in i && (i as any).isRepliable()) {
         try {
-          // If we already deferred/replied, edit; otherwise reply.
           if ("deferred" in i && "replied" in i) {
             if ((i as any).deferred || (i as any).replied) {
               await (i as any).editReply({ content: `Error: ${err?.message || err}` });
@@ -80,6 +84,7 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
   };
 }
 
+
 // Gate interactions to approved guilds (DMs allowed but your cmds are guild-only)
 async function isGuildApproved(guildId: string | null): Promise<boolean> {
   if (!guildId) return true;
@@ -95,46 +100,54 @@ async function isGuildApproved(guildId: string | null): Promise<boolean> {
   }
 }
 
-// Simple visibility logs to trace flow
+
+// Handle autocomplete for token selection
+// Simple visibility logs to trace flow (LOGGING ONLY)
 bot.on(Events.InteractionCreate, (i: Interaction) => {
   if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
     console.log("[CMD]", (i as any).commandName, "from", (i as any).user?.id, "in", (i as any).guildId);
   }
 });
 
-// Handle autocomplete for token selection
+// Handle autocomplete for token selection (unchanged)
 bot.on(Events.InteractionCreate, async (i: Interaction) => {
-  if (i.isAutocomplete()) {
-    const focusedOption = i.options.getFocused(true);
-    if (focusedOption.name === "token") {
-      try {
-        const tokens = await getActiveTokens();
-        const filtered = tokens
-          .filter(t =>
-            t.symbol.toLowerCase().includes(focusedOption.value.toLowerCase()) ||
-            t.address.toLowerCase().includes(focusedOption.value.toLowerCase())
-          )
-          .slice(0, 25); // Discord limit
+  if (!i.isAutocomplete()) return;
 
-        const choices = filtered.map(t => ({
-          name: `${t.symbol} (${t.address.slice(0, 8)}...)`,
-          value: t.address // address as the value
-        }));
+  const focused = i.options.getFocused(true);
+  // only handle the "token" option
+  if (focused.name !== "token") {
+    return i.respond([]).catch(() => {});
+  }
 
-        await i.respond(choices);
-      } catch (error) {
-        console.error("Autocomplete error:", error);
-        await i.respond([]);
-      }
-    }
-    return;
+  try {
+    const tokens = await getActiveTokens(); // [{ symbol, address, decimals, active: true }, ...]
+    const q = String(focused.value || "").toLowerCase();
+
+    const filtered = tokens
+      .filter(t =>
+        t.symbol.toLowerCase().includes(q) ||
+        t.address.toLowerCase().includes(q)
+      )
+      .slice(0, 25); // Discord limit
+
+    await i.respond(
+      filtered.map(t => ({
+        name: `${t.symbol} (${t.address.slice(0, 8)}...)`,
+        value: t.address, // handler will receive address in options.getString("token")
+      }))
+    );
+  } catch (err) {
+    console.error("Autocomplete error (token):", err);
+    await i.respond([]).catch(() => {});
   }
 });
 
-// Handle commands and buttons
+
+// Handle commands and buttons (ONLY HERE; wrapped with auto-ack)
 bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
   const gid = "guildId" in i ? (i as any).guildId : null;
-  
+
+  // Guild allowlist
   if (gid && !(await isGuildApproved(gid))) {
     if ("isRepliable" in i && (i as any).isRepliable()) {
       await (i as any).reply({
@@ -145,33 +158,27 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
     return;
   }
 
+  // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓
   if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
+    // fire-and-forget: delivers queued account notices as an ephemeral message
     switch ((i as any).commandName) {
       case "pip_register": return pipRegister(i as any);
       case "pip_withdraw": return pipWithdraw(i as any);
-      case "pip_profile": return pipProfile(i as any);
-      case "pip_deposit": return pipDeposit(i as any);
-      case "pip_start": return pipStart(i as any);
-      case "pip_link": return pipLink(i as any);
-      case "pip_tip": return pipTip(i as any);
+      case "pip_profile":  return pipProfile(i as any);
+      case "pip_deposit":  return pipDeposit(i as any);
+      case "pip_start":    return pipStart(i as any);
+      case "pip_link":     return pipLink(i as any);
+      case "pip_tip":      return pipTip(i as any);
       default:
         console.warn("Unknown command:", (i as any).commandName);
     }
   }
 
+  // Buttons (unchanged)
   if ("isButton" in i && (i as any).isButton()) {
-    // Route to appropriate button handler based on customId prefix
     const customId = (i as any).customId;
-    
-    if (customId.startsWith("pip:")) {
-      return handlePipButton(i as any);
-    }
-    
-    if (customId.startsWith("grouptip:")) {
-      return handleGroupTipButton(i as any);
-    }
-    
-    // If no handler matches, log this
+    if (customId.startsWith("pip:"))      return handlePipButton(i as any);
+    if (customId.startsWith("grouptip:")) return handleGroupTipButton(i as any);
     console.warn("Unknown button interaction:", customId);
   }
 }));

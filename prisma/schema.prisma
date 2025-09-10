@@ -7,30 +7,45 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Notification {
+  id        String    @id @default(cuid())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // 'deposit' | 'withdraw_success' | 'withdraw_error' | ...
+  payload   Json
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  @@index([userId, sentAt])
+}
+
 model User {
-  id            Int      @id @default(autoincrement())
-  discordId     String   @unique
-  agwAddress    String?
-  wins          Int      @default(0)
-  losses        Int      @default(0)
-  ties          Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  discordId  String   @unique
+  agwAddress String?
+  wins       Int      @default(0)
+  losses     Int      @default(0)
+  ties       Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Gaming relations
-  challenger   Match[]       @relation("Challenger")
-  joiner       Match[]       @relation("Joiner")
-  
+  challenger Match[] @relation("Challenger")
+  joiner     Match[] @relation("Joiner")
+
   // Tipping relations
-  tipsSent     Tip[]         @relation("TipFrom")
-  tipsReceived Tip[]         @relation("TipTo")
-  
+  tipsSent     Tip[] @relation("TipFrom")
+  tipsReceived Tip[] @relation("TipTo")
+
   // Group tipping relations
-  groupTipsCreated GroupTip[]      @relation("GroupTipCreator") 
+  groupTipsCreated GroupTip[]      @relation("GroupTipCreator")
   groupTipsClaimed GroupTipClaim[] @relation("GroupTipClaims")
-  
+
   // Balance relations
-  balances     UserBalance[]
+  balances UserBalance[]
+
+  // Notifications (back-relation)
+  notifications Notification[]
 
   @@index([agwAddress])
   @@index([createdAt])
@@ -41,7 +56,7 @@ model Match {
   status         String
   wagerAtomic    Decimal   @default(0) // human units
   potAtomic      Decimal   @default(0) // human units
-  tokenId        Int       // which token this match uses
+  tokenId        Int // which token this match uses
   challengerId   Int
   joinerId       Int?
   challengerMove String?
@@ -66,7 +81,7 @@ model Tip {
   id           Int      @id @default(autoincrement())
   fromUserId   Int
   toUserId     Int
-  tokenId      Int      // which token was tipped
+  tokenId      Int // which token was tipped
   amountAtomic Decimal  @default(0) // human units
   feeAtomic    Decimal  @default(0) // human units
   note         String?
@@ -80,34 +95,34 @@ model Tip {
 }
 
 model GroupTip {
-  id            Int      @id @default(autoincrement())
-  creatorId     Int      // User who created the tip
-  tokenId       Int      // Which token
-  totalAmount   Decimal  // Total amount to split
-  duration      Int      // Duration in seconds
-  messageId     String?  // Discord message ID
-  channelId     String?  // Discord channel ID
-  guildId       String?  // Discord guild ID
-  status        String   // ACTIVE, EXPIRED, CANCELLED, FINALIZED
-  expiresAt     DateTime // When it expires
-  createdAt     DateTime @default(now())
-  
-  Creator   User             @relation("GroupTipCreator", fields: [creatorId], references: [id])
-  Token     Token            @relation(fields: [tokenId], references: [id])
-  claims    GroupTipClaim[]
+  id          Int      @id @default(autoincrement())
+  creatorId   Int // User who created the tip
+  tokenId     Int // Which token
+  totalAmount Decimal // Total amount to split
+  duration    Int // Duration in seconds
+  messageId   String? // Discord message ID
+  channelId   String? // Discord channel ID
+  guildId     String? // Discord guild ID
+  status      String // ACTIVE, EXPIRED, CANCELLED, FINALIZED
+  expiresAt   DateTime // When it expires
+  createdAt   DateTime @default(now())
+
+  Creator User            @relation("GroupTipCreator", fields: [creatorId], references: [id])
+  Token   Token           @relation(fields: [tokenId], references: [id])
+  claims  GroupTipClaim[]
 
   @@index([status, expiresAt])
   @@index([createdAt])
 }
 
 model GroupTipClaim {
-  id          Int      @id @default(autoincrement())
-  groupTipId  Int
-  userId      Int
-  claimedAt   DateTime @default(now())
-  
-  GroupTip    GroupTip @relation(fields: [groupTipId], references: [id])
-  User        User     @relation("GroupTipClaims", fields: [userId], references: [id])
+  id         Int      @id @default(autoincrement())
+  groupTipId Int
+  userId     Int
+  claimedAt  DateTime @default(now())
+
+  GroupTip GroupTip @relation(fields: [groupTipId], references: [id])
+  User     User     @relation("GroupTipClaims", fields: [userId], references: [id])
 
   @@unique([groupTipId, userId]) // One claim per user per group tip
 }
@@ -126,12 +141,12 @@ model Token {
   withdrawDailyCap Decimal?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  
+
   // Relations
-  balances    UserBalance[]
-  matches     Match[]
-  tips        Tip[]
-  groupTips   GroupTip[]
+  balances  UserBalance[]
+  matches   Match[]
+  tips      Tip[]
+  groupTips GroupTip[]
 }
 
 model UserBalance {
@@ -203,7 +218,7 @@ model Transaction {
   userId      Int?
   otherUserId Int?
   guildId     String?
-  tokenId     Int?     // which token this transaction involves
+  tokenId     Int? // which token this transaction involves
   amount      Decimal
   fee         Decimal  @default(0)
   txHash      String?

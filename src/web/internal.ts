@@ -1,4 +1,5 @@
 // src/web/internal.ts
+import { queueNotice } from "../services/notifier.js";
 import { Router, type Request, type Response } from "express";
 import { prisma } from "../services/db.js";
 import { getTokenByAddress, toAtomicDirect } from "../services/token.js";
@@ -117,9 +118,19 @@ internalRouter.post("/credit", async (req: Request, res: Response) => {
     }
 
     // Credit the user using the multi-token balance system
-    await creditToken(user.discordId, tokenRow.id, amountAtomic, "DEPOSIT", {
-      txHash: tx,
-    });
+// Credit the user using the multi-token balance system
+await creditToken(user.discordId, tokenRow.id, amountAtomic, "DEPOSIT", {
+  txHash: tx,
+});
+
+// Queue an ephemeral deposit notice for the user (delivered on next command)
+await queueNotice(user.id, "deposit", {
+  token: tokenRow.symbol,
+  amountAtomic: amountAtomic.toString(),
+  decimals: tokenRow.decimals ?? 18,
+  tx,
+});
+
 
     // Log webhook events for monitoring
     try {

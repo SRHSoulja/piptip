@@ -1,4 +1,5 @@
 // src/commands/pip_withdraw.ts
+import { queueNotice } from "../services/notifier.js";
 import { JsonRpcProvider, Wallet, Contract } from "ethers";
 import { prisma } from "../services/db.js";
 import { getTokenByAddress, toAtomicDirect, formatAmount, decToBigDirect } from "../services/token.js";
@@ -158,11 +159,21 @@ export default async function pipWithdraw(i: ChatInputCommandInteraction) {
         txHash: tx.hash,
       });
 
+      await queueNotice(user.id, "withdraw_success", {
+  token: token.symbol,
+  amount: formatAmount(amtAtomic, token), // human-readable amount
+  tx: tx.hash,
+});
+
+
       return i.followUp({
         content: `✅ Withdraw sent: ${formatAmount(amtAtomic, token)} → \`${dest}\`\nTx: \`${tx.hash}\`\n${policyLine}`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (e: any) {
+      await queueNotice(user.id, "withdraw_error", {
+  reason: e?.reason || e?.message || String(e),
+});
       return i.followUp({
         content: `❌ Withdraw failed: ${e?.reason || e?.message || String(e)}`,
         flags: MessageFlags.Ephemeral,
