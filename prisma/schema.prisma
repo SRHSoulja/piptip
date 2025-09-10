@@ -11,7 +11,7 @@ model Notification {
   id        String    @id @default(cuid())
   userId    Int
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String // 'deposit' | 'withdraw_success' | 'withdraw_error' | ...
+  type      String
   payload   Json
   createdAt DateTime  @default(now())
   sentAt    DateTime?
@@ -41,28 +41,91 @@ model User {
   groupTipsCreated GroupTip[]      @relation("GroupTipCreator")
   groupTipsClaimed GroupTipClaim[] @relation("GroupTipClaims")
 
-  // Balance relations
+  // Balances
   balances UserBalance[]
 
-  // Notifications (back-relation)
+  // Memberships (BACK-RELATION added)
+  tierMemberships TierMembership[]
+
+  // Notifications
   notifications Notification[]
 
   @@index([agwAddress])
   @@index([createdAt])
 }
 
+model Tier {
+  id           Int      @id @default(autoincrement())
+  name         String
+  description  String?  @db.Text
+  priceAmount  Decimal? // legacy/optional
+  durationDays Int
+  tipTaxFree   Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships TierMembership[]
+
+  // ✅ back-relation to TierPrice
+  prices TierPrice[] @relation("TierToPrices")
+
+  @@index([active])
+}
+
+model TierPrice {
+  id        Int      @id @default(autoincrement())
+  tierId    Int
+  tokenId   Int
+  amount    Decimal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ✅ name both sides of the relation
+  tier  Tier  @relation("TierToPrices", fields: [tierId], references: [id], onDelete: Cascade)
+  token Token @relation("TokenToTierPrices", fields: [tokenId], references: [id], onDelete: Restrict)
+
+  @@unique([tierId, tokenId])
+  @@index([tokenId])
+}
+
+enum TierMembershipStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+model TierMembership {
+  id        Int                  @id @default(autoincrement())
+  userId    Int
+  tierId    Int
+  startedAt DateTime             @default(now())
+  expiresAt DateTime
+  txHash    String?              @unique
+  status    TierMembershipStatus @default(ACTIVE)
+  createdAt DateTime             @default(now())
+
+  // BACK-RELATIONS now have opposites on User and Tier
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier Tier @relation(fields: [tierId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, tierId, status], map: "uniq_user_tier_status") // one ACTIVE membership per (user,tier)
+  @@index([userId, tierId, expiresAt])
+  @@index([userId, status, expiresAt])
+}
+
 model Match {
   id             Int       @id @default(autoincrement())
   status         String
-  wagerAtomic    Decimal   @default(0) // human units
-  potAtomic      Decimal   @default(0) // human units
-  tokenId        Int // which token this match uses
+  wagerAtomic    Decimal   @default(0)
+  potAtomic      Decimal   @default(0)
+  tokenId        Int
   challengerId   Int
   joinerId       Int?
   challengerMove String?
   joinerMove     String?
   result         String?
-  rakeAtomic     Decimal   @default(0) // human units
+  rakeAtomic     Decimal   @default(0)
   winnerUserId   Int?
   messageId      String?
   channelId      String?
@@ -81,9 +144,9 @@ model Tip {
   id           Int      @id @default(autoincrement())
   fromUserId   Int
   toUserId     Int
-  tokenId      Int // which token was tipped
-  amountAtomic Decimal  @default(0) // human units
-  feeAtomic    Decimal  @default(0) // human units
+  tokenId      Int
+  amountAtomic Decimal  @default(0)
+  feeAtomic    Decimal  @default(0)
   note         String?
   createdAt    DateTime @default(now())
 
@@ -96,15 +159,15 @@ model Tip {
 
 model GroupTip {
   id          Int      @id @default(autoincrement())
-  creatorId   Int // User who created the tip
-  tokenId     Int // Which token
-  totalAmount Decimal // Total amount to split
-  duration    Int // Duration in seconds
-  messageId   String? // Discord message ID
-  channelId   String? // Discord channel ID
-  guildId     String? // Discord guild ID
-  status      String // ACTIVE, EXPIRED, CANCELLED, FINALIZED
-  expiresAt   DateTime // When it expires
+  creatorId   Int
+  tokenId     Int
+  totalAmount Decimal
+  duration    Int
+  messageId   String?
+  channelId   String?
+  guildId     String?
+  status      String
+  expiresAt   DateTime
   createdAt   DateTime @default(now())
 
   Creator User            @relation("GroupTipCreator", fields: [creatorId], references: [id])
@@ -124,7 +187,7 @@ model GroupTipClaim {
   GroupTip GroupTip @relation(fields: [groupTipId], references: [id])
   User     User     @relation("GroupTipClaims", fields: [userId], references: [id])
 
-  @@unique([groupTipId, userId]) // One claim per user per group tip
+  @@unique([groupTipId, userId])
 }
 
 model Token {
@@ -142,18 +205,23 @@ model Token {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  // Relations
   balances  UserBalance[]
   matches   Match[]
   tips      Tip[]
   groupTips GroupTip[]
+
+  // ❌ REMOVE this old line:
+  // tiers     Tier[]
+
+  // ✅ back-relation to TierPrice
+  tierPrices TierPrice[] @relation("TokenToTierPrices")
 }
 
 model UserBalance {
   id      Int     @id @default(autoincrement())
   userId  Int
   tokenId Int
-  amount  Decimal @default(0) // human units
+  amount  Decimal @default(0)
 
   User  User  @relation(fields: [userId], references: [id])
   Token Token @relation(fields: [tokenId], references: [id])
@@ -161,19 +229,11 @@ model UserBalance {
   @@unique([userId, tokenId])
 }
 
-//
-// Idempotency ledger for deposits.
-// Use the compound string key as the primary id to keep inserts cheap.
-//
 model ProcessedDeposit {
-  key       String   @id // e.g. `${txHash}:${from}:${valueAtomic}`
+  key       String   @id
   createdAt DateTime @default(now())
 }
 
-//
-// Cursor for watchers/webhooks.
-// Use the name as primary id (e.g. "treasury").
-//
 model DepositCursor {
   name      String   @id
   blockHex  String
@@ -211,18 +271,17 @@ model Ad {
   updatedAt DateTime @updatedAt
 }
 
-// NOTE: SQLite: no enum/Json. Use String for 'type' and String for JSON blobs.
 model Transaction {
   id          Int      @id @default(autoincrement())
-  type        String // e.g. 'DEPOSIT' | 'WITHDRAW' | 'TIP' | ...
+  type        String
   userId      Int?
   otherUserId Int?
   guildId     String?
-  tokenId     Int? // which token this transaction involves
+  tokenId     Int?
   amount      Decimal
   fee         Decimal  @default(0)
   txHash      String?
-  metadata    String? // JSON serialized as string
+  metadata    String?
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
@@ -234,8 +293,8 @@ model WebhookEvent {
   id        Int      @id @default(autoincrement())
   source    String
   key       String   @unique
-  status    String // 'ok' | 'ignored' | 'duplicate' | 'bad-sig' ...
-  payload   String // JSON serialized as string
+  status    String
+  payload   String
   createdAt DateTime @default(now())
 
   @@index([createdAt])
