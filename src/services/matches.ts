@@ -7,5 +7,5 @@ export function judge(a: PipMove, b: PipMove): -1 | 0 | 1 {
 }
 
 export function label(m: PipMove) {
-  return m==="penguin" ? "🐧 Penguin" : m==="ice" ? "❄️ Ice" : "🪨 Pebble";
+  return m==="penguin" ? "🐧 Penguin" : m==="ice" ? "🧊 Ice" : "🪨 Pebble";
 }

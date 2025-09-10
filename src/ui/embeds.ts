@@ -132,7 +132,7 @@ export function matchOfferEmbed(challengerTag: string, wagerText: string, ad?: {
   return e;
 }
 
-/** Result embed */
+/** Enhanced flashy result embed */
 export function matchResultEmbed(opts: {
   challengerTag: string;
   joinerTag: string;
@@ -141,29 +141,103 @@ export function matchResultEmbed(opts: {
   resultLine: string;
   payoutText?: string;
   rakeText?: string;
-  ad?: { text: string; url?: string };  // NEW
+  ad?: { text: string; url?: string };
+  challengerStats?: { wins: number; losses: number; ties: number };
+  joinerStats?: { wins: number; losses: number; ties: number };
+  potText?: string;
 }) {
+  // Determine if it's a win, loss, or tie
+  const isWin = opts.resultLine.includes("wins");
+  const isTie = opts.resultLine.includes("Tie");
+  
+  // Get move emojis
+  const challengerEmoji = getMoveEmoji(opts.challengerMove);
+  const joinerEmoji = getMoveEmoji(opts.joinerMove);
+  
+  // Create flashy title based on outcome
+  let title = "🎮 Match Complete!";
+  let color = 0x5865F2; // Default blue
+  let description = "";
+  
+  if (isTie) {
+    title = "🤝 Epic Tie!"; 
+    color = 0xFFD700; // Gold
+    description = `${challengerEmoji} vs ${joinerEmoji}\n\n🔄 **Perfect Match!** Both players chose the same move!\n💰 All wagers refunded`;
+  } else if (isWin) {
+    const winner = opts.resultLine.includes(opts.challengerTag) ? "challenger" : "joiner";
+    const winnerTag = winner === "challenger" ? opts.challengerTag : opts.joinerTag;
+    const winnerEmoji = winner === "challenger" ? challengerEmoji : joinerEmoji;
+    const loserEmoji = winner === "challenger" ? joinerEmoji : challengerEmoji;
+    
+    title = "🏆 Victory Achieved!";
+    color = 0x00FF00; // Green
+    description = `${challengerEmoji} vs ${joinerEmoji}\n\n🎉 **${winnerTag} WINS!**\n${winnerEmoji} beats ${loserEmoji}`;
+  }
+  
   const e = new EmbedBuilder()
-    .setTitle("Match Result")
-    .addFields(
-      { name: "Challenger", value: `${opts.challengerTag} — ${opts.challengerMove}`, inline: true },
-      { name: "Joiner", value: `${opts.joinerTag} — ${opts.joinerMove}`, inline: true },
-      { name: "Outcome", value: opts.resultLine, inline: false },
-    );
-
-  if (opts.payoutText) e.addFields({ name: "Payout", value: opts.payoutText, inline: true });
-  if (opts.rakeText)   e.addFields({ name: "House Rake", value: opts.rakeText, inline: true });
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(color)
+    .setTimestamp();
+    
+  // Player details with stats
+  const challengerValue = formatPlayerDetails(opts.challengerTag, opts.challengerMove, opts.challengerStats);
+  const joinerValue = formatPlayerDetails(opts.joinerTag, opts.joinerMove, opts.joinerStats);
+  
+  e.addFields(
+    { name: "🥊 Challenger", value: challengerValue, inline: true },
+    { name: "⚔️ Opponent", value: joinerValue, inline: true },
+    { name: "💥 Battle Summary", value: `${challengerEmoji} **VS** ${joinerEmoji}`, inline: true }
+  );
+  
+  // Financial details with better formatting
+  if (opts.payoutText || opts.rakeText || opts.potText) {
+    const financialDetails = [];
+    if (opts.potText) financialDetails.push(`💰 **Total Pot:** ${opts.potText}`);
+    if (opts.payoutText) financialDetails.push(`🎁 **Winner Takes:** ${opts.payoutText}`);
+    if (opts.rakeText) financialDetails.push(`🏛️ **House Fee:** ${opts.rakeText}`);
+    
+    e.addFields({
+      name: "💸 Financial Breakdown", 
+      value: financialDetails.join("\n"), 
+      inline: false 
+    });
+  }
 
   // add sponsor/ad if passed
   if (opts.ad) {
     e.addFields({
-      name: "Sponsored",
+      name: "📢 Sponsored",
       value: opts.ad.url ? `[${opts.ad.text}](${opts.ad.url})` : opts.ad.text,
       inline: false,
     });
   }
 
   return e;
+}
+
+// Helper functions for enhanced match display
+function getMoveEmoji(move: string): string {
+  const moveClean = move.toLowerCase().replace(/[^a-z]/g, '');
+  if (moveClean.includes('penguin')) return '🐧';
+  if (moveClean.includes('ice')) return '🧊';
+  if (moveClean.includes('pebble')) return '🪨';
+  return '❓'; // fallback
+}
+
+function formatPlayerDetails(tag: string, move: string, stats?: { wins: number; losses: number; ties: number }): string {
+  const moveEmoji = getMoveEmoji(move);
+  const moveName = move.replace(/[^a-zA-Z]/g, ''); // Clean move name
+  
+  let details = `${tag}\n${moveEmoji} **${moveName}**`;
+  
+  if (stats) {
+    const total = stats.wins + stats.losses + stats.ties;
+    const winRate = total > 0 ? ((stats.wins / total) * 100).toFixed(1) : '0.0';
+    details += `\n📊 **${stats.wins}W-${stats.losses}L-${stats.ties}T** (${winRate}% WR)`;
+  }
+  
+  return details;
 }
 
 /** labels */
