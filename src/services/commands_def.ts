@@ -46,32 +46,14 @@ export function getCommandsJson() {
     
     new SlashCommandBuilder()
       .setName("pip_tip")
-      .setDescription("Tip another user or create a group tip")
-      .addStringOption(o => 
-        o.setName("token")
-          .setDescription("Select token to tip")
-          .setRequired(true)
-          .setAutocomplete(true)
-      )
+      .setDescription("💸 Tip tokens - specify user for direct tip, leave empty for group tip!")
       .addNumberOption(o => o.setName("amount").setDescription("Amount to tip").setRequired(true))
-      .addStringOption(o => 
-        o.setName("type")
-          .setDescription("Type of tip")
-          .setRequired(false)
-          .addChoices(
-            { name: "Direct Tip", value: "direct" },
-            { name: "Group Tip", value: "group" }
-          )
-      )
-      .addUserOption(o => o.setName("user").setDescription("Who to tip (direct tips only)").setRequired(false))
-      .addIntegerOption(o => 
-        o.setName("duration")
-          .setDescription("Duration in minutes (group tips only, 1-60)")
-          .setRequired(false)
-          .setMinValue(1)
-          .setMaxValue(60)
-      )
-      .addStringOption(o => o.setName("note").setDescription("Optional note")),
+      .addUserOption(o => o.setName("user").setDescription("Who to tip (leave empty for group tip that everyone can claim)").setRequired(false))
+      .addStringOption(o => o.setName("note").setDescription("Optional note").setRequired(false)),
+    
+    new SlashCommandBuilder()
+      .setName("pip_help")
+      .setDescription("📚 Learn how to use PIPTip bot - commands, tips, and getting started!"),
   ];
   return defs.map(d => d.toJSON());
 }

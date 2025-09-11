@@ -21,6 +21,7 @@ import pipProfile from "./commands/pip_profile.js";
 import pipDeposit from "./commands/pip_deposit.js";
 import pipStart from "./commands/pip_start.js";
 import pipTip from "./commands/pip_tip.js";
+import pipHelp from "./commands/pip_help.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
 import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
@@ -47,11 +48,13 @@ const bot = new Client({ intents: [GatewayIntentBits.Guilds] });
 // --- Auto-ACK wrapper: prevents Discord timeouts globally ---
 function withAutoAck(fn: (i: Interaction) => Promise<any>) {
   return async (i: Interaction) => {
+    let timerCleared = false;
+    
     // auto-defer after 2s if nothing replied yet
     const timer = setTimeout(async () => {
-      if ("deferred" in i && !i.deferred && "replied" in i && !i.replied && "deferReply" in i) {
+      if (!timerCleared && "deferred" in i && !i.deferred && "replied" in i && !i.replied && "deferReply" in i) {
         try { await (i as any).deferReply({ flags: 64 }); } catch (error) {
-          console.error("Auto-defer failed:", error);
+          // Silently ignore auto-defer failures since they're usually due to race conditions
         }
       }
     }, 2000);
@@ -59,6 +62,10 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
     try {
       // run your actual handler (the big switch)
       await fn(i);
+      
+      // Clear timer immediately after handler completes
+      timerCleared = true;
+      clearTimeout(timer);
 
       // ✅ after the handler has replied/deferred, flush notices as an ephemeral follow-up
       if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
@@ -80,6 +87,7 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
         }
       }
     } finally {
+      timerCleared = true;
       clearTimeout(timer);
     }
   };
@@ -170,6 +178,7 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
       case "pip_start":    return pipStart(i as any);
       case "pip_link":     return pipLink(i as any);
       case "pip_tip":      return pipTip(i as any);
+      case "pip_help":     return pipHelp(i as any);
       default:
         console.warn("Unknown command:", (i as any).commandName);
     }
