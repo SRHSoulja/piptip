@@ -87,8 +87,8 @@ usersRouter.get("/users/search", async (req, res) => {
 
     if (!user) return res.status(404).json({ ok: false, error: "User not found" });
 
-    // Get tip statistics for the user
-    const [tipsSent, tipsReceived] = await Promise.all([
+    // Get tip statistics and last activity for the user
+    const [tipsSent, tipsReceived, lastTip, lastMatch] = await Promise.all([
       prisma.tip.aggregate({
         where: { fromUserId: user.id },
         _count: { id: true },
@@ -98,8 +98,23 @@ usersRouter.get("/users/search", async (req, res) => {
         where: { toUserId: user.id },
         _count: { id: true },
         _sum: { amountAtomic: true }
+      }),
+      prisma.tip.findFirst({
+        where: { OR: [{ fromUserId: user.id }, { toUserId: user.id }] },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true }
+      }),
+      prisma.match.findFirst({
+        where: { OR: [{ challengerId: user.id }, { joinerId: user.id }] },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true }
       })
     ]);
+
+    // Determine last activity from most recent tip or match
+    const lastActivity = [lastTip?.createdAt, lastMatch?.createdAt, user.updatedAt]
+      .filter(Boolean)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 
     // Fetch Discord username
     let username = `User ${user.discordId.slice(0, 8)}...`;
@@ -116,6 +131,7 @@ usersRouter.get("/users/search", async (req, res) => {
     const formattedUser = {
       ...user,
       username,
+      lastActivity,
       totalTipsSent: tipsSent._count.id || 0,
       totalTipsReceived: tipsReceived._count.id || 0,
       totalAmountSent: tipsSent._sum.amountAtomic?.toString() || "0",
@@ -154,10 +170,10 @@ usersRouter.get("/users/top", async (req, res) => {
 
     console.log(`📊 Found ${users.length} users in database`);
 
-    // Get tip statistics for each user
+    // Get tip statistics and last activity for each user
     const usersWithStats = await Promise.all(
       users.map(async (user) => {
-        const [tipsSent, tipsReceived] = await Promise.all([
+        const [tipsSent, tipsReceived, lastTip, lastMatch] = await Promise.all([
           prisma.tip.aggregate({
             where: { fromUserId: user.id },
             _count: { id: true },
@@ -167,11 +183,27 @@ usersRouter.get("/users/top", async (req, res) => {
             where: { toUserId: user.id },
             _count: { id: true },
             _sum: { amountAtomic: true }
+          }),
+          prisma.tip.findFirst({
+            where: { OR: [{ fromUserId: user.id }, { toUserId: user.id }] },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true }
+          }),
+          prisma.match.findFirst({
+            where: { OR: [{ challengerId: user.id }, { joinerId: user.id }] },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true }
           })
         ]);
 
+        // Determine last activity from most recent tip or match
+        const lastActivity = [lastTip?.createdAt, lastMatch?.createdAt, user.updatedAt]
+          .filter(Boolean)
+          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+
         return {
           ...user,
+          lastActivity,
           totalTipsSent: tipsSent._count.id || 0,
           totalTipsReceived: tipsReceived._count.id || 0,
           totalAmountSent: tipsSent._sum.amountAtomic?.toString() || "0",
@@ -220,6 +252,12 @@ usersRouter.post("/users/adjust-balance", async (req, res) => {
 
     if (!discordId || !tokenId || typeof amount !== 'number') {
       return res.status(400).json({ ok: false, error: "Missing required parameters" });
+    }
+
+    // Enforce 2 decimal places limit for user-friendliness
+    const decimalPlaces = (amount.toString().split('.')[1] || '').length;
+    if (decimalPlaces > 2) {
+      return res.status(400).json({ ok: false, error: "Please limit your amount to 2 decimal places (e.g., 10.50)" });
     }
 
     const user = await prisma.user.findUnique({ where: { discordId } });

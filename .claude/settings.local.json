@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(lsof:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(Get-Process -Name \"node\")",
+      "Bash(Stop-Process -Force)",
+      "Bash(wmic process where:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(npx prisma studio:*)",
+      "Bash(npx prisma db execute:*)",
+      "Bash(Stop-Process -Force -Id 45072)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(Stop-Process -Id 14736 -Force)",
+      "Bash(PORT=3001 npm run dev)",
+      "Bash(TASKKILL /PID 29660)",
+      "Bash(powershell:*)",
+      "Bash(rm:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

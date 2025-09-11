@@ -1,6 +1,7 @@
 // src/web/admin/transactions.ts
 import { Router } from "express";
 import { prisma } from "../../services/db.js";
+import { fetchMultipleUsernames, getDiscordClient } from "../../services/discord_users.js";
 
 export const transactionsRouter = Router();
 
@@ -157,39 +158,82 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req, res) 
     const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
     const tokenMap = new Map(tokens.map(t => [t.id, t.symbol]));
 
-    let csv = "timestamp,activity_type,direction,amount,token,fee,counterpart,guild_id,status,details\\n";
+    // Fetch Discord username for the user
+    let username = `User ${user.discordId.slice(0, 8)}...`;
+    try {
+      const client = getDiscordClient();
+      if (client) {
+        const usernames = await fetchMultipleUsernames(client, [user.discordId]);
+        username = usernames.get(user.discordId) || username;
+      }
+    } catch (error) {
+      console.warn("Failed to fetch username for export:", error);
+    }
+
+    let csv = "username,user_discord_id,timestamp,activity_type,direction,amount,token,fee,counterpart,guild_id,status,details\n";
 
     // Add transactions
     transactions.forEach(tx => {
       const token = tx.tokenId ? tokenMap.get(tx.tokenId) || 'Unknown' : 'N/A';
       const direction = tx.userId === user.id ? 'outgoing' : 'incoming';
       const counterpart = tx.otherUserId ? `user_${tx.otherUserId}` : 'system';
-      csv += `"${tx.createdAt.toISOString()}","transaction","${direction}","${tx.amount}","${token}","${tx.fee}","${counterpart}","${tx.guildId || ''}","completed","${tx.type}: ${tx.metadata || ''}"\\n`;
+      
+      // Check if this is a group tip related transaction by looking for group tip records around the same time
+      let activityType = 'transaction';
+      let status = 'completed';
+      let details = `${tx.type}: ${tx.metadata || ''}`;
+      
+      // If it's a TIP transaction to/from the user around the same time as group tips, it might be a group tip refund/payout
+      if (tx.type === 'TIP' && direction === 'incoming' && counterpart === 'system') {
+        // Check if there's a matching refunded group tip
+        const matchingGroupTip = groupTips.created.find(gt => 
+          gt.status === 'REFUNDED' && 
+          Math.abs(new Date(gt.createdAt).getTime() - new Date(tx.createdAt).getTime()) < 60000 // Within 1 minute
+        );
+        if (matchingGroupTip) {
+          activityType = 'group_tip_refund';
+          status = 'refunded';
+          details = `Group tip refunded - no claims received`;
+        } else {
+          // Check for finalized group tips (payouts)
+          const finalizedGroupTip = groupTips.created.find(gt => 
+            gt.status === 'FINALIZED' && 
+            Math.abs(new Date(gt.createdAt).getTime() - new Date(tx.createdAt).getTime()) < 300000 // Within 5 minutes
+          );
+          if (finalizedGroupTip) {
+            activityType = 'group_tip_payout';
+            status = 'completed';
+            details = `Group tip payout share`;
+          }
+        }
+      }
+      
+      csv += `"${username}","${user.discordId}","${tx.createdAt.toISOString()}","${activityType}","${direction}","${tx.amount}","${token}","${tx.fee}","${counterpart}","${tx.guildId || ''}","${status}","${details}"\n`;
     });
 
     // Add tips
     tips.forEach(tip => {
       const direction = tip.fromUserId === user.id ? 'sent' : 'received';
       const counterpart = direction === 'sent' ? `user_${tip.toUserId}` : `user_${tip.fromUserId}`;
-      csv += `"${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","${tip.feeAtomic}","${counterpart}","","${tip.status}","${tip.note || ''}"\\n`;
+      csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","${tip.feeAtomic}","${counterpart}","","${tip.status}","${tip.note || ''}"\n`;
     });
 
     // Add group tips created
     groupTips.created.forEach(gt => {
-      csv += `"${gt.createdAt.toISOString()}","group_tip","created","${gt.totalAmount}","${gt.Token?.symbol || 'Unknown'}","${gt.taxAtomic}","group","${gt.guildId || ''}","${gt.status}","Duration: ${gt.duration}h"\\n`;
+      csv += `"${username}","${user.discordId}","${gt.createdAt.toISOString()}","group_tip","created","${gt.totalAmount}","${gt.Token?.symbol || 'Unknown'}","${gt.taxAtomic}","group","${gt.guildId || ''}","${gt.status}","Duration: ${gt.duration}h"\n`;
     });
 
     // Add group tips claimed
     groupTips.claimed.forEach(claim => {
       const claimTime = claim.claimedAt?.toISOString() || claim.createdAt.toISOString();
-      csv += `"${claimTime}","group_tip","claimed","estimated_share","${claim.GroupTip.Token?.symbol || 'Unknown'}","0","group_${claim.groupTipId}","${claim.GroupTip.guildId || ''}","${claim.status}","Group tip claim"\\n`;
+      csv += `"${username}","${user.discordId}","${claimTime}","group_tip","claimed","estimated_share","${claim.GroupTip.Token?.symbol || 'Unknown'}","0","group_${claim.groupTipId}","${claim.GroupTip.guildId || ''}","${claim.status}","Group tip claim"\n`;
     });
 
     // Add matches
     matches.forEach(match => {
       const role = match.challengerId === user.id ? 'challenger' : 'joiner';
       const result = match.winnerUserId === user.id ? 'won' : (match.winnerUserId ? 'lost' : 'pending');
-      csv += `"${match.createdAt.toISOString()}","match","${role}","${match.wagerAtomic}","${match.Token?.symbol || 'Unknown'}","${match.rakeAtomic}","opponent","","${match.status}","${result}"\\n`;
+      csv += `"${username}","${user.discordId}","${match.createdAt.toISOString()}","match","${role}","${match.wagerAtomic}","${match.Token?.symbol || 'Unknown'}","${match.rakeAtomic}","opponent","","${match.status}","${result}"\n`;
     });
 
     const filename = `user_${discordId}_activity_${new Date().toISOString().split('T')[0]}.csv`;

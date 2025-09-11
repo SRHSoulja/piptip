@@ -3,7 +3,7 @@ import type { User } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { prisma } from "./db.js";
 import { profileEmbed } from "../ui/embeds.js";
-import { formatDecimal } from "./token.js";
+import { formatDecimal, bigToDecDirect } from "./token.js";
 
 // Track active profile requests to prevent spam
 export const activeProfileRequests = new Set<string>();
@@ -179,47 +179,74 @@ export async function generateProfileData(userId: string, discordUser: User) {
   const tipsSentByToken = new Map<string, { count: number; amount: number }>();
   const tipsReceivedByToken = new Map<string, { count: number; amount: number }>();
   
-  // Get all token details for mapping
+  // Track direct vs group tip counts separately for total calculation
+  let directTipsSentCount = 0;
+  let directTipsReceivedCount = 0;
+  let completedGroupTipsFromSent = 0;
+  
+  // Get all token details for mapping (including decimals for conversion)
   const allTokens = await prisma.token.findMany({
-    select: { id: true, symbol: true }
+    select: { id: true, symbol: true, decimals: true }
   });
-  const tokenMap = new Map(allTokens.map(t => [t.id, t.symbol]));
+  const tokenMap = new Map(allTokens.map(t => [t.id, { symbol: t.symbol, decimals: t.decimals }]));
 
   // Process aggregated direct tips sent
   for (const stat of tipStatsSent) {
-    const symbol = tokenMap.get(stat.tokenId) || 'UNKNOWN';
-    tipsSentByToken.set(symbol, {
+    const token = tokenMap.get(stat.tokenId);
+    if (!token) continue;
+    
+    const atomicAmount = BigInt(stat._sum.amountAtomic || 0);
+    const decimalAmount = parseFloat(Number(bigToDecDirect(atomicAmount, token.decimals)).toFixed(2));
+    
+    tipsSentByToken.set(token.symbol, {
       count: stat._count.id,
-      amount: Number(stat._sum.amountAtomic || 0)
+      amount: decimalAmount
     });
+    
+    // Track direct tips for total calculation
+    directTipsSentCount += stat._count.id;
   }
 
   // Process aggregated direct tips received
   for (const stat of tipStatsReceived) {
-    const symbol = tokenMap.get(stat.tokenId) || 'UNKNOWN';
-    tipsReceivedByToken.set(symbol, {
+    const token = tokenMap.get(stat.tokenId);
+    if (!token) continue;
+    
+    const atomicAmount = BigInt(stat._sum.amountAtomic || 0);
+    const decimalAmount = parseFloat(Number(bigToDecDirect(atomicAmount, token.decimals)).toFixed(2));
+    
+    tipsReceivedByToken.set(token.symbol, {
       count: stat._count.id,
-      amount: Number(stat._sum.amountAtomic || 0)
+      amount: decimalAmount
     });
+    
+    // Track direct tips for total calculation
+    directTipsReceivedCount += stat._count.id;
   }
 
   // Process group tip stats from aggregated data
   for (const stat of groupTipStats as any[]) {
-    const symbol = tokenMap.get(stat.tokenId) || 'UNKNOWN';
+    const token = tokenMap.get(stat.tokenId);
+    if (!token) continue;
     
-    // Add group tips created to sent stats
+    // For display: Add ALL group tips created to sent stats (user wants to see what they created)
     if (stat.groupTipsCreated > 0) {
-      const current = tipsSentByToken.get(symbol) || { count: 0, amount: 0 };
-      tipsSentByToken.set(symbol, {
+      const current = tipsSentByToken.get(token.symbol) || { count: 0, amount: 0 };
+      const atomicAmount = BigInt(stat.groupTipAmountSent || 0);
+      const decimalAmount = Number(bigToDecDirect(atomicAmount, token.decimals));
+      
+      tipsSentByToken.set(token.symbol, {
         count: current.count + stat.groupTipsCreated,
-        amount: current.amount + Number(stat.groupTipAmountSent || 0)
+        amount: current.amount + decimalAmount
       });
     }
     
-    // Add group tips claimed to received stats
+    // For total calculation: Only count group tips that were actually claimed (completed)
     if (stat.groupTipsClaimed > 0) {
-      const current = tipsReceivedByToken.get(symbol) || { count: 0, amount: 0 };
-      tipsReceivedByToken.set(symbol, {
+      completedGroupTipsFromSent += stat.groupTipsClaimed;
+      
+      const current = tipsReceivedByToken.get(token.symbol) || { count: 0, amount: 0 };
+      tipsReceivedByToken.set(token.symbol, {
         count: current.count + stat.groupTipsClaimed,
         amount: current.amount // Amount calculation would require expensive per-tip queries
       });
@@ -235,8 +262,15 @@ export async function generateProfileData(userId: string, discordUser: User) {
     .map(([symbol, data]) => `${data.count} tips (${formatDecimal(data.amount, symbol)})`)
     .join('\n') || 'No tips received';
 
-  const totalTipsSentCount = Array.from(tipsSentByToken.values()).reduce((sum, data) => sum + data.count, 0);
-  const totalTipsReceivedCount = Array.from(tipsReceivedByToken.values()).reduce((sum, data) => sum + data.count, 0);
+  // Calculate group tip totals from aggregated stats first
+  const groupTipsCreatedTotal = (groupTipStats as any[]).reduce((sum, stat) => sum + (stat.groupTipsCreated || 0), 0);
+  const groupTipsClaimedTotal = (groupTipStats as any[]).reduce((sum, stat) => sum + (stat.groupTipsClaimed || 0), 0);
+
+  // Calculate totals using corrected logic: only count completed transactions
+  // For "sent": direct tips + group tips that were actually claimed by others
+  const totalTipsSentCount = directTipsSentCount + completedGroupTipsFromSent;
+  // For "received": direct tips received + group tips claimed by this user  
+  const totalTipsReceivedCount = directTipsReceivedCount + groupTipsClaimedTotal;
 
   // Format recent activity
   const recentActivity = recentTransactions.length > 0
@@ -248,10 +282,6 @@ export async function generateProfileData(userId: string, discordUser: User) {
         })
         .join("\n")
     : "No recent activity";
-
-  // Calculate group tip totals from aggregated stats
-  const groupTipsCreatedTotal = (groupTipStats as any[]).reduce((sum, stat) => sum + (stat.groupTipsCreated || 0), 0);
-  const groupTipsClaimedTotal = (groupTipStats as any[]).reduce((sum, stat) => sum + (stat.groupTipsClaimed || 0), 0);
 
   return {
     user: u,

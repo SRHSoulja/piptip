@@ -18,6 +18,15 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
       });
     }
 
+    // Enforce 2 decimal places limit for user-friendliness
+    const decimalPlaces = (amount.toString().split('.')[1] || '').length;
+    if (decimalPlaces > 2) {
+      return i.reply({ 
+        content: "❌ **Too many decimal places**\\nPlease limit your amount to 2 decimal places (e.g., 10.50).", 
+        flags: MessageFlags.Ephemeral 
+      });
+    }
+
     // Validate target user for direct tips
     if (targetUser) {
       if (targetUser.bot) {
