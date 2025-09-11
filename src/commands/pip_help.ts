@@ -11,7 +11,7 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
       {
         name: "🚀 Getting Started",
         value: 
-          "1️⃣ **Create Profile**: `/pip_register` - Create your PIPTip account\n" +
+          "1️⃣ **View Profile**: `/pip_profile` - View your balance and account details (auto-creates account)\n" +
           "2️⃣ **Get Wallet**: Visit **abs.xyz** to create a free Abstract wallet\n" +
           "3️⃣ **Link Wallet**: `/pip_link address:0x...` - Connect your wallet for deposits\n" +
           "4️⃣ **Add Funds**: `/pip_deposit token:PENGUIN` - Get deposit instructions\n" +
@@ -48,7 +48,6 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
         name: "🛠️ Quick Reference",
         value:
           "**Account Management**:\n" +
-          "`/pip_register` - Create your PIPTip profile\n" +
           "`/pip_link` - Link your Abstract wallet\n" +
           "`/pip_profile` - View balance and stats\n\n" +
           "**Money & Tokens**:\n" +

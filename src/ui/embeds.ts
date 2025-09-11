@@ -240,12 +240,6 @@ function formatPlayerDetails(tag: string, move: string, stats?: { wins: number; 
   return details;
 }
 
-/** labels */
-export function label(move: PipMove) {
-  return move === "penguin" ? "🐧 Penguin"
-       : move === "ice"     ? "🧊 Ice"
-       : "🪨 Pebble";
-}
 
 export function groupTipEmbed(data: {
   creator: string;

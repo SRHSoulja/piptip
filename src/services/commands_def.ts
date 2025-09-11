@@ -3,7 +3,6 @@ import { SlashCommandBuilder } from "discord.js";
 
 export function getCommandsJson() {
   const defs = [
-    new SlashCommandBuilder().setName("pip_register").setDescription("🎯 Create your PiPTip account and profile"),
     new SlashCommandBuilder().setName("pip_profile").setDescription("👤 View your balance, stats, and account details"),
     
     new SlashCommandBuilder()

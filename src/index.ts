@@ -16,7 +16,6 @@ import { adminRouter } from "./web/admin.js";
 
 import pipWithdraw from "./commands/pip_withdraw.js";
 import pipLink from "./commands/pip_link.js";
-import pipRegister from "./commands/pip_register.js";
 import pipProfile from "./commands/pip_profile.js";
 import pipDeposit from "./commands/pip_deposit.js";
 import pipGame from "./commands/pip_game.js";
@@ -173,7 +172,6 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
   if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
     // fire-and-forget: delivers queued account notices as an ephemeral message
     switch ((i as any).commandName) {
-      case "pip_register": return pipRegister(i as any);
       case "pip_withdraw": return pipWithdraw(i as any);
       case "pip_profile":  return pipProfile(i as any);
       case "pip_deposit":  return pipDeposit(i as any);

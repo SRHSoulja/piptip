@@ -19,7 +19,7 @@ export default async function pipWithdraw(i: ChatInputCommandInteraction) {
           "",
           "You need to create an account first.",
           "",
-          "Use `/pip_register` to get started!"
+          "Use `/pip_profile` to view your account!"
         ].join("\n"),
         flags: MessageFlags.Ephemeral
       });
