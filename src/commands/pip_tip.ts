@@ -1,233 +1,123 @@
-// src/commands/pip_tip.ts
-import { getActiveAd } from "../services/ads.js";
+// src/commands/pip_tip_new.ts - Enhanced button-based tip interface
 import { MessageFlags, type ChatInputCommandInteraction, type User } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../services/db.js";
-import { getTokenByAddress, toAtomicDirect, formatAmount, bigToDecDirect } from "../services/token.js";
-import { transferToken, debitToken } from "../services/balances.js";
-import { getConfig } from "../config.js";
-import { groupTipEmbed } from "../ui/embeds.js";
-import { groupTipClaimRow } from "../ui/components.js";
-import { scheduleGroupTipExpiry } from "../features/group_tip_expiry.js";
-import { userHasActiveTaxFreeTier } from "../services/tiers.js";
+import { getActiveTokens, formatAmount } from "../services/token.js";
 
 export default async function pipTip(i: ChatInputCommandInteraction) {
   try {
-    const tipType = i.options.getString("type") || "direct";
-    const rawTokenAddress = i.options.getString("token", true) || "";
-    if (!rawTokenAddress || typeof rawTokenAddress !== "string") {
-      return i.reply({ content: "Invalid token address.", flags: MessageFlags.Ephemeral });
-    }
-    const tokenAddress = rawTokenAddress.trim().toLowerCase();
     const amount = i.options.getNumber("amount", true);
-    const rawNote = i.options.getString("note") || "";
-    const note = rawNote.trim().slice(0, 200).replace(/[<>@&]/g, ""); // Remove potential Discord injection chars
+    const targetUser = i.options.getUser("user") as User | null;
+    const note = i.options.getString("note")?.trim().slice(0, 200).replace(/[<>@&]/g, "") || "";
 
+    // Validate amount
     if (!amount || typeof amount !== "number" || !isFinite(amount) || amount <= 0 || amount > 1e15) {
-      return i.reply({ content: "Amount must be a valid positive number.", flags: MessageFlags.Ephemeral });
+      return i.reply({ 
+        content: "❌ **Invalid amount**\\nAmount must be a positive number.", 
+        flags: MessageFlags.Ephemeral 
+      });
     }
 
-    const token = await getTokenByAddress(tokenAddress);
-    if (!token || !token.active) {
-      return i.reply({ content: "Invalid or inactive token selected.", flags: MessageFlags.Ephemeral });
+    // Validate target user for direct tips
+    if (targetUser) {
+      if (targetUser.bot) {
+        return i.reply({ 
+          content: "❌ **Cannot tip bots**\\nYou can't tip a bot.", 
+          flags: MessageFlags.Ephemeral 
+        });
+      }
+      if (targetUser.id === i.user.id) {
+        return i.reply({ 
+          content: "❌ **Cannot tip yourself**\\nUse group tips to share with everyone!", 
+          flags: MessageFlags.Ephemeral 
+        });
+      }
     }
 
-// inside pipTip(), after you validate token and before fee math
-const cfg = await getConfig();
+    // Get available tokens
+    const tokens = await getActiveTokens();
+    if (tokens.length === 0) {
+      return i.reply({ 
+        content: "❌ **No tokens available**\\nNo active tokens are currently available for tipping.", 
+        flags: MessageFlags.Ephemeral 
+      });
+    }
 
-// create/lookup sender ONCE, we'll reuse it
-const fromUser = await prisma.user.upsert({
-  where: { discordId: i.user.id },
-  update: {},
-  create: { discordId: i.user.id },
-});
+    // Determine tip type
+    const tipType = targetUser ? "direct" : "group";
+    const tipEmoji = tipType === "direct" ? "💸" : "🎉";
+    const tipDescription = tipType === "direct" 
+      ? `💰 Send ${amount} tokens directly to ${targetUser!.displayName || targetUser!.username}`
+      : `🎉 Create a group tip of ${amount} tokens that everyone in this channel can claim!`;
 
-// tax-free? Add error handling
-let taxFree = false;
-try {
-  taxFree = await userHasActiveTaxFreeTier(fromUser.id);
-} catch (error) {
-  console.error("Error checking tax-free status, defaulting to taxed:", error);
-  taxFree = false;
-}
-const feeBpsNum = taxFree ? 0 : (token.tipFeeBps ?? cfg?.tipFeeBps ?? 100);
+    // Create enhanced embed
+    const embed = new EmbedBuilder()
+      .setTitle(`${tipEmoji} Choose Your Token`)
+      .setDescription(
+        `**Tip Type:** ${tipType === "direct" ? "Direct Tip" : "Group Tip"}\n` +
+        `**Amount:** ${amount} tokens\n` +
+        `**${tipType === "direct" ? "Recipient" : "Duration"}:** ${tipType === "direct" ? `<@${targetUser!.id}>` : "Will be set in next step"}\n` +
+        (note ? `**Note:** ${note}\n` : "") +
+        `\n${tipDescription}`
+      )
+      .setColor(tipType === "direct" ? 0x00FF00 : 0xFFD700)
+      .setFooter({ 
+        text: tipType === "direct" 
+          ? "💡 Tip: Leave user empty next time for group tips that everyone can claim!" 
+          : "💡 Tip: Specify a user next time for direct tips to individuals!"
+      })
+      .setTimestamp();
 
-const feeBps = BigInt(feeBpsNum);
-const atomic = toAtomicDirect(amount, token.decimals);
-const feeAtomic = (atomic * feeBps) / 10000n;
+    // Create token selection buttons (max 5 per row)
+    const tokenButtons: ButtonBuilder[] = [];
+    const maxButtons = Math.min(tokens.length, 15); // Discord limit: 3 rows × 5 buttons
 
-
-
-    // ------------------------------- GROUP -------------------------------
-    if (tipType === "group") {
-      const rawDuration = i.options.getInteger("duration") ?? 5;
-      if (!rawDuration || typeof rawDuration !== "number" || !isFinite(rawDuration) || rawDuration < 1 || rawDuration > 60) {
-        return i.reply({ content: "Duration must be 1–60 minutes.", flags: MessageFlags.Ephemeral });
-      }
-      const durationMin = Math.floor(rawDuration);
-
-      // Defer FIRST, before any potentially failing operations
-      await i.deferReply({ flags: MessageFlags.Ephemeral });
-
-      // Now charge (after deferring)
-      try {
-        await debitToken(i.user.id, token.id, atomic + feeAtomic, "TIP", { guildId: i.guildId });
-      } catch (err: any) {
-        const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
-        const msg = /insufficient|fund/i.test(err?.message || "")
-          ? `You don't have enough ${token.symbol} to cover **${totalLine}**.`
-          : `Could not charge your balance: ${err?.message || err}`;
-        // Use editReply since we already deferred
-        return i.editReply({ content: `❌ ${msg}` });
-      }
-
-      const creator = fromUser;
-
-
-      const expiresAt = new Date(Date.now() + durationMin * 60 * 1000);
+    for (let i = 0; i < maxButtons; i++) {
+      const token = tokens[i];
+      const buttonId = `pip:select_token:${amount}:${tipType}:${targetUser?.id || "group"}:${encodeURIComponent(note)}:${token.id}`;
       
-      // Create the group tip
-      const groupTip = await prisma.groupTip.create({
-        data: {
-          creatorId: creator.id,
-          tokenId: token.id,
-          totalAmount: amount.toString(), // human units
-          duration: durationMin * 60,
-          status: "ACTIVE",
-          expiresAt,
-          guildId: i.guildId ?? undefined,
-        },
-      });
-
-      if (feeAtomic > 0n) {
-        await prisma.transaction.create({
-          data: {
-            type: "TIP",
-            userId: creator.id,
-            tokenId: token.id,
-            amount: bigToDecDirect(atomic, token.decimals),
-            fee: bigToDecDirect(feeAtomic, token.decimals),
-            guildId: i.guildId ?? undefined,
-            metadata: JSON.stringify({ groupTipId: groupTip.id, kind: "GROUP_TIP_CREATE" }),
-          },
-        });
-      }
-
-      // Create embed with ads
-      const ad = await getActiveAd();
-      const embed = groupTipEmbed({
-        creator: `<@${i.user.id}>`,
-        amount: formatAmount(atomic, token),
-        expiresAt,
-        claimCount: 0,
-        claimedBy: [],
-        note,
-        ad: ad ?? undefined,
-      });
-
-      if (i.channel && i.channel.isTextBased() && "send" in i.channel) {
-        const msg = await (i.channel as any).send({
-          embeds: [embed],
-          components: [groupTipClaimRow(groupTip.id, false)],
-        });
-
-        await prisma.groupTip.update({
-          where: { id: groupTip.id },
-          data: { messageId: msg.id, channelId: msg.channelId },
-        });
-        await scheduleGroupTipExpiry(i.client, groupTip.id);
-       console.log("Expiry scheduled, message should still have button");
-
-       
-        await i.editReply({ content: "✅ Group tip created!" });
-
-        const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
-        await i.followUp({ content: `🧾 You were charged **${totalLine}**.`, flags: MessageFlags.Ephemeral }).catch(() => {});
-      } else {
-        await i.editReply({ content: "❌ Cannot create group tip in this channel." });
-      }
-      return;
+      tokenButtons.push(
+        new ButtonBuilder()
+          .setCustomId(buttonId)
+          .setLabel(`${token.symbol}`)
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji("🪙")
+      );
     }
 
-    // ------------------------------- DIRECT ------------------------------
-    const target = i.options.getUser("user", true) as User;
-    if (target.bot) {
-      return i.reply({ content: "You can't tip a bot.", flags: MessageFlags.Ephemeral });
+    // Organize buttons into rows
+    const actionRows = [];
+    for (let i = 0; i < tokenButtons.length; i += 5) {
+      const row = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(tokenButtons.slice(i, i + 5));
+      actionRows.push(row);
     }
-    if (target.id === i.user.id) {
-      return i.reply({ content: "You cannot tip yourself.", flags: MessageFlags.Ephemeral });
-    }
 
-    await i.deferReply({ flags: MessageFlags.Ephemeral });
+    // Add cancel button
+    const cancelRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId("pip:cancel_tip")
+          .setLabel("Cancel")
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("❌")
+      );
+    actionRows.push(cancelRow);
 
-const toUser = await prisma.user.upsert({
-  where: { discordId: target.id },
-  update: {},
-  create: { discordId: target.id },
-});
+    await i.reply({
+      embeds: [embed],
+      components: actionRows,
+      flags: MessageFlags.Ephemeral
+    });
 
-    // Try the transfer; return a descriptive line if insufficient
-    console.log(`[TIP] Attempting transfer: ${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} from ${i.user.id} to ${target.id}`);
+  } catch (error: any) {
+    console.error("Enhanced tip command error:", error);
+    const errorMessage = `❌ **Tip command failed**\\n${error?.message || String(error)}`;
     
-    try {
-      await transferToken(i.user.id, target.id, token.id, atomic, "TIP", {
-        guildId: i.guildId ?? undefined,
-        feeAtomic,
-        note,
-      });
-      console.log(`[TIP] Transfer successful`);
-    } catch (err: any) {
-      console.error("[TIP] Transfer failed:", err);
-      const totalLine =
-        `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
-      const msg = /insufficient|fund/i.test(err?.message || "")
-        ? `You don't have enough ${token.symbol} to send **${totalLine}**.`
-        : `Transfer failed: ${err?.message || err}`;
-      return i.editReply({ content: `❌ ${msg}` });
-    }
-
-    await prisma.tip.create({
-      data: {
-        fromUserId: fromUser.id,
-        toUserId: toUser.id,
-        tokenId: token.id,
-        amountAtomic: bigToDecDirect(atomic, token.decimals),
-        feeAtomic: bigToDecDirect(feeAtomic, token.decimals),
-        note,
-      },
-    });
-
-    await prisma.transaction.create({
-      data: {
-        type: "TIP",
-        userId: fromUser.id,
-        otherUserId: toUser.id,
-        tokenId: token.id,
-        amount: bigToDecDirect(atomic, token.decimals),
-        fee: bigToDecDirect(feeAtomic, token.decimals),
-        guildId: i.guildId ?? undefined,
-        metadata: JSON.stringify({ kind: "DIRECT_TIP" }),
-      },
-    });
-
-    const publicLine =
-      `💸 <@${i.user.id}> tipped ${formatAmount(atomic, token)} to <@${target.id}>` +
-      (feeAtomic > 0n ? ` (fee ${formatAmount(feeAtomic, token)} paid by sender)` : "") +
-      (note ? `\n📝 ${note}` : "");
-
-    if (i.channel && i.channel.isTextBased() && "send" in i.channel) {
-      await (i.channel as any).send({
-        content: publicLine,
-        allowedMentions: { users: [i.user.id, target.id] },
-      }).catch(() => {});
-    }
-
-    await i.editReply({ content: "✅ Tip sent." }).catch(() => {});
-  } catch (e: any) {
-    const msg = e?.message || String(e);
     if (i.deferred || i.replied) {
-      await i.editReply({ content: `Tip failed: ${msg}` }).catch(() => {});
+      await i.editReply({ content: errorMessage, embeds: [], components: [] }).catch(() => {});
     } else {
-      await i.reply({ content: `Tip failed: ${msg}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      await i.reply({ content: errorMessage, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   }
 }
