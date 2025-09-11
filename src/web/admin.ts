@@ -16,6 +16,8 @@ import { usersRouter } from "./admin/users.js";
 import { transactionsRouter } from "./admin/transactions.js";
 import { groupTipsRouter } from "./admin/groupTips.js";
 import { systemRouter } from "./admin/system.js";
+import { backupRouter } from "./admin/backup.js";
+import { statsRouter } from "./admin/stats.js";
 
 // Import remaining services and utilities
 import { Prisma } from "@prisma/client";
@@ -86,6 +88,92 @@ adminRouter.get("/ui", (_req, res) => {
       <input id="secret" type="password" placeholder="Paste ADMIN_SECRET"/>
       <button id="saveSecret">Save & Connect</button>
       <span id="authStatus"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>📊 Bot Statistics Dashboard</h2>
+    <div class="row">
+      <button id="loadDashboard">🔄 Refresh Dashboard</button>
+      <button id="exportStats">📊 Export Stats CSV</button>
+      <span id="statsMsg"></span>
+    </div>
+    
+    <!-- KPI Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 16px 0;">
+      <div class="kpi-card" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-servers">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Servers</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-users">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Users</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-tips">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Tips Sent</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-games">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Games Played</p>
+      </div>
+    </div>
+
+    <!-- Highlights Row -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;">
+      <div style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333;">
+        <h4 style="margin: 0 0 12px 0; color: #fff;">🏆 Biggest Tip Ever</h4>
+        <div id="biggest-tip">Loading...</div>
+      </div>
+      <div style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333;">
+        <h4 style="margin: 0 0 12px 0; color: #fff;">⭐ Most Active User</h4>
+        <div id="most-active">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Server Activity Table -->
+    <div style="margin-top: 20px;">
+      <div class="row">
+        <h3 style="margin: 0; color: #fff;">🖥️ Server Activity</h3>
+        <select id="serverSort" style="margin-left: auto;">
+          <option value="activity">Sort by Total Activity</option>
+          <option value="tips">Sort by Tips</option>
+          <option value="games">Sort by Games</option>
+          <option value="volume">Sort by Volume</option>
+          <option value="users">Sort by Active Users</option>
+        </select>
+      </div>
+      <table id="serverStatsTbl" style="margin-top: 12px;">
+        <thead>
+          <tr>
+            <th>Server</th><th>Tips</th><th>Games</th><th>Group Tips</th>
+            <th>Active Users</th><th>Last Activity</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Token Performance Table -->
+    <div style="margin-top: 20px;">
+      <div class="row">
+        <h3 style="margin: 0; color: #fff;">🪙 Token Performance</h3>
+        <select id="tokenSort" style="margin-left: auto;">
+          <option value="volume">Sort by Volume</option>
+          <option value="count">Sort by Tip Count</option>
+          <option value="avg">Sort by Average Size</option>
+          <option value="recent">Sort by Recent Activity</option>
+        </select>
+      </div>
+      <table id="tokenStatsTbl" style="margin-top: 12px;">
+        <thead>
+          <tr>
+            <th>Token</th><th>Total Tipped</th><th>Tip Count</th>
+            <th>Avg Tip Size</th><th>Last Activity</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </section>
 
@@ -202,12 +290,39 @@ adminRouter.get("/ui", (_req, res) => {
 
   <section>
     <h2>👥 User Management</h2>
-    <div class="row">
-      <input id="searchUser" placeholder="Discord ID or wallet address"/>
-      <button id="findUser">Find User</button>
-      <button id="loadTopUsers">Top Users</button>
-      <span id="userMsg"></span>
+    
+    <!-- User Search with Auto-complete -->
+    <div style="margin-bottom: 20px;">
+      <h3 style="margin: 0 0 12px 0; color: #fff;">🔍 Search Users</h3>
+      <div class="row">
+        <div style="position: relative; flex: 1; max-width: 400px;">
+          <input id="searchUser" placeholder="Start typing Discord ID..." style="width: 100%;"/>
+          <div id="searchResults" style="position: absolute; top: 100%; left: 0; right: 0; background: #2a2a2a; border: 1px solid #444; border-top: none; border-radius: 0 0 8px 8px; max-height: 300px; overflow-y: auto; z-index: 1000; display: none;">
+            <!-- Auto-complete results will appear here -->
+          </div>
+        </div>
+        <button id="findUser">Find Specific User</button>
+        <button id="clearSearch">Clear</button>
+        <span id="userMsg"></span>
+      </div>
     </div>
+
+    <!-- Top Users Section -->
+    <div style="margin-bottom: 20px;">
+      <h3 style="margin: 0 0 12px 0; color: #fff;">🏆 Top Users</h3>
+      <div class="row">
+        <button id="loadTopUsers">Load Top 100 Users</button>
+        <select id="topUsersSort" style="margin-left: 12px;">
+          <option value="recent">Sort by Registration Date</option>
+          <option value="tips_sent">Sort by Tips Sent</option>
+          <option value="tips_received">Sort by Tips Received</option>
+          <option value="balance">Sort by Total Balance</option>
+        </select>
+        <span id="topUsersMsg" style="margin-left: 12px;"></span>
+      </div>
+    </div>
+
+    <!-- Users Table -->
     <table id="usersTbl">
       <thead>
         <tr>
@@ -228,12 +343,14 @@ adminRouter.get("/ui", (_req, res) => {
         <option value="DEPOSIT">Deposits</option>
         <option value="WITHDRAW">Withdrawals</option>
         <option value="PURCHASE">Purchases</option>
+        <option value="SYSTEM_BACKUP">System Backups</option>
       </select>
       <input id="txUser" placeholder="Discord ID"/>
       <input id="txSince" type="datetime-local"/>
       <input id="txLimit" type="number" value="50" min="1" max="1000" style="width:80px"/>
       <button id="loadTransactions">Load Transactions</button>
       <button id="exportTransactions">Export CSV</button>
+      <button id="exportGuildData">📊 Export Guild Data</button>
       <span id="txMsg"></span>
     </div>
     <table id="transactionsTbl">
@@ -315,6 +432,28 @@ adminRouter.get("/ui", (_req, res) => {
     <p><small><strong>Tip fees:</strong> Platform commission from tips<br/><strong>Match rake:</strong> Platform take from completed matches</small></p>
   </section>
 
+  <section>
+    <h2>💾 Database Backups</h2>
+    <p>Automated hourly backups and manual backup management</p>
+    <div class="row">
+      <button id="loadBackupStatus">🔄 Refresh Status</button>
+      <button id="createManualBackup">📦 Create Manual Backup</button>
+      <button id="toggleBackupService">⏯️ Toggle Auto-Backup</button>
+      <span id="backupMsg"></span>
+    </div>
+    <div id="backupStatus" style="margin-top:16px; padding:16px; background:#1a1a1a; border-radius:8px; display:none;">
+      <h3>Backup Service Status</h3>
+      <div id="backupStatusData"></div>
+      <h4>Recent Backups</h4>
+      <table id="backupTbl" style="margin-top:8px;">
+        <thead>
+          <tr><th>Filename</th><th>Size (KB)</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <script src="/admin/ui.js" type="module"></script>
 </body>
 </html>`);
@@ -362,6 +501,8 @@ adminRouter.use(usersRouter);
 adminRouter.use(transactionsRouter);
 adminRouter.use(groupTipsRouter);
 adminRouter.use(systemRouter);
+adminRouter.use(backupRouter);
+adminRouter.use(statsRouter);
 
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */

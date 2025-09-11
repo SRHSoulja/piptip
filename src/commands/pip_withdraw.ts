@@ -1,197 +1,168 @@
-// src/commands/pip_withdraw.ts
-import { queueNotice } from "../services/notifier.js";
-import { JsonRpcProvider, Wallet, Contract } from "ethers";
+// src/commands/pip_withdraw.ts - Interactive withdraw interface
+import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../services/db.js";
-import { getTokenByAddress, toAtomicDirect, formatAmount, decToBigDirect } from "../services/token.js";
-import { debitToken } from "../services/balances.js";
-import { getConfig } from "../config.js";
-import { ABSTRACT_RPC_URL, AGW_SESSION_PRIVATE_KEY, TREASURY_AGW_ADDRESS } from "../config.js";
-// at top
-import { MessageFlags, type ChatInputCommandInteraction, type User } from "discord.js";
-
-const ERC20_ABI = [
-  "function balanceOf(address) view returns (uint256)",
-  "function transfer(address to, uint256 value) returns (bool)",
-];
-
-function startOfUTCDay(d = new Date()) {
-  const x = new Date(d);
-  x.setUTCHours(0, 0, 0, 0);
-  return x;
-}
-const isHexAddress = (s: string) => /^0x[a-fA-F0-9]{40}$/.test(s);
+import { formatAmount, decToBigDirect, formatDecimal } from "../services/token.js";
 
 export default async function pipWithdraw(i: ChatInputCommandInteraction) {
   try {
-    const rawTokenAddress = i.options.getString("token", true) || "";
-    if (!rawTokenAddress || typeof rawTokenAddress !== "string") {
-      return i.reply({ content: "Invalid token address.", flags: MessageFlags.Ephemeral });
-    }
-    const tokenAddress = rawTokenAddress.trim().toLowerCase();
-    
-    const amountHuman = i.options.getNumber("amount", true);
-    if (!amountHuman || typeof amountHuman !== "number" || !isFinite(amountHuman) || amountHuman <= 0 || amountHuman > 1e15) {
-      return i.reply({ content: "Amount must be a valid positive number.", flags: MessageFlags.Ephemeral });
-    }
-    
-    const rawOverrideAddr = i.options.getString("address") || "";
-    const overrideAddr = rawOverrideAddr.trim().toLowerCase();
+    // Check if user has account
+    const user = await prisma.user.findUnique({
+      where: { discordId: i.user.id },
+      select: { id: true, agwAddress: true }
+    });
 
-    // Load token
-    const token = await getTokenByAddress(tokenAddress);
-    if (!token || !token.active) {
-      return i.reply({ content: "Invalid or inactive token selected.", flags: MessageFlags.Ephemeral });
-    }
-
-    // Load config (global defaults)
-    const cfg = await getConfig();
-
-    // Per-token overrides take precedence; 0 or null means “no cap”
-    const maxPerTxHuman =
-      token.withdrawMaxPerTx != null
-        ? Number(token.withdrawMaxPerTx)
-        : Number(cfg?.withdrawMaxPerTx ?? 0);
-
-    const dailyCapHuman =
-      token.withdrawDailyCap != null
-        ? Number(token.withdrawDailyCap)
-        : Number(cfg?.withdrawDailyCap ?? 0);
-
-    const maxLine = maxPerTxHuman > 0 ? `max per tx ${maxPerTxHuman} ${token.symbol}` : "no per-tx max";
-    const dailyLine = dailyCapHuman > 0 ? `daily cap ${dailyCapHuman} ${token.symbol}` : "no daily cap";
-    const policyLine =
-      `⚠️ **Withdraw limits:** min ${token.minWithdraw} ${token.symbol} · ${maxLine} · ${dailyLine}`;
-
-    if (!(amountHuman > 0)) {
-      return i.reply({ content: `Amount must be > 0.\n${policyLine}`, flags: MessageFlags.Ephemeral });
-    }
-
-    // Min (per token)
-    if (amountHuman < Number(token.minWithdraw)) {
-      return i.reply({
-        content: `Amount is below the minimum: **${token.minWithdraw} ${token.symbol}**.\n${policyLine}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // Max per tx
-    if (maxPerTxHuman > 0 && amountHuman > maxPerTxHuman) {
-      return i.reply({
-        content: `Amount exceeds the per-transaction max: **${maxPerTxHuman} ${token.symbol}**.\n${policyLine}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // Load user + destination
-    const user = await prisma.user.findUnique({ where: { discordId: i.user.id } });
     if (!user) {
-      return i.reply({ content: `No profile. Run **/pip_register**.\n${policyLine}`, flags: MessageFlags.Ephemeral });
-    }
-
-    const dest = (overrideAddr || user.agwAddress || "").toLowerCase();
-    if (!dest || !isHexAddress(dest)) {
       return i.reply({
-        content: `No valid destination address. Link a wallet with **/pip_link** or pass a valid \`address\`.\n${policyLine}`,
-        flags: MessageFlags.Ephemeral,
+        content: [
+          "❌ **No Account Found**",
+          "",
+          "You need to create an account first.",
+          "",
+          "Use `/pip_register` to get started!"
+        ].join("\n"),
+        flags: MessageFlags.Ephemeral
       });
     }
 
-    // Balance check
-    const ub = await prisma.userBalance.findUnique({
-      where: { userId_tokenId: { userId: user.id, tokenId: token.id } },
+    // Check if user has linked wallet
+    if (!user.agwAddress) {
+      const walletRow = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+          new ButtonBuilder()
+            .setLabel("🌐 Get Abstract Wallet")
+            .setStyle(ButtonStyle.Link)
+            .setURL("https://abs.xyz"),
+          new ButtonBuilder()
+            .setCustomId("pip:prompt_link_wallet")
+            .setLabel("🔗 Link My Wallet")
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId("pip:show_help")
+            .setLabel("📚 Get Help")
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+      return i.reply({
+        content: [
+          "❌ **Wallet Not Linked**",
+          "",
+          "You need to link your wallet before withdrawing.",
+          "Your tokens are safe in your account, but you need a wallet to withdraw them.",
+          "",
+          "**Don't have an Abstract wallet?**",
+          "Click the button below to get one free!",
+          "",
+          "**Already have a wallet?**",
+          "Use the Link Wallet button for instructions.",
+          "",
+          "💡 *Once linked, you can withdraw your tokens!*"
+        ].join("\n"),
+        components: [walletRow],
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    // Get user's token holdings
+    const holdings = await prisma.userBalance.findMany({
+      where: { 
+        userId: user.id,
+        amount: { gt: 0 } // Only show tokens with positive balance
+      },
+      include: { Token: true },
+      orderBy: { amount: 'desc' }
     });
-    const amtAtomic = toAtomicDirect(amountHuman, token.decimals);
-    const userBalAtomic = ub ? decToBigDirect(ub.amount, token.decimals) : 0n;
 
-    if (userBalAtomic < amtAtomic) {
+    if (holdings.length === 0) {
       return i.reply({
-        content: `Insufficient balance. You have ${formatAmount(userBalAtomic, token)}.\n${policyLine}`,
-        flags: MessageFlags.Ephemeral,
+        content: [
+          "💰 **No Holdings to Withdraw**",
+          "",
+          "You don't have any tokens in your account to withdraw.",
+          "",
+          "**To get tokens:**",
+          "• Use `/pip_deposit` to add funds",
+          "• Receive tips from other users",
+          "• Win games with `/pip_game`",
+          "",
+          "💡 *Once you have tokens, they'll appear here for withdrawal!*"
+        ].join("\n"),
+        flags: MessageFlags.Ephemeral
       });
     }
 
-    // Daily cap (sum WITHDRAW amounts since UTC midnight)
-    if (dailyCapHuman > 0) {
-      const since = startOfUTCDay();
-      const agg = await prisma.transaction.aggregate({
-        where: {
-          type: "WITHDRAW",
-          userId: user.id,
-          tokenId: token.id,
-          createdAt: { gte: since },
-        },
-        _sum: { amount: true },
-      });
-      const alreadyToday = parseFloat(String(agg._sum.amount ?? "0"));
-      if (alreadyToday + amountHuman > dailyCapHuman) {
-        const remaining = Math.max(0, dailyCapHuman - alreadyToday);
-        return i.reply({
-          content: `This would exceed your daily cap. Remaining today: **${remaining} ${token.symbol}**.\n${policyLine}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+    // Create holdings display embed
+    const embed = new EmbedBuilder()
+      .setTitle("💸 Withdraw Your Tokens")
+      .setDescription([
+        `**Your Linked Wallet:** \`${user.agwAddress}\``,
+        "",
+        "**Your Holdings:**",
+        holdings.map(holding => {
+          const balance = formatDecimal(holding.amount, holding.Token.symbol);
+          return `• **${balance}** ${holding.Token.symbol}`;
+        }).join("\n"),
+        "",
+        "🪙 **Select a token below to withdraw:**"
+      ].join("\n"))
+      .setColor(0x00FF00)
+      .setFooter({ text: "Click a token to continue with withdrawal" })
+      .setTimestamp();
+
+    // Create token selection buttons
+    const tokenButtons: ButtonBuilder[] = [];
+    const maxButtons = Math.min(holdings.length, 15); // Discord limit
+
+    for (let i = 0; i < maxButtons; i++) {
+      const holding = holdings[i];
+      const balance = formatDecimal(holding.amount, holding.Token.symbol);
+      
+      tokenButtons.push(
+        new ButtonBuilder()
+          .setCustomId(`pip:withdraw_token:${holding.Token.id}`)
+          .setLabel(`${holding.Token.symbol} (${balance})`)
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji("💰")
+      );
     }
 
-    // Ack + proceed
+    // Organize buttons into rows (max 5 per row)
+    const actionRows = [];
+    for (let i = 0; i < tokenButtons.length; i += 5) {
+      const row = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(tokenButtons.slice(i, i + 5));
+      actionRows.push(row);
+    }
+
+    // Add action buttons
+    const actionRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId("pip:view_profile")
+          .setLabel("👤 View Profile")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("pip:show_help")
+          .setLabel("📚 Get Help")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("pip:cancel_withdraw")
+          .setLabel("❌ Cancel")
+          .setStyle(ButtonStyle.Secondary)
+      );
+    actionRows.push(actionRow);
+
     await i.reply({
-      content: `⏳ Submitting withdraw of ${formatAmount(amtAtomic, token)} to \`${dest}\`.\n${policyLine}`,
-      flags: MessageFlags.Ephemeral,
+      embeds: [embed],
+      components: actionRows,
+      flags: MessageFlags.Ephemeral
     });
 
-    // RPC signer
-    const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
-    const signer = new Wallet(AGW_SESSION_PRIVATE_KEY, provider);
-    const signerAddr = (await signer.getAddress()).toLowerCase();
-
-    if (signerAddr !== TREASURY_AGW_ADDRESS.toLowerCase()) {
-      return i.followUp({
-        content: `⚠️ Signer \`${signerAddr}\` != Treasury \`${TREASURY_AGW_ADDRESS}\`. Update \`AGW_SESSION_PRIVATE_KEY\`.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    // Treasury balance check + send
-    const tokenContract = new Contract(token.address, ERC20_ABI, signer);
-    const treasBal: bigint = await tokenContract.balanceOf(signerAddr);
-    if (treasBal < amtAtomic) {
-      return i.followUp({
-        content: `Treasury has insufficient ${token.symbol} for this withdraw. Treasury balance: ${formatAmount(treasBal, token)}.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    try {
-      const tx = await tokenContract.transfer(dest, amtAtomic);
-      await tx.wait();
-
-      await debitToken(i.user.id, token.id, amtAtomic, "WITHDRAW", {
-        guildId: i.guildId,
-        txHash: tx.hash,
-      });
-
-      await queueNotice(user.id, "withdraw_success", {
-  token: token.symbol,
-  amount: formatAmount(amtAtomic, token), // human-readable amount
-  tx: tx.hash,
-});
-
-
-      return i.followUp({
-        content: `✅ Withdraw sent: ${formatAmount(amtAtomic, token)} → \`${dest}\`\nTx: \`${tx.hash}\`\n${policyLine}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    } catch (e: any) {
-      await queueNotice(user.id, "withdraw_error", {
-  reason: e?.reason || e?.message || String(e),
-});
-      return i.followUp({
-        content: `❌ Withdraw failed: ${e?.reason || e?.message || String(e)}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-  } catch (e: any) {
-    return i
-      .reply({ content: `Withdraw errored: ${e?.message || String(e)}`, flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+  } catch (error: any) {
+    console.error("Withdraw command error:", error);
+    await i.reply({
+      content: `❌ **Error loading withdraw interface**\n${error?.message || String(error)}`,
+      flags: MessageFlags.Ephemeral
+    }).catch(() => {});
   }
 }

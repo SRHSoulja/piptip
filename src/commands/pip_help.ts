@@ -12,9 +12,10 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
         name: "🚀 Getting Started",
         value: 
           "1️⃣ **Create Profile**: `/pip_register` - Create your PIPTip account\n" +
-          "2️⃣ **Link Wallet**: `/pip_link address:0x...` - Connect your wallet for deposits\n" +
-          "3️⃣ **Add Funds**: `/pip_deposit token:PENGUIN` - Get deposit instructions\n" +
-          "4️⃣ **Start Tipping**: `/pip_tip amount:10 user:@friend` - Send your first tip!",
+          "2️⃣ **Get Wallet**: Visit **abs.xyz** to create a free Abstract wallet\n" +
+          "3️⃣ **Link Wallet**: `/pip_link address:0x...` - Connect your wallet for deposits\n" +
+          "4️⃣ **Add Funds**: `/pip_deposit token:PENGUIN` - Get deposit instructions\n" +
+          "5️⃣ **Start Playing**: `/pip_tip amount:10 user:@friend` - Send tips or `/pip_game` to challenge friends!",
         inline: false
       },
       {
@@ -27,11 +28,11 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
         inline: false
       },
       {
-        name: "🎮 Gaming & Fun",
+        name: "🎮 Gaming & Features",
         value:
-          "**Start Match**: `/pip_start token:PENGUIN amount:5` - Challenge others to Penguin Ice Pebble\n" +
+          "**Challenge Players**: `/pip_game token:PENGUIN amount:5` - Start a Penguin Ice Pebble match\n" +
           "**View Profile**: `/pip_profile` - See your balance, stats, and recent activity\n" +
-          "**Withdraw**: `/pip_withdraw token:PENGUIN amount:10` - Send tokens to your wallet",
+          "**Withdraw Funds**: `/pip_withdraw token:PENGUIN amount:10` - Send tokens to your wallet",
         inline: false
       },
       {
@@ -46,13 +47,17 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
       {
         name: "🛠️ Quick Reference",
         value:
-          "**Essential Commands**:\n" +
-          "`/pip_register` - Create account\n" +
-          "`/pip_profile` - View your stats\n" +
-          "`/pip_tip` - Send tips (direct or group)\n" +
-          "`/pip_deposit` - Add funds\n" +
-          "`/pip_withdraw` - Get your tokens\n" +
-          "`/pip_help` - Show this help",
+          "**Account Management**:\n" +
+          "`/pip_register` - Create your PIPTip profile\n" +
+          "`/pip_link` - Link your Abstract wallet\n" +
+          "`/pip_profile` - View balance and stats\n\n" +
+          "**Money & Tokens**:\n" +
+          "`/pip_deposit` - Add funds to your account\n" +
+          "`/pip_withdraw` - Send tokens to your wallet\n" +
+          "`/pip_tip` - Send tips (direct or group)\n\n" +
+          "**Gaming & Help**:\n" +
+          "`/pip_game` - Challenge others to play\n" +
+          "`/pip_help` - Show this guide",
         inline: false
       }
     )
