@@ -3,24 +3,16 @@ import { SlashCommandBuilder } from "discord.js";
 
 export function getCommandsJson() {
   const defs = [
-    new SlashCommandBuilder().setName("pip_register").setDescription("Create your PiPTip profile"),
-    new SlashCommandBuilder().setName("pip_profile").setDescription("Show your profile and balance"),
+    new SlashCommandBuilder().setName("pip_register").setDescription("🎯 Create your PiPTip account and profile"),
+    new SlashCommandBuilder().setName("pip_profile").setDescription("👤 View your balance, stats, and account details"),
     
     new SlashCommandBuilder()
       .setName("pip_withdraw")
-      .setDescription("Withdraw tokens to your linked wallet")
-      .addStringOption(o => 
-        o.setName("token")
-          .setDescription("Select token to withdraw")
-          .setRequired(true)
-          .setAutocomplete(true)
-      )
-      .addNumberOption(o => o.setName("amount").setDescription("Amount to withdraw").setRequired(true))
-      .addStringOption(o => o.setName("address").setDescription("Override destination (0x...)")),
+      .setDescription("💸 Interactive withdrawal - view your holdings and withdraw to your wallet"),
     
     new SlashCommandBuilder()
       .setName("pip_deposit")
-      .setDescription("Get deposit instructions")
+      .setDescription("💰 Get instructions to add funds to your account")
       .addStringOption(o => 
         o.setName("token")
           .setDescription("Select token to deposit")
@@ -29,8 +21,8 @@ export function getCommandsJson() {
       ),
     
     new SlashCommandBuilder()
-      .setName("pip_start")
-      .setDescription("Start a Penguin Ice Pebble match")
+      .setName("pip_game")
+      .setDescription("🎮 Challenge others to Penguin Ice Pebble - a rock-paper-scissors style game!")
       .addStringOption(o => 
         o.setName("token")
           .setDescription("Select token to wager")
@@ -41,7 +33,7 @@ export function getCommandsJson() {
     
     new SlashCommandBuilder()
       .setName("pip_link")
-      .setDescription("Link your wallet for deposits")
+      .setDescription("🔗 Connect your Abstract wallet for deposits and withdrawals")
       .addStringOption(o => o.setName("address").setDescription("Your wallet address (0x...)").setRequired(true)),
     
     new SlashCommandBuilder()
@@ -54,6 +46,10 @@ export function getCommandsJson() {
     new SlashCommandBuilder()
       .setName("pip_help")
       .setDescription("📚 Learn how to use PIPTip bot - commands, tips, and getting started!"),
+    
+    new SlashCommandBuilder()
+      .setName("pip_stats")
+      .setDescription("📊 View your comprehensive statistics and export transaction history"),
   ];
   return defs.map(d => d.toJSON());
 }

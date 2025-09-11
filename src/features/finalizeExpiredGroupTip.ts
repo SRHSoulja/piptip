@@ -35,7 +35,7 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
   const totalAtomic = decToBigDirect(tip.totalAmount, tip.Token.decimals);
 
   if (tip.claims.length === 0) {
-    // Refund creator
+    // Refund creator (using current schema - just principal for now)
     await creditToken(tip.Creator.discordId, tip.Token.id, totalAtomic, "TIP", {
       guildId: tip.guildId ?? undefined,
     });

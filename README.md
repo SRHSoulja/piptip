@@ -15,7 +15,7 @@ Discord tipping bot for the **Abstract Chain** — built for sending **Penguin**
 ---
 
 ## ✨ Features (current)
-- Slash commands for onboarding and tipping (`/pip_start`, `/pip_register`, `/pip_tip`, etc.)
+- Slash commands for onboarding and tipping (`/pip_register`, `/pip_tip`, `/pip_game`, etc.)
 - Wallet linking + on-chain deposit/withdraw flow (`/pip_link`, `/pip_deposit`, `/pip_withdraw`)
 - Profile view (`/pip_profile`)
 - Group tip helpers & expiry logic (internal)
@@ -27,13 +27,14 @@ Discord tipping bot for the **Abstract Chain** — built for sending **Penguin**
 ## 🛠️ Commands
 | Command | What it does |
 |---|---|
-| `/pip_start` | Initialize your PIPTip profile |
-| `/pip_register` | Register your account |
-| `/pip_link` | Link your Abstract wallet |
-| `/pip_deposit` | Deposit tokens into your bot balance |
-| `/pip_withdraw` | Withdraw tokens back to your wallet |
-| `/pip_tip` | Tip a user (supports group tip helpers internally) |
-| `/pip_profile` | View your balances/profile |
+| `/pip_register` | 🎯 Create your PIPTip account and profile |
+| `/pip_link` | 🔗 Connect your Abstract wallet for deposits and withdrawals |
+| `/pip_deposit` | 💰 Get instructions to add funds to your account |
+| `/pip_withdraw` | 💸 Send your tokens to your linked wallet |
+| `/pip_tip` | 💸 Send tips (direct to user or group tip for everyone) |
+| `/pip_game` | 🎮 Challenge others to Penguin Ice Pebble - rock-paper-scissors style! |
+| `/pip_profile` | 👤 View your balance, stats, and account details |
+| `/pip_help` | 📚 Complete guide on how to use PIPTip bot |
 
 ---
 

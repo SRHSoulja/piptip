@@ -120,7 +120,7 @@ model Match {
   wagerAtomic    Decimal   @default(0)
   potAtomic      Decimal   @default(0)
   tokenId        Int
-  challengerId   Int
+  challengerId   Int?
   joinerId       Int?
   challengerMove String?
   joinerMove     String?
@@ -132,7 +132,7 @@ model Match {
   offerDeadline  DateTime?
   createdAt      DateTime  @default(now())
 
-  Challenger User  @relation("Challenger", fields: [challengerId], references: [id])
+  Challenger User? @relation("Challenger", fields: [challengerId], references: [id])
   Joiner     User? @relation("Joiner", fields: [joinerId], references: [id])
   Token      Token @relation(fields: [tokenId], references: [id])
 
@@ -140,37 +140,57 @@ model Match {
   @@index([createdAt])
 }
 
-model Tip {
-  id           Int      @id @default(autoincrement())
-  fromUserId   Int
-  toUserId     Int
-  tokenId      Int
-  amountAtomic Decimal  @default(0)
-  feeAtomic    Decimal  @default(0)
-  note         String?
-  createdAt    DateTime @default(now())
+enum TipStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+}
 
-  From  User  @relation("TipFrom", fields: [fromUserId], references: [id])
-  To    User  @relation("TipTo", fields: [toUserId], references: [id])
+model Tip {
+  id           Int       @id @default(autoincrement())
+  fromUserId   Int?
+  toUserId     Int?
+  tokenId      Int
+  amountAtomic Decimal   @default(0)
+  feeAtomic    Decimal   @default(0)
+  taxAtomic    Decimal   @default(0) // exact tax amount debited at creation
+  note         String?
+  status       TipStatus @default(PENDING)
+  refundedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  From  User?  @relation("TipFrom", fields: [fromUserId], references: [id])
+  To    User?  @relation("TipTo", fields: [toUserId], references: [id])
   Token Token @relation(fields: [tokenId], references: [id])
 
   @@index([createdAt])
+  @@index([status])
+}
+
+enum GroupTipStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  REFUNDED
+  FAILED
 }
 
 model GroupTip {
   id          Int      @id @default(autoincrement())
-  creatorId   Int
+  creatorId   Int?
   tokenId     Int
   totalAmount Decimal
+  taxAtomic   Decimal  @default(0) // exact tax amount debited at creation
   duration    Int
   messageId   String?
   channelId   String?
   guildId     String?
-  status      String
+  status      String   // Keep as String for backward compatibility
   expiresAt   DateTime
+  refundedAt  DateTime?
   createdAt   DateTime @default(now())
 
-  Creator User            @relation("GroupTipCreator", fields: [creatorId], references: [id])
+  Creator User?           @relation("GroupTipCreator", fields: [creatorId], references: [id])
   Token   Token           @relation(fields: [tokenId], references: [id])
   claims  GroupTipClaim[]
 
@@ -178,16 +198,25 @@ model GroupTip {
   @@index([createdAt])
 }
 
+enum GroupContributionStatus {
+  PENDING
+  CLAIMED
+  REFUNDED
+}
+
 model GroupTipClaim {
-  id         Int      @id @default(autoincrement())
+  id         Int                      @id @default(autoincrement())
   groupTipId Int
-  userId     Int
-  claimedAt  DateTime @default(now())
+  userId     Int?
+  status     GroupContributionStatus  @default(PENDING)
+  claimedAt  DateTime?
+  refundedAt DateTime?
+  createdAt  DateTime                 @default(now())
 
   GroupTip GroupTip @relation(fields: [groupTipId], references: [id])
-  User     User     @relation("GroupTipClaims", fields: [userId], references: [id])
+  User     User?    @relation("GroupTipClaims", fields: [userId], references: [id])
 
-  @@unique([groupTipId, userId])
+  @@index([status])
 }
 
 model Token {

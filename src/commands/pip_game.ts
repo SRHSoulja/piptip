@@ -37,8 +37,8 @@ export default async function pipStart(i: ChatInputCommandInteraction) {
 const match = await prisma.match.create({
   data: {
     status: "DRAFT",
-    wagerAtomic: bigToDecDirect(atomic, token.decimals),
-    potAtomic: bigToDecDirect(2n * atomic, token.decimals),
+    wagerAtomic: atomic.toString(), // Store atomic units, not converted amounts
+    potAtomic: (2n * atomic).toString(), // Store atomic units, not converted amounts
     tokenId: token.id,          // scalar FK
     challengerId,               // scalar FK (from debitToken)
   } as Prisma.MatchUncheckedCreateInput, // <-- key line
