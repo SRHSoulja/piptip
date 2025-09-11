@@ -621,6 +621,198 @@ async function loadTopUsers() {
   }
 }
 
+async function addTokenToUser(discordId, buttonElement) {
+  // Create inline add form
+  const container = buttonElement.closest('.add-token-container');
+  
+  // Get all active tokens for dropdown
+  const tokensResponse = await API("/admin/tokens");
+  const tokensData = await tokensResponse.json();
+  const activeTokens = tokensData.tokens ? tokensData.tokens.filter(t => t.active) : [];
+  
+  if (activeTokens.length === 0) {
+    alert('No active tokens available to add');
+    return;
+  }
+  
+  // Create add form
+  const addForm = document.createElement('div');
+  addForm.style.cssText = 'display:block; background:#2a2a2a; padding:12px; border-radius:6px; border:1px solid #444; margin-top:8px;';
+  addForm.innerHTML = `
+    <div style="margin-bottom:8px; font-weight:bold; color:#e5e5e5;">Add Token to User</div>
+    <select class="token-select" style="padding:6px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px; width:120px;">
+      <option value="">Select Token...</option>
+      ${activeTokens.map(token => `<option value="${token.id}">${token.symbol}</option>`).join('')}
+    </select>
+    <input class="amount-input" type="number" step="0.01" max="999999999.99" value="0" 
+           style="width:120px; padding:6px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;" placeholder="Amount"/>
+    <input class="reason-input" type="text" placeholder="Reason (optional)" 
+           style="width:150px; padding:6px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;"/>
+    <br style="margin-bottom:8px;"/>
+    <button class="save-token" style="background:#059669; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; margin-right:6px;">💾 Add Token</button>
+    <button class="cancel-token" style="background:#6b7280; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">❌ Cancel</button>
+  `;
+  
+  // Hide add button and show form
+  buttonElement.style.display = 'none';
+  container.appendChild(addForm);
+  
+  // Focus on token selector
+  addForm.querySelector('.token-select').focus();
+  
+  // Add event handlers
+  addForm.querySelector('.cancel-token').onclick = () => {
+    buttonElement.style.display = 'inline-block';
+    addForm.remove();
+  };
+  
+  addForm.querySelector('.save-token').onclick = async () => {
+    const tokenId = parseInt(addForm.querySelector('.token-select').value);
+    const amount = parseFloat(addForm.querySelector('.amount-input').value);
+    const reason = addForm.querySelector('.reason-input').value.trim();
+    
+    if (!tokenId) {
+      alert('Please select a token');
+      return;
+    }
+    
+    if (isNaN(amount) || amount < 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    
+    // Enforce 2 decimal places limit for user-friendliness
+    const decimalPlaces = (amount.toString().split('.')[1] || '').length;
+    if (decimalPlaces > 2) {
+      alert('Please limit your amount to 2 decimal places (e.g., 10.50).');
+      return;
+    }
+    
+    try {
+      const saveBtn = addForm.querySelector('.save-token');
+      saveBtn.disabled = true;
+      saveBtn.textContent = '⏳ Adding...';
+      
+      const response = await API('/admin/users/adjust-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discordId,
+          tokenId,
+          amount,
+          reason: reason || `Admin granted token via web interface`
+        })
+      });
+      
+      const result = await response.json();
+      if (result.ok) {
+        // Success - refresh the users table
+        await loadTopUsers();
+        showMessage("userMsg", `✅ Token added successfully`, false);
+      } else {
+        throw new Error(result.error || 'Failed to add token');
+      }
+    } catch (error) {
+      console.error('Add token failed:', error);
+      alert(`Failed to add token: ${error.message}`);
+      // Restore form
+      addForm.querySelector('.save-token').disabled = false;
+      addForm.querySelector('.save-token').textContent = '💾 Add Token';
+    }
+  };
+}
+
+async function editBalance(discordId, tokenSymbol, currentAmount, buttonElement) {
+  // Create inline edit form
+  const balanceItem = buttonElement.closest('.balance-item');
+  const displaySpan = balanceItem.querySelector('.balance-display');
+  
+  // Get all active tokens for dropdown
+  const tokensResponse = await API("/admin/tokens");
+  const tokensData = await tokensResponse.json();
+  const activeTokens = tokensData.tokens || [];
+  
+  // Create edit form
+  const editForm = document.createElement('div');
+  editForm.style.cssText = 'display:inline-block; background:#2a2a2a; padding:8px; border-radius:6px; border:1px solid #444;';
+  editForm.innerHTML = `
+    <select class="token-select" style="padding:4px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;">
+      ${activeTokens.map(token => `<option value="${token.id}" ${token.symbol === tokenSymbol ? 'selected' : ''}>${token.symbol}</option>`).join('')}
+    </select>
+    <input class="amount-input" type="number" step="0.01" max="999999999.99" value="${currentAmount}" 
+           style="width:120px; padding:4px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;" placeholder="Amount"/>
+    <input class="reason-input" type="text" placeholder="Reason (optional)" 
+           style="width:150px; padding:4px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;"/>
+    <button class="save-balance" style="background:#059669; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-right:4px;">💾 Save</button>
+    <button class="cancel-balance" style="background:#6b7280; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">❌ Cancel</button>
+  `;
+  
+  // Hide display and show edit form
+  displaySpan.style.display = 'none';
+  buttonElement.style.display = 'none';
+  balanceItem.appendChild(editForm);
+  
+  // Focus on amount input
+  editForm.querySelector('.amount-input').focus();
+  
+  // Add event handlers
+  editForm.querySelector('.cancel-balance').onclick = () => {
+    displaySpan.style.display = 'inline';
+    buttonElement.style.display = 'inline';
+    editForm.remove();
+  };
+  
+  editForm.querySelector('.save-balance').onclick = async () => {
+    const tokenId = parseInt(editForm.querySelector('.token-select').value);
+    const amount = parseFloat(editForm.querySelector('.amount-input').value);
+    const reason = editForm.querySelector('.reason-input').value.trim();
+    
+    if (isNaN(amount) || amount < 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    
+    // Enforce 2 decimal places limit for user-friendliness
+    const decimalPlaces = (amount.toString().split('.')[1] || '').length;
+    if (decimalPlaces > 2) {
+      alert('Please limit your amount to 2 decimal places (e.g., 10.50).');
+      return;
+    }
+    
+    try {
+      const saveBtn = editForm.querySelector('.save-balance');
+      saveBtn.disabled = true;
+      saveBtn.textContent = '⏳ Saving...';
+      
+      const response = await API('/admin/users/adjust-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discordId,
+          tokenId,
+          amount,
+          reason: reason || `Admin balance adjustment via web interface`
+        })
+      });
+      
+      const result = await response.json();
+      if (result.ok) {
+        // Success - refresh the users table
+        await loadTopUsers();
+        showMessage("userMsg", `✅ Balance updated successfully`, false);
+      } else {
+        throw new Error(result.error || 'Failed to update balance');
+      }
+    } catch (error) {
+      console.error('Balance update failed:', error);
+      alert(`Failed to update balance: ${error.message}`);
+      // Restore form
+      editForm.querySelector('.save-balance').disabled = false;
+      editForm.querySelector('.save-balance').textContent = '💾 Save';
+    }
+  };
+}
+
 function displayUsers(users) {
   console.log("🎨 displayUsers called with:", users);
   const tbody = $("usersTbl").querySelector("tbody");
@@ -642,7 +834,29 @@ function displayUsers(users) {
     console.log(`👤 Processing user ${index + 1}:`, user);
     const tr = document.createElement("tr");
     
-    const balances = user.balances?.map(b => `${formatNumber(b.amount)} ${b.tokenSymbol}`).join(", ") || "None";
+    let balancesHtml = "";
+    if (user.balances && user.balances.length > 0) {
+      balancesHtml = user.balances.map(b => `
+        <div class="balance-item" style="margin-bottom:4px;">
+          <span class="balance-display">${formatNumber(b.amount)} ${b.tokenSymbol}</span>
+          <button class="edit-balance-btn" data-discord-id="${user.discordId}" data-token-symbol="${b.tokenSymbol}" data-current-amount="${b.amount}" 
+                  style="background:#f59e0b; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; margin-left:8px; font-size:11px;">✏️</button>
+        </div>
+      `).join("");
+    } else {
+      balancesHtml = "<span style='color:#9ca3af;'>None</span>";
+    }
+    
+    // Add "Add Token" button for all users
+    balancesHtml += `
+      <div class="add-token-container" style="margin-top:8px; padding-top:8px; border-top:1px solid #374151;">
+        <button class="add-token-btn" data-discord-id="${user.discordId}" 
+                style="background:#059669; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">
+          ➕ Add Token
+        </button>
+      </div>
+    `;
+    
     const memberships = user.membershipDetails?.map(m => `${m.tierName} (${m.status})`).join(", ") || "None";
     
     tr.innerHTML = `
@@ -654,7 +868,7 @@ function displayUsers(users) {
       <td>${formatNumber(user.totalTipsSent || 0)}</td>
       <td>${formatNumber(user.totalTipsReceived || 0)}</td>
       <td>${memberships}</td>
-      <td>${balances}</td>
+      <td>${balancesHtml}</td>
       <td>
         <button class="exportUser" data-discord-id="${user.discordId}" style="background:#2563eb; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-right:4px;">📊 Export CSV</button><br/>
         <button class="deleteUser" data-discord-id="${user.discordId}" style="background:#f59e0b; color:white; border:none; padding:3px 6px; border-radius:4px; cursor:pointer; margin-right:4px; margin-top:4px;">Delete (Anonymize)</button>
@@ -667,6 +881,16 @@ function displayUsers(users) {
   // Add export functionality
   tbody.querySelectorAll(".exportUser").forEach(btn => {
     btn.onclick = () => exportUserData(btn.dataset.discordId);
+  });
+  
+  // Add balance editing functionality
+  tbody.querySelectorAll(".edit-balance-btn").forEach(btn => {
+    btn.onclick = () => editBalance(btn.dataset.discordId, btn.dataset.tokenSymbol, btn.dataset.currentAmount, btn);
+  });
+  
+  // Add token functionality
+  tbody.querySelectorAll(".add-token-btn").forEach(btn => {
+    btn.onclick = () => addTokenToUser(btn.dataset.discordId, btn);
   });
   
   // Add delete functionality
@@ -688,11 +912,11 @@ async function deleteUser(discordId, hardDelete = false) {
   
   if (hardDelete) {
     deleteType = "HARD DELETE";
-    confirmMessage = `🚨 HARD DELETE USER: ${username}\\n\\nDiscord ID: ${discordId}\\n\\nThis will PERMANENTLY REMOVE:\\n• User account and profile\\n• All token balances\\n• ALL transaction history\\n• Tier memberships\\n• All tips sent/received (others' tip counts will decrease!)\\n• Group tip participation\\n• Match history\\n\\n⚠️ THIS AFFECTS OTHER USERS' STATISTICS!\\n⚠️ THIS ACTION CANNOT BE UNDONE!\\n\\nOnly use for cleaning up test data!`;
+    confirmMessage = `🚨 HARD DELETE USER: ${username}\n\nDiscord ID: ${discordId}\n\nThis will PERMANENTLY REMOVE:\n• User account and profile\n• All token balances\n• ALL transaction history\n• Tier memberships\n• All tips sent/received (others' tip counts will decrease!)\n• Group tip participation\n• Match history\n\n⚠️ THIS AFFECTS OTHER USERS' STATISTICS!\n⚠️ THIS ACTION CANNOT BE UNDONE!\n\nOnly use for cleaning up test data!`;
     promptMessage = `To permanently HARD DELETE user "${username}" and remove all transaction history, type HARD DELETE in ALL CAPS:`;
   } else {
     deleteType = "SOFT DELETE";
-    confirmMessage = `⚠️ DELETE USER: ${username}\\n\\nDiscord ID: ${discordId}\\n\\nThis will:\\n• Delete user account and profile\\n• Delete token balances\\n• Anonymize transaction history (preserves others' statistics)\\n• Delete tier memberships\\n• Anonymize tips (preserves tip counts for other users)\\n• Anonymize group tip and match participation\\n\\n✅ Other users' statistics remain intact\\n\\nThis action CANNOT be undone!`;
+    confirmMessage = `⚠️ DELETE USER: ${username}\n\nDiscord ID: ${discordId}\n\nThis will:\n• Delete user account and profile\n• Delete token balances\n• Anonymize transaction history (preserves others' statistics)\n• Delete tier memberships\n• Anonymize tips (preserves tip counts for other users)\n• Anonymize group tip and match participation\n\n✅ Other users' statistics remain intact\n\nThis action CANNOT be undone!`;
     promptMessage = `To delete user "${username}" and anonymize their data, type DELETE in ALL CAPS:`;
   }
   
@@ -955,6 +1179,7 @@ $("userSearchInput").onkeydown = (e) => {
 $("searchUserBtn").onclick = searchUsers;
 $("findUser").onclick = findUser;
 $("loadTopUsers").onclick = loadTopUsers;
+$("refreshUsers").onclick = loadTopUsers;
 $("clearSearch").onclick = () => {
   $("searchUser").value = "";
   const tbody = $("usersTbl").querySelector("tbody");

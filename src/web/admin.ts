@@ -312,6 +312,7 @@ adminRouter.get("/ui", (_req, res) => {
       <h3 style="margin: 0 0 12px 0; color: #fff;">🏆 Top Users</h3>
       <div class="row">
         <button id="loadTopUsers">Load Top 100 Users</button>
+        <button id="refreshUsers" style="background:#059669;">🔄 Refresh Users</button>
         <select id="topUsersSort" style="margin-left: 12px;">
           <option value="recent">Sort by Registration Date</option>
           <option value="tips_sent">Sort by Tips Sent</option>

@@ -98,20 +98,25 @@ export function bigToDecDirect(atomic: bigint, decimals: number): string {
   return formatUnits(atomic, decimals);
 }
 
-/** Format atomic amount with symbol */
+/** Format atomic amount with symbol (limited to 2 decimal places for user display) */
 export function formatAmount(atomic: bigint, token: TokenRow): string {
   const human = fromAtomicDirect(atomic, token.decimals);
-  const [int, frac = ""] = human.split(".");
-  const fracTrim = frac.replace(/0+$/, "");
-  return `${fracTrim ? `${int}.${fracTrim}` : int} ${token.symbol}`;
+  const num = Number(human);
+  
+  // Format to 2 decimal places and remove trailing zeros
+  let formatted = num.toFixed(2).replace(/\.?0+$/, "");
+  
+  return `${formatted} ${token.symbol}`;
 }
 
-/** Format decimal amount with symbol */
+/** Format decimal amount with symbol (limited to 2 decimal places for user display) */
 export function formatDecimal(dec: any, symbol: string): string {
-  const s = String(dec ?? "0");
-  const [int, frac = ""] = s.split(".");
-  const fracTrim = frac.replace(/0+$/, "");
-  return `${fracTrim ? `${int}.${fracTrim}` : int} ${symbol}`;
+  const num = Number(dec ?? 0);
+  
+  // Format to 2 decimal places and remove trailing zeros
+  let formatted = num.toFixed(2).replace(/\.?0+$/, "");
+  
+  return `${formatted} ${symbol}`;
 }
 
 /** Get default token (for legacy compatibility) */
