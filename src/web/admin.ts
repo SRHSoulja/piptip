@@ -465,11 +465,21 @@ adminRouter.get("/ui", (_req, res) => {
 /* ------------------------------------------------------------------------ */
 adminRouter.get("/ui.js", async (_req, res) => {
   try {
-    const jsPath = join(__dirname, "admin", "ui.js");
+    // Always look in src directory for ui.js since it's not compiled
+    const srcDir = process.cwd();
+    const jsPath = join(srcDir, "src", "web", "admin", "ui.js");
+    console.log("🔍 Trying to read ui.js from:", jsPath);
+    console.log("📁 Working directory:", srcDir);
     const jsContent = await readFile(jsPath, 'utf-8');
+    console.log("✅ Successfully read ui.js, size:", jsContent.length, "bytes");
     res.type("application/javascript").send(jsContent);
   } catch (error) {
-    console.error("Failed to serve admin UI JavaScript:", error);
+    console.error("❌ Failed to serve admin UI JavaScript:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      code: error && typeof error === 'object' && 'code' in error ? error.code : 'unknown',
+      path: error && typeof error === 'object' && 'path' in error ? error.path : 'unknown'
+    });
     res.status(500).send("// Failed to load admin JavaScript");
   }
 });
