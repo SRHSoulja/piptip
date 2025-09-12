@@ -72,7 +72,7 @@ backupRouter.get("/backup/download/:filename", async (req: Request, res: Respons
     const backupDir = process.env.BACKUP_DIR || "./backups";
     const filepath = `${backupDir}/${filename}`;
     
-    res.download(filepath, filename, (err) => {
+    res.download(filepath, filename, (err: any) => {
       if (err) {
         console.error("Download error:", err);
         if (!res.headersSent) {

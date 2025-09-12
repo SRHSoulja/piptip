@@ -1556,7 +1556,7 @@ adminRouter.put("/tiers/:id", async (req: Request, res: Response) => {
 /* ------------------------------------------------------------------------ */
 
 // Authentication
-adminRouter.use((req, res, next) => {
+adminRouter.use((req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization?.trim();
   const expectedAuth = `Bearer ${getAdminSecret()}`;
   if (!getAdminSecret() || authHeader !== expectedAuth) {
