@@ -1,6 +1,6 @@
 // src/index.ts
 import "dotenv/config";
-import express from "express";
+import express, { Request, Response } from "express";
 import { flushNoticesEphemeral } from "./services/notifier.js";
 import {
   Client,

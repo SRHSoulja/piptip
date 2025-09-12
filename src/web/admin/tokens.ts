@@ -1,5 +1,5 @@
 // src/web/admin/tokens.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { JsonRpcProvider, Contract } from "ethers";
 import { prisma } from "../../services/db.js";
 import { ABSTRACT_RPC_URL } from "../../config.js";
@@ -12,7 +12,7 @@ const ERC20_ABI = [
   "function decimals() view returns (uint8)",
 ];
 
-tokensRouter.get("/tokens", async (_req, res) => {
+tokensRouter.get("/tokens", async (_req: Request, res: Response) => {
   try {
     const tokens = await prisma.token.findMany({
       orderBy: { createdAt: "asc" }
@@ -23,7 +23,7 @@ tokensRouter.get("/tokens", async (_req, res) => {
   }
 });
 
-tokensRouter.post("/tokens", async (req, res) => {
+tokensRouter.post("/tokens", async (req: Request, res: Response) => {
   try {
     const { address } = req.body;
     
@@ -68,7 +68,7 @@ tokensRouter.post("/tokens", async (req, res) => {
   }
 });
 
-tokensRouter.put("/tokens/:id", async (req, res) => {
+tokensRouter.put("/tokens/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid token ID" });
@@ -94,7 +94,7 @@ tokensRouter.put("/tokens/:id", async (req, res) => {
   }
 });
 
-tokensRouter.delete("/tokens/:id", async (req, res) => {
+tokensRouter.delete("/tokens/:id", async (req: Request, res: Response) => {
   try {
     const tokenId = parseInt(req.params.id);
     if (isNaN(tokenId)) {
@@ -158,7 +158,7 @@ tokensRouter.delete("/tokens/:id", async (req, res) => {
   }
 });
 
-tokensRouter.post("/tokens/refresh", async (_req, res) => {
+tokensRouter.post("/tokens/refresh", async (_req: Request, res: Response) => {
   try {
     // Invalidate token cache if you have one
     res.json({ ok: true, message: "Token cache refreshed" });

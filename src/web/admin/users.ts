@@ -1,12 +1,12 @@
 // src/web/admin/users.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 import { fetchMultipleUsernames, getDiscordClient } from "../../services/discord_users.js";
 
 export const usersRouter = Router();
 
 // Auto-complete search for users (returns multiple matches)
-usersRouter.get("/users/autocomplete", async (req, res) => {
+usersRouter.get("/users/autocomplete", async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
     if (!query || query.length < 2) return res.json({ ok: true, users: [] });
@@ -53,7 +53,7 @@ usersRouter.get("/users/autocomplete", async (req, res) => {
   }
 });
 
-usersRouter.get("/users/search", async (req, res) => {
+usersRouter.get("/users/search", async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
     if (!query) return res.status(400).json({ ok: false, error: "Query parameter required" });
@@ -153,7 +153,7 @@ usersRouter.get("/users/search", async (req, res) => {
   }
 });
 
-usersRouter.get("/users/top", async (req, res) => {
+usersRouter.get("/users/top", async (req: Request, res: Response) => {
   try {
     console.log("🔍 Loading top users...");
     const users = await prisma.user.findMany({
@@ -246,7 +246,7 @@ usersRouter.get("/users/top", async (req, res) => {
   }
 });
 
-usersRouter.post("/users/adjust-balance", async (req, res) => {
+usersRouter.post("/users/adjust-balance", async (req: Request, res: Response) => {
   try {
     const { discordId, tokenId, amount, reason } = req.body;
 
@@ -289,7 +289,7 @@ usersRouter.post("/users/adjust-balance", async (req, res) => {
   }
 });
 
-usersRouter.delete("/users/:discordId", async (req, res) => {
+usersRouter.delete("/users/:discordId", async (req: Request, res: Response) => {
   try {
     const { discordId } = req.params;
     const { confirmed, hardDelete } = req.body;

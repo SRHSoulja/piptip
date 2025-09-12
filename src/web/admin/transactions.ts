@@ -1,11 +1,11 @@
 // src/web/admin/transactions.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 import { fetchMultipleUsernames, getDiscordClient } from "../../services/discord_users.js";
 
 export const transactionsRouter = Router();
 
-transactionsRouter.get("/transactions", async (req, res) => {
+transactionsRouter.get("/transactions", async (req: Request, res: Response) => {
   try {
     const { type, userId, since, limit = 50 } = req.query;
     const where: any = {};
@@ -38,7 +38,7 @@ transactionsRouter.get("/transactions", async (req, res) => {
   }
 });
 
-transactionsRouter.get("/transactions/export", async (req, res) => {
+transactionsRouter.get("/transactions/export", async (req: Request, res: Response) => {
   try {
     const { type, userId, since } = req.query;
     const where: any = {};
@@ -78,7 +78,7 @@ transactionsRouter.get("/transactions/export", async (req, res) => {
 });
 
 // Enhanced user-specific export with all activity types
-transactionsRouter.get("/transactions/export/user/:discordId", async (req, res) => {
+transactionsRouter.get("/transactions/export/user/:discordId", async (req: Request, res: Response) => {
   try {
     const { discordId } = req.params;
     const { since, until } = req.query;
@@ -248,7 +248,7 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req, res) 
 });
 
 // Guild-specific export for tracking server activity
-transactionsRouter.get("/transactions/export/guild/:guildId", async (req, res) => {
+transactionsRouter.get("/transactions/export/guild/:guildId", async (req: Request, res: Response) => {
   try {
     const { guildId } = req.params;
     const { since, until } = req.query;

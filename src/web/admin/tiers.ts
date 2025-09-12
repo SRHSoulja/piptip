@@ -1,10 +1,10 @@
 // src/web/admin/tiers.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 
 export const tiersRouter = Router();
 
-tiersRouter.get("/tiers", async (_req, res) => {
+tiersRouter.get("/tiers", async (_req: Request, res: Response) => {
   try {
     const tiers = await prisma.tier.findMany({
       include: { 
@@ -35,7 +35,7 @@ tiersRouter.get("/tiers", async (_req, res) => {
   }
 });
 
-tiersRouter.post("/tiers", async (req, res) => {
+tiersRouter.post("/tiers", async (req: Request, res: Response) => {
   try {
     const { name, description, tokenId, priceAmount, durationDays, tipTaxFree = false, active = true } = req.body;
     
@@ -97,7 +97,7 @@ tiersRouter.post("/tiers", async (req, res) => {
   }
 });
 
-tiersRouter.put("/tiers/:id", async (req, res) => {
+tiersRouter.put("/tiers/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid tier ID" });

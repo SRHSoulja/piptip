@@ -1,11 +1,11 @@
 // src/web/admin/backup.ts - Backup management admin routes
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { backupService } from "../../services/backup.js";
 
 export const backupRouter = Router();
 
 // Get backup status and recent backups
-backupRouter.get("/backup/status", async (req, res) => {
+backupRouter.get("/backup/status", async (req: Request, res: Response) => {
   try {
     const status = await backupService.getBackupStatus();
     res.json({ ok: true, ...status });
@@ -16,7 +16,7 @@ backupRouter.get("/backup/status", async (req, res) => {
 });
 
 // Create manual backup
-backupRouter.post("/backup/create", async (req, res) => {
+backupRouter.post("/backup/create", async (req: Request, res: Response) => {
   try {
     const result = await backupService.createManualBackup();
     
@@ -40,7 +40,7 @@ backupRouter.post("/backup/create", async (req, res) => {
 });
 
 // Start/stop backup service
-backupRouter.post("/backup/toggle", async (req, res) => {
+backupRouter.post("/backup/toggle", async (req: Request, res: Response) => {
   try {
     const { action } = req.body;
     
@@ -60,7 +60,7 @@ backupRouter.post("/backup/toggle", async (req, res) => {
 });
 
 // Get backup file (download)
-backupRouter.get("/backup/download/:filename", async (req, res) => {
+backupRouter.get("/backup/download/:filename", async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     

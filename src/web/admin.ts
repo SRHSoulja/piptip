@@ -1,6 +1,6 @@
 // src/web/admin.ts - Modular admin interface
 import "dotenv/config";
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { fileURLToPath } from "url";
@@ -39,7 +39,7 @@ const getAdminSecret = () => (process.env.ADMIN_SECRET ?? "").trim();
 /* ------------------------------------------------------------------------ */
 /*                           Admin UI (HTML shell)                          */
 /* ------------------------------------------------------------------------ */
-adminRouter.get("/ui", (_req, res) => {
+adminRouter.get("/ui", (_req: Request, res: Response) => {
   res.type("html").send(`<!doctype html>
 <html>
 <head>
@@ -463,7 +463,7 @@ adminRouter.get("/ui", (_req, res) => {
 /* ------------------------------------------------------------------------ */
 /*                      Admin UI (client JS served here)                    */
 /* ------------------------------------------------------------------------ */
-adminRouter.get("/ui.js", async (_req, res) => {
+adminRouter.get("/ui.js", async (_req: Request, res: Response) => {
   try {
     // Always look in src directory for ui.js since it's not compiled
     const srcDir = process.cwd();
@@ -487,7 +487,7 @@ adminRouter.get("/ui.js", async (_req, res) => {
 /* ------------------------------------------------------------------------ */
 /*                           Authentication Middleware                       */
 /* ------------------------------------------------------------------------ */
-adminRouter.use(async (req, res, next) => {
+adminRouter.use(async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
   
@@ -520,7 +520,7 @@ adminRouter.use(statsRouter);
 /* ------------------------------------------------------------------------ */
 
 // Treasury endpoint
-adminRouter.get("/treasury", async (req, res) => {
+adminRouter.get("/treasury", async (req: Request, res: Response) => {
   try {
     const force = req.query.force === "1";
     const snapshot = await getTreasurySnapshot(force);
@@ -531,7 +531,7 @@ adminRouter.get("/treasury", async (req, res) => {
 });
 
 // Fees by server endpoint
-adminRouter.get("/fees/by-server", async (req, res) => {
+adminRouter.get("/fees/by-server", async (req: Request, res: Response) => {
   try {
     const since = req.query.since ? new Date(req.query.since as string) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const until = req.query.until ? new Date(req.query.until as string) : new Date();
@@ -564,7 +564,7 @@ adminRouter.get("/fees/by-server", async (req, res) => {
 });
 
 // CSV export for fees
-adminRouter.get("/fees/export.csv", async (req, res) => {
+adminRouter.get("/fees/export.csv", async (req: Request, res: Response) => {
   try {
     const since = req.query.since ? new Date(req.query.since as string) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const until = req.query.until ? new Date(req.query.until as string) : new Date();

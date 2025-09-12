@@ -1,5 +1,5 @@
 // src/web/admin/servers.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 import { getDiscordClient, fetchMultipleServernames } from "../../services/discord_users.js";
 import { registerCommandsForApprovedGuilds } from "../../services/command_registry.js";
@@ -7,7 +7,7 @@ import { getCommandsJson } from "../../services/commands_def.js";
 
 export const serversRouter = Router();
 
-serversRouter.get("/servers", async (_req, res) => {
+serversRouter.get("/servers", async (_req: Request, res: Response) => {
   try {
     const servers = await prisma.approvedServer.findMany({
       orderBy: { createdAt: "desc" }
@@ -39,7 +39,7 @@ serversRouter.get("/servers", async (_req, res) => {
   }
 });
 
-serversRouter.post("/servers", async (req, res) => {
+serversRouter.post("/servers", async (req: Request, res: Response) => {
   try {
     const { guildId, note } = req.body;
     
@@ -72,7 +72,7 @@ serversRouter.post("/servers", async (req, res) => {
   }
 });
 
-serversRouter.put("/servers/:id", async (req, res) => {
+serversRouter.put("/servers/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid server ID" });
@@ -93,7 +93,7 @@ serversRouter.put("/servers/:id", async (req, res) => {
   }
 });
 
-serversRouter.delete("/servers/:id", async (req, res) => {
+serversRouter.delete("/servers/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid server ID" });

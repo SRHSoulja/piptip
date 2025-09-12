@@ -1,10 +1,10 @@
 // src/web/admin/groupTips.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 
 export const groupTipsRouter = Router();
 
-groupTipsRouter.get("/group-tips", async (req, res) => {
+groupTipsRouter.get("/group-tips", async (req: Request, res: Response) => {
   try {
     const { status } = req.query;
     const where: any = {};
@@ -32,7 +32,7 @@ groupTipsRouter.get("/group-tips", async (req, res) => {
   }
 });
 
-groupTipsRouter.post("/group-tips/expire-stuck", async (req, res) => {
+groupTipsRouter.post("/group-tips/expire-stuck", async (req: Request, res: Response) => {
   try {
     const result = await prisma.groupTip.updateMany({
       where: {
