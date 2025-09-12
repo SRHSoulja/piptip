@@ -1,7 +1,7 @@
 // src/web/admin.ts
 import "dotenv/config";
 import { Prisma } from "@prisma/client";
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { JsonRpcProvider, Contract } from "ethers";
 import { prisma } from "../services/db.js";
 import { getConfig, ABSTRACT_RPC_URL } from "../config.js";
@@ -25,7 +25,7 @@ const ERC20_ABI = [
 /* ------------------------------------------------------------------------ */
 /*                           Admin UI (HTML shell)                          */
 /* ------------------------------------------------------------------------ */
-adminRouter.get("/ui", (_req, res) => {
+adminRouter.get("/ui", (_req: Request, res: Response) => {
   res.type("html").send(`<!doctype html>
 <html>
 <head>
@@ -302,7 +302,7 @@ adminRouter.get("/ui", (_req, res) => {
 /* ------------------------------------------------------------------------ */
 /*                      Admin UI (client JS served here)                    */
 /* ------------------------------------------------------------------------ */
-adminRouter.get("/ui.js", (_req, res) => {
+adminRouter.get("/ui.js", (_req: Request, res: Response) => {
   res.type("application/javascript").send(`
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -1284,7 +1284,7 @@ function parseDateRange(query: any): DateRange {
 }
 
 
-adminRouter.get("/fees/export.csv", async (req, res) => {
+adminRouter.get("/fees/export.csv", async (req: Request, res: Response) => {
   try {
     const { since, until } = parseDateRange(req.query);
     const guildId = req.query.guildId ? String(req.query.guildId) : undefined;
@@ -1317,7 +1317,7 @@ adminRouter.get("/fees/export.csv", async (req, res) => {
 });
 
 // Ads
-adminRouter.get("/ads", async (_req, res) => {
+adminRouter.get("/ads", async (_req: Request, res: Response) => {
   try {
     const ads = await prisma.ad.findMany({ orderBy: { createdAt: "desc" } });
     res.json({ ok: true, ads });
@@ -1326,7 +1326,7 @@ adminRouter.get("/ads", async (_req, res) => {
   }
 });
 
-adminRouter.post("/ads", async (req, res) => {
+adminRouter.post("/ads", async (req: Request, res: Response) => {
   try {
     const { text, url, weight = 5, active = true } = req.body;
     if (!text || typeof text !== "string" || text.trim().length === 0) return res.status(400).json({ ok:false, error:"Ad text is required" });
@@ -1343,7 +1343,7 @@ adminRouter.post("/ads", async (req, res) => {
   }
 });
 
-adminRouter.put("/ads/:id", async (req, res) => {
+adminRouter.put("/ads/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok:false, error:"Invalid ad ID" });
@@ -1374,7 +1374,7 @@ adminRouter.put("/ads/:id", async (req, res) => {
   }
 });
 
-adminRouter.delete("/ads/:id", async (req, res) => {
+adminRouter.delete("/ads/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok:false, error:"Invalid ad ID" });
@@ -1386,7 +1386,7 @@ adminRouter.delete("/ads/:id", async (req, res) => {
   }
 });
 
-adminRouter.post("/ads/refresh", async (_req, res) => {
+adminRouter.post("/ads/refresh", async (_req: Request, res: Response) => {
   try {
     const { refreshAdsCache } = await import("../services/ads.js");
     await refreshAdsCache();
@@ -1397,7 +1397,7 @@ adminRouter.post("/ads/refresh", async (_req, res) => {
 });
 
 // Tiers
-adminRouter.get("/tiers", async (_req, res) => {
+adminRouter.get("/tiers", async (_req: Request, res: Response) => {
   try {
     const tiers = await prisma.tier.findMany({
       include: { 
@@ -1428,7 +1428,7 @@ adminRouter.get("/tiers", async (_req, res) => {
   }
 });
 
-adminRouter.post("/tiers", async (req, res) => {
+adminRouter.post("/tiers", async (req: Request, res: Response) => {
   try {
     const { name, description, tokenId, priceAmount, durationDays, tipTaxFree = false, active = true } = req.body;
     
@@ -1490,7 +1490,7 @@ adminRouter.post("/tiers", async (req, res) => {
   }
 });
 
-adminRouter.put("/tiers/:id", async (req, res) => {
+adminRouter.put("/tiers/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid tier ID" });
@@ -1566,11 +1566,11 @@ adminRouter.use((req, res, next) => {
 });
 
 // Basic endpoints
-adminRouter.get("/ping", (_req, res) => {
+adminRouter.get("/ping", (_req: Request, res: Response) => {
   res.json({ ok: true, message: "Admin authenticated" });
 });
 
-adminRouter.get("/config", async (_req, res) => {
+adminRouter.get("/config", async (_req: Request, res: Response) => {
   try {
     const config = await getConfig();
     res.json({ ok: true, config });
@@ -1579,7 +1579,7 @@ adminRouter.get("/config", async (_req, res) => {
   }
 });
 
-adminRouter.put("/config", async (req, res) => {
+adminRouter.put("/config", async (req: Request, res: Response) => {
   try {
     const { minDeposit, minWithdraw, withdrawMaxPerTx, withdrawDailyCap } = req.body;
     
@@ -1606,7 +1606,7 @@ adminRouter.put("/config", async (req, res) => {
   }
 });
 
-adminRouter.post("/reload-config", async (_req, res) => {
+adminRouter.post("/reload-config", async (_req: Request, res: Response) => {
   try {
     // Force reload config cache if you have one
     res.json({ ok: true, message: "Config cache reloaded" });
@@ -1615,7 +1615,7 @@ adminRouter.post("/reload-config", async (_req, res) => {
   }
 });
 
-adminRouter.get("/tokens", async (_req, res) => {
+adminRouter.get("/tokens", async (_req: Request, res: Response) => {
   try {
     const tokens = await prisma.token.findMany({
       orderBy: { createdAt: "asc" }
@@ -1626,7 +1626,7 @@ adminRouter.get("/tokens", async (_req, res) => {
   }
 });
 
-adminRouter.post("/tokens", async (req, res) => {
+adminRouter.post("/tokens", async (req: Request, res: Response) => {
   try {
     const { address } = req.body;
     
@@ -1671,7 +1671,7 @@ adminRouter.post("/tokens", async (req, res) => {
   }
 });
 
-adminRouter.put("/tokens/:id", async (req, res) => {
+adminRouter.put("/tokens/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid token ID" });
@@ -1697,7 +1697,7 @@ adminRouter.put("/tokens/:id", async (req, res) => {
   }
 });
 
-adminRouter.post("/tokens/refresh", async (_req, res) => {
+adminRouter.post("/tokens/refresh", async (_req: Request, res: Response) => {
   try {
     // Invalidate token cache if you have one
     res.json({ ok: true, message: "Token cache refreshed" });
@@ -1706,7 +1706,7 @@ adminRouter.post("/tokens/refresh", async (_req, res) => {
   }
 });
 
-adminRouter.get("/servers", async (_req, res) => {
+adminRouter.get("/servers", async (_req: Request, res: Response) => {
   try {
     const servers = await prisma.approvedServer.findMany({
       orderBy: { createdAt: "desc" }
@@ -1738,7 +1738,7 @@ adminRouter.get("/servers", async (_req, res) => {
   }
 });
 
-adminRouter.post("/servers", async (req, res) => {
+adminRouter.post("/servers", async (req: Request, res: Response) => {
   try {
     const { guildId, note } = req.body;
     
@@ -1771,7 +1771,7 @@ adminRouter.post("/servers", async (req, res) => {
   }
 });
 
-adminRouter.put("/servers/:id", async (req, res) => {
+adminRouter.put("/servers/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid server ID" });
@@ -1792,7 +1792,7 @@ adminRouter.put("/servers/:id", async (req, res) => {
   }
 });
 
-adminRouter.delete("/servers/:id", async (req, res) => {
+adminRouter.delete("/servers/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid server ID" });
@@ -1807,7 +1807,7 @@ adminRouter.delete("/servers/:id", async (req, res) => {
   }
 });
 
-adminRouter.get("/treasury", async (req, res) => {
+adminRouter.get("/treasury", async (req: Request, res: Response) => {
   try {
     const force = req.query.force === "1";
     const snapshot = await getTreasurySnapshot(force);
@@ -1817,7 +1817,7 @@ adminRouter.get("/treasury", async (req, res) => {
   }
 });
 
-adminRouter.get("/fees/by-server", async (req, res) => {
+adminRouter.get("/fees/by-server", async (req: Request, res: Response) => {
   try {
     const { since, until } = parseDateRange(req.query);
     const guildId = req.query.guildId ? String(req.query.guildId) : undefined;
@@ -1852,7 +1852,7 @@ adminRouter.get("/fees/by-server", async (req, res) => {
 /*                          User Management APIs                            */
 /* ------------------------------------------------------------------------ */
 
-adminRouter.get("/users/search", async (req, res) => {
+adminRouter.get("/users/search", async (req: Request, res: Response) => {
   try {
     const query = String(req.query.q || "").trim();
     console.log("User search query:", query);
@@ -1955,7 +1955,7 @@ adminRouter.get("/users/search", async (req, res) => {
   }
 });
 
-adminRouter.get("/users/top", async (req, res) => {
+adminRouter.get("/users/top", async (req: Request, res: Response) => {
   try {
     console.log("Loading top users from database...");
     const users = await prisma.user.findMany({
@@ -2029,7 +2029,7 @@ adminRouter.get("/users/top", async (req, res) => {
   }
 });
 
-adminRouter.post("/users/adjust-balance", async (req, res) => {
+adminRouter.post("/users/adjust-balance", async (req: Request, res: Response) => {
   try {
     const { discordId, tokenId, amount, reason } = req.body;
     
@@ -2122,7 +2122,7 @@ adminRouter.post("/users/adjust-balance", async (req, res) => {
 /*                        Transaction Monitoring APIs                       */
 /* ------------------------------------------------------------------------ */
 
-adminRouter.get("/transactions", async (req, res) => {
+adminRouter.get("/transactions", async (req: Request, res: Response) => {
   try {
     const type = req.query.type ? String(req.query.type) : undefined;
     const userId = req.query.userId ? String(req.query.userId) : undefined;
@@ -2152,7 +2152,7 @@ adminRouter.get("/transactions", async (req, res) => {
   }
 });
 
-adminRouter.get("/transactions/export", async (req, res) => {
+adminRouter.get("/transactions/export", async (req: Request, res: Response) => {
   try {
     const type = req.query.type ? String(req.query.type) : undefined;
     const userId = req.query.userId ? String(req.query.userId) : undefined;
@@ -2199,7 +2199,7 @@ adminRouter.get("/transactions/export", async (req, res) => {
 /*                        Group Tips Monitoring APIs                        */
 /* ------------------------------------------------------------------------ */
 
-adminRouter.get("/group-tips", async (req, res) => {
+adminRouter.get("/group-tips", async (req: Request, res: Response) => {
   try {
     const status = req.query.status ? String(req.query.status) : undefined;
     
@@ -2229,7 +2229,7 @@ adminRouter.get("/group-tips", async (req, res) => {
   }
 });
 
-adminRouter.post("/group-tips/expire-stuck", async (req, res) => {
+adminRouter.post("/group-tips/expire-stuck", async (req: Request, res: Response) => {
   try {
     const stuckTips = await prisma.groupTip.updateMany({
       where: {
@@ -2250,7 +2250,7 @@ adminRouter.post("/group-tips/expire-stuck", async (req, res) => {
 /*                          System Health APIs                              */
 /* ------------------------------------------------------------------------ */
 
-adminRouter.get("/system/status", async (req, res) => {
+adminRouter.get("/system/status", async (req: Request, res: Response) => {
   try {
     // Check database
     let database = false;
@@ -2299,7 +2299,7 @@ adminRouter.get("/system/status", async (req, res) => {
   }
 });
 
-adminRouter.get("/system/db-stats", async (req, res) => {
+adminRouter.get("/system/db-stats", async (req: Request, res: Response) => {
   try {
     const [users, transactions, tips, activeGroupTips, deposits, withdrawals] = await Promise.all([
       prisma.user.count(),
@@ -2326,7 +2326,7 @@ adminRouter.get("/system/db-stats", async (req, res) => {
   }
 });
 
-adminRouter.post("/system/clear-caches", async (req, res) => {
+adminRouter.post("/system/clear-caches", async (req: Request, res: Response) => {
   try {
     // Clear treasury cache
     invalidateTreasuryCache();
@@ -2352,7 +2352,7 @@ let emergencyState = {
   emergencyMode: false
 };
 
-adminRouter.post("/emergency/pause-withdrawals", async (req, res) => {
+adminRouter.post("/emergency/pause-withdrawals", async (req: Request, res: Response) => {
   try {
     emergencyState.withdrawalsPaused = true;
     // Store emergency state in a simple way - Config table might not exist
@@ -2364,7 +2364,7 @@ adminRouter.post("/emergency/pause-withdrawals", async (req, res) => {
   }
 });
 
-adminRouter.post("/emergency/pause-tipping", async (req, res) => {
+adminRouter.post("/emergency/pause-tipping", async (req: Request, res: Response) => {
   try {
     emergencyState.tippingPaused = true;
     res.json({ ok: true, message: "Tipping paused system-wide" });
@@ -2374,7 +2374,7 @@ adminRouter.post("/emergency/pause-tipping", async (req, res) => {
   }
 });
 
-adminRouter.post("/emergency/enable", async (req, res) => {
+adminRouter.post("/emergency/enable", async (req: Request, res: Response) => {
   try {
     emergencyState = {
       withdrawalsPaused: true,
@@ -2389,7 +2389,7 @@ adminRouter.post("/emergency/enable", async (req, res) => {
   }
 });
 
-adminRouter.post("/emergency/resume-all", async (req, res) => {
+adminRouter.post("/emergency/resume-all", async (req: Request, res: Response) => {
   try {
     emergencyState = {
       withdrawalsPaused: false,
@@ -2408,7 +2408,7 @@ adminRouter.post("/emergency/resume-all", async (req, res) => {
 /*                            Token Deletion API                            */
 /* ------------------------------------------------------------------------ */
 
-adminRouter.delete("/tokens/:id", async (req, res) => {
+adminRouter.delete("/tokens/:id", async (req: Request, res: Response) => {
   try {
     const tokenId = parseInt(req.params.id);
     if (isNaN(tokenId)) {

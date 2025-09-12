@@ -1,10 +1,10 @@
 // src/web/public_tiers.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { purchaseTierByBalance } from "../services/tier_purchase.js"; // extracted core logic
 
 export const publicTierRouter = Router();
 
-publicTierRouter.post("/tiers/:tierId/purchase", async (req, res) => {
+publicTierRouter.post("/tiers/:tierId/purchase", async (req: Request, res: Response) => {
   const { discordId } = req.body;
   const tierId = Number(req.params.tierId);
   if (!discordId || !tierId) return res.status(400).json({ ok:false, error:"discordId and tierId required" });

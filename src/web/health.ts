@@ -1,12 +1,12 @@
 // src/web/health.ts - Health check endpoints
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { healthCheckQuery } from '../services/prisma_logger.js';
 import { getMetricsSummary } from '../services/metrics.js';
 
 export const healthRouter = express.Router();
 
 // Basic health check - fast response for load balancers
-healthRouter.get('/healthz', async (req, res) => {
+healthRouter.get('/healthz', async (req: Request, res: Response) => {
   try {
     const startTime = Date.now();
     
@@ -51,7 +51,7 @@ healthRouter.get('/healthz', async (req, res) => {
 });
 
 // Detailed health check with metrics
-healthRouter.get('/healthz/detailed', async (req, res) => {
+healthRouter.get('/healthz/detailed', async (req: Request, res: Response) => {
   try {
     const startTime = Date.now();
     
@@ -104,6 +104,6 @@ healthRouter.get('/healthz/detailed', async (req, res) => {
 });
 
 // Legacy endpoint for backward compatibility  
-healthRouter.get("/", (_req, res) => {
+healthRouter.get("/", (_req: Request, res: Response) => {
   res.json({ ok: true, service: "piptip", status: "healthy" });
 });

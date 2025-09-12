@@ -1,11 +1,11 @@
 // src/web/admin/system.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 
 export const systemRouter = Router();
 
 // System monitoring routes
-systemRouter.get("/system/status", async (req, res) => {
+systemRouter.get("/system/status", async (req: Request, res: Response) => {
   try {
     const [userCount, activeTokens, pendingTxs] = await Promise.all([
       prisma.user.count(),
@@ -29,7 +29,7 @@ systemRouter.get("/system/status", async (req, res) => {
   }
 });
 
-systemRouter.get("/system/db-stats", async (req, res) => {
+systemRouter.get("/system/db-stats", async (req: Request, res: Response) => {
   try {
     const [users, transactions, tips, activeGroupTips, deposits, withdrawals] = await Promise.all([
       prisma.user.count(),
@@ -55,7 +55,7 @@ systemRouter.get("/system/db-stats", async (req, res) => {
   }
 });
 
-systemRouter.post("/system/clear-caches", async (req, res) => {
+systemRouter.post("/system/clear-caches", async (req: Request, res: Response) => {
   try {
     // Could implement cache clearing logic here
     res.json({ ok: true, message: "All caches cleared" });
@@ -65,7 +65,7 @@ systemRouter.post("/system/clear-caches", async (req, res) => {
 });
 
 // Emergency control routes
-systemRouter.post("/emergency/pause-withdrawals", async (req, res) => {
+systemRouter.post("/emergency/pause-withdrawals", async (req: Request, res: Response) => {
   try {
     // Could implement emergency pause logic
     res.json({ ok: true, message: "Withdrawals paused" });
@@ -74,7 +74,7 @@ systemRouter.post("/emergency/pause-withdrawals", async (req, res) => {
   }
 });
 
-systemRouter.post("/emergency/pause-tipping", async (req, res) => {
+systemRouter.post("/emergency/pause-tipping", async (req: Request, res: Response) => {
   try {
     // Could implement emergency pause logic
     res.json({ ok: true, message: "Tipping paused" });
@@ -83,7 +83,7 @@ systemRouter.post("/emergency/pause-tipping", async (req, res) => {
   }
 });
 
-systemRouter.post("/emergency/enable", async (req, res) => {
+systemRouter.post("/emergency/enable", async (req: Request, res: Response) => {
   try {
     // Could implement emergency mode logic
     res.json({ ok: true, message: "Emergency mode enabled" });
@@ -92,7 +92,7 @@ systemRouter.post("/emergency/enable", async (req, res) => {
   }
 });
 
-systemRouter.post("/emergency/resume-all", async (req, res) => {
+systemRouter.post("/emergency/resume-all", async (req: Request, res: Response) => {
   try {
     // Could implement resume logic
     res.json({ ok: true, message: "All operations resumed" });

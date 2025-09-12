@@ -1,11 +1,11 @@
 // src/web/admin/stats.ts - Bot statistics admin endpoints
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { statsService } from "../../services/stats.js";
 
 export const statsRouter = Router();
 
 // Get comprehensive bot statistics
-statsRouter.get("/stats/dashboard", async (req, res) => {
+statsRouter.get("/stats/dashboard", async (req: Request, res: Response) => {
   try {
     const stats = await statsService.getBotStats();
     res.json({ ok: true, stats });
@@ -16,7 +16,7 @@ statsRouter.get("/stats/dashboard", async (req, res) => {
 });
 
 // Get just KPIs for quick dashboard updates
-statsRouter.get("/stats/kpis", async (req, res) => {
+statsRouter.get("/stats/kpis", async (req: Request, res: Response) => {
   try {
     const [servers, users, tips, games] = await Promise.all([
       // Total approved servers
@@ -47,7 +47,7 @@ statsRouter.get("/stats/kpis", async (req, res) => {
 });
 
 // Get server breakdown with optional sorting
-statsRouter.get("/stats/servers", async (req, res) => {
+statsRouter.get("/stats/servers", async (req: Request, res: Response) => {
   try {
     const { sort = 'activity' } = req.query;
     const stats = await statsService.getBotStats();
@@ -83,7 +83,7 @@ statsRouter.get("/stats/servers", async (req, res) => {
 });
 
 // Get token breakdown with optional sorting
-statsRouter.get("/stats/tokens", async (req, res) => {
+statsRouter.get("/stats/tokens", async (req: Request, res: Response) => {
   try {
     const { sort = 'volume' } = req.query;
     const stats = await statsService.getBotStats();
@@ -119,7 +119,7 @@ statsRouter.get("/stats/tokens", async (req, res) => {
 });
 
 // Get time-based trends
-statsRouter.get("/stats/trends", async (req, res) => {
+statsRouter.get("/stats/trends", async (req: Request, res: Response) => {
   try {
     const { period = 'daily' } = req.query;
     const stats = await statsService.getBotStats();
@@ -136,7 +136,7 @@ statsRouter.get("/stats/trends", async (req, res) => {
 });
 
 // Get highlight stats (biggest tip, most active user, etc.)
-statsRouter.get("/stats/highlights", async (req, res) => {
+statsRouter.get("/stats/highlights", async (req: Request, res: Response) => {
   try {
     const stats = await statsService.getBotStats();
     res.json({ 
@@ -151,7 +151,7 @@ statsRouter.get("/stats/highlights", async (req, res) => {
 });
 
 // Export stats as CSV
-statsRouter.get("/stats/export", async (req, res) => {
+statsRouter.get("/stats/export", async (req: Request, res: Response) => {
   try {
     const stats = await statsService.getBotStats();
     

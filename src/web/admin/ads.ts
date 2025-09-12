@@ -1,10 +1,10 @@
 // src/web/admin/ads.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 
 export const adsRouter = Router();
 
-adsRouter.get("/ads", async (_req, res) => {
+adsRouter.get("/ads", async (_req: Request, res: Response) => {
   try {
     const ads = await prisma.ad.findMany({ orderBy: { createdAt: "desc" } });
     res.json({ ok: true, ads });
@@ -13,7 +13,7 @@ adsRouter.get("/ads", async (_req, res) => {
   }
 });
 
-adsRouter.post("/ads", async (req, res) => {
+adsRouter.post("/ads", async (req: Request, res: Response) => {
   try {
     const { text, url, weight = 5, active = true } = req.body;
     if (!text || typeof text !== "string" || text.trim().length === 0) return res.status(400).json({ ok:false, error:"Ad text is required" });
@@ -30,7 +30,7 @@ adsRouter.post("/ads", async (req, res) => {
   }
 });
 
-adsRouter.put("/ads/:id", async (req, res) => {
+adsRouter.put("/ads/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok:false, error:"Invalid ad ID" });
@@ -61,7 +61,7 @@ adsRouter.put("/ads/:id", async (req, res) => {
   }
 });
 
-adsRouter.delete("/ads/:id", async (req, res) => {
+adsRouter.delete("/ads/:id", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok:false, error:"Invalid ad ID" });
@@ -73,7 +73,7 @@ adsRouter.delete("/ads/:id", async (req, res) => {
   }
 });
 
-adsRouter.post("/ads/refresh", async (_req, res) => {
+adsRouter.post("/ads/refresh", async (_req: Request, res: Response) => {
   try {
     const { refreshAdsCache } = await import("../../services/ads.js");
     await refreshAdsCache();

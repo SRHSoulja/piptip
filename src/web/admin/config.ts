@@ -1,15 +1,15 @@
 // src/web/admin/config.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 import { getConfig } from "../../config.js";
 
 export const configRouter = Router();
 
-configRouter.get("/ping", (_req, res) => {
+configRouter.get("/ping", (_req: Request, res: Response) => {
   res.json({ ok: true, message: "Admin authenticated" });
 });
 
-configRouter.get("/config", async (_req, res) => {
+configRouter.get("/config", async (_req: Request, res: Response) => {
   try {
     const config = await getConfig();
     res.json({ ok: true, config });
@@ -18,7 +18,7 @@ configRouter.get("/config", async (_req, res) => {
   }
 });
 
-configRouter.put("/config", async (req, res) => {
+configRouter.put("/config", async (req: Request, res: Response) => {
   try {
     const { minDeposit, minWithdraw, withdrawMaxPerTx, withdrawDailyCap } = req.body;
     
@@ -45,7 +45,7 @@ configRouter.put("/config", async (req, res) => {
   }
 });
 
-configRouter.post("/reload-config", async (_req, res) => {
+configRouter.post("/reload-config", async (_req: Request, res: Response) => {
   try {
     // Force reload config cache if you have one
     res.json({ ok: true, message: "Config cache reloaded" });
