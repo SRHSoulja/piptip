@@ -2,6 +2,54 @@
 import { prisma } from "./db.js";
 import { getDiscordClient, fetchMultipleServernames, fetchMultipleUsernames } from "./discord_users.js";
 
+// ✅ In-memory cache for time stats (5-15 minutes)
+class TimeStatsCache {
+  private cache = new Map<string, { data: any; expires: number }>();
+  private readonly TTL = 10 * 60 * 1000; // 10 minutes
+
+  get(key: string) {
+    const entry = this.cache.get(key);
+    if (!entry || Date.now() > entry.expires) {
+      this.cache.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+
+  set(key: string, data: any) {
+    this.cache.set(key, {
+      data,
+      expires: Date.now() + this.TTL
+    });
+  }
+
+  invalidate(key?: string) {
+    if (key) {
+      this.cache.delete(key);
+    } else {
+      this.cache.clear();
+    }
+    console.log(`🗑️ Invalidated time stats cache${key ? ` for ${key}` : ' (all keys)'}`);
+  }
+
+  // Clean up expired entries periodically
+  private cleanup() {
+    const now = Date.now();
+    for (const [key, entry] of this.cache.entries()) {
+      if (now > entry.expires) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
+
+const timeStatsCache = new TimeStatsCache();
+
+// Clean up expired cache entries every 15 minutes
+setInterval(() => {
+  (timeStatsCache as any).cleanup();
+}, 15 * 60 * 1000);
+
 export interface BotStats {
   kpis: {
     totalServers: number;
@@ -114,8 +162,8 @@ export class StatsService {
       // Total registered users
       prisma.user.count(),
       
-      // Total tips sent
-      prisma.tip.count(),
+      // Total tips sent (only completed)
+      prisma.tip.count({ where: { status: 'COMPLETED' } }),
       
       // Total games played
       prisma.match.count()
@@ -129,7 +177,7 @@ export class StatsService {
     };
   }
 
-  private async getServerBreakdown(): Promise<ServerStats[]> {
+  async getServerBreakdown(): Promise<ServerStats[]> {
     // Get all approved servers
     const approvedServers = await prisma.approvedServer.findMany({
       where: { enabled: true },
@@ -142,58 +190,120 @@ export class StatsService {
       return [];
     }
 
-    // Get stats for each server
-    const serverStatsPromises = guildIds.map(async (guildId) => {
-      const [tipStats, gameStats, groupTipStats, lastActivity, activeUsers] = await Promise.all([
-        // Tip stats - for now just get count from transactions, we'll fix amounts separately
-        prisma.transaction.aggregate({
-          where: { guildId, type: 'TIP' },
-          _count: { id: true },
-          _sum: { amount: true }
-        }),
+    // ✅ OPTIMIZED: Replace N+1 queries with 5 grouped queries
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    
+    const [tipStats, gameStats, groupTipStats, lastActivityByGuild, activeUsersByGuild] = await Promise.all([
+      // 1. Group tip transactions by guildId
+      prisma.transaction.groupBy({
+        by: ['guildId'],
+        where: { 
+          guildId: { in: guildIds },
+          type: 'TIP' 
+        },
+        _count: { id: true },
+        _sum: { amount: true }
+      }),
 
-        // Game stats
-        prisma.transaction.count({
-          where: { guildId, type: { in: ['MATCH_RAKE', 'MATCH_WIN'] } }
-        }),
+      // 2. Group game transactions by guildId
+      prisma.transaction.groupBy({
+        by: ['guildId'],
+        where: { 
+          guildId: { in: guildIds },
+          type: { in: ['MATCH_RAKE', 'MATCH_WIN'] }
+        },
+        _count: { id: true }
+      }),
 
-        // Group tip stats
-        prisma.groupTip.aggregate({
-          where: { guildId },
-          _count: { id: true }
-        }),
+      // 3. Group completed group tips by guildId
+      prisma.groupTip.groupBy({
+        by: ['guildId'],
+        where: { 
+          guildId: { in: guildIds },
+          status: { in: ['FINALIZED', 'REFUNDED'] }
+        },
+        _count: { id: true }
+      }),
 
-        // Last activity
-        prisma.transaction.findFirst({
+      // 4. Get last activity per guild (requires subquery approach)
+      Promise.all(guildIds.map(async (guildId) => {
+        const lastTx = await prisma.transaction.findFirst({
           where: { guildId },
           orderBy: { createdAt: 'desc' },
-          select: { createdAt: true }
-        }),
+          select: { createdAt: true, guildId: true }
+        });
+        return { guildId, lastActivity: lastTx?.createdAt || null };
+      })),
 
-        // Active users (users with activity in last 30 days)
-        prisma.transaction.findMany({
-          where: { 
-            guildId,
-            createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-          },
-          select: { userId: true },
-          distinct: ['userId']
-        })
-      ]);
+      // 5. Get active users per guild (users with activity in last 30 days)
+      prisma.transaction.groupBy({
+        by: ['guildId', 'userId'],
+        where: { 
+          guildId: { in: guildIds },
+          createdAt: { gte: thirtyDaysAgo },
+          userId: { not: null }
+        },
+        _count: { id: true }
+      })
+    ]);
+
+    // Build lookup maps for O(1) access
+    const tipStatsMap = new Map(tipStats.map(stat => [
+      stat.guildId, 
+      { count: stat._count.id, volume: stat._sum.amount || 0 }
+    ]));
+    
+    const gameStatsMap = new Map(gameStats.map(stat => [
+      stat.guildId, 
+      stat._count.id
+    ]));
+    
+    const groupTipStatsMap = new Map(groupTipStats.map(stat => [
+      stat.guildId, 
+      stat._count.id
+    ]));
+    
+    const lastActivityMap = new Map(lastActivityByGuild.map(item => [
+      item.guildId, 
+      item.lastActivity
+    ]));
+    
+    // Count unique active users per guild
+    const activeUsersMap = new Map<string, number>();
+    const usersByGuild = new Map<string, Set<number>>();
+    
+    for (const entry of activeUsersByGuild) {
+      if (!entry.guildId || !entry.userId) continue;
+      
+      if (!usersByGuild.has(entry.guildId)) {
+        usersByGuild.set(entry.guildId, new Set());
+      }
+      usersByGuild.get(entry.guildId)!.add(entry.userId);
+    }
+    
+    for (const [guildId, userSet] of usersByGuild) {
+      activeUsersMap.set(guildId, userSet.size);
+    }
+
+    // Build server stats using lookup maps
+    let serverStats = guildIds.map(guildId => {
+      const tipData = tipStatsMap.get(guildId) || { count: 0, volume: 0 };
+      const gameCount = gameStatsMap.get(guildId) || 0;
+      const groupTipCount = groupTipStatsMap.get(guildId) || 0;
+      const lastActivity = lastActivityMap.get(guildId) || null;
+      const activeUsers = activeUsersMap.get(guildId) || 0;
 
       return {
         guildId,
         serverName: `Server ${guildId}`, // Will be updated with real names
-        tipCount: tipStats._count.id || 0,
-        gameCount: gameStats || 0,
-        groupTipCount: groupTipStats._count.id || 0,
-        totalTipVolume: (tipStats._sum.amount || 0).toString(),
-        activeUsers: activeUsers.length,
-        lastActivity: lastActivity?.createdAt || null
+        tipCount: tipData.count,
+        gameCount,
+        groupTipCount,
+        totalTipVolume: tipData.volume.toString(),
+        activeUsers,
+        lastActivity
       };
     });
-
-    let serverStats = await Promise.all(serverStatsPromises);
 
     // Fetch real server names
     try {
@@ -410,114 +520,198 @@ export class StatsService {
   }
 
   private async getTimeBreakdown() {
+    // Check cache first
+    const cacheKey = 'timeBreakdown';
+    const cached = timeStatsCache.get(cacheKey);
+    if (cached) {
+      console.log('📊 Using cached time breakdown data');
+      return cached;
+    }
+
+    console.log('🔄 Generating time breakdown with grouped queries...');
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const fourWeeksAgo = new Date(now.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
 
-    // Daily stats for last 30 days
-    const dailyStatsPromises = Array.from({ length: 30 }, (_, i) => {
+    // ✅ OPTIMIZED: Replace 136 queries with 4 grouped queries
+    const [dailyTips, dailyGames, dailyUsers, weeklyTips, weeklyGames, weeklyUsers] = await Promise.all([
+      // 1. Daily tip stats (count + volume) - single query for all 30 days
+      prisma.$queryRaw<{ date: string; tip_count: bigint; tip_volume: string }[]>`
+        SELECT 
+          DATE("createdAt") as date,
+          COUNT(*) as tip_count,
+          COALESCE(SUM("amountAtomic"), 0) as tip_volume
+        FROM "Tip"
+        WHERE "status" = 'COMPLETED' 
+        AND "createdAt" >= ${thirtyDaysAgo}
+        AND "createdAt" < ${now}
+        GROUP BY DATE("createdAt")
+        ORDER BY date DESC
+      `,
+
+      // 2. Daily game stats - single query for all 30 days  
+      prisma.$queryRaw<{ date: string; game_count: bigint }[]>`
+        SELECT 
+          DATE("createdAt") as date,
+          COUNT(*) as game_count
+        FROM "Match"
+        WHERE "status" = 'COMPLETED'
+        AND "createdAt" >= ${thirtyDaysAgo}
+        AND "createdAt" < ${now}
+        GROUP BY DATE("createdAt")
+        ORDER BY date DESC
+      `,
+
+      // 3. Daily new users - single query for all 30 days
+      prisma.$queryRaw<{ date: string; user_count: bigint }[]>`
+        SELECT 
+          DATE("createdAt") as date,
+          COUNT(*) as user_count
+        FROM "User"
+        WHERE "createdAt" >= ${thirtyDaysAgo}
+        AND "createdAt" < ${now}
+        GROUP BY DATE("createdAt")
+        ORDER BY date DESC
+      `,
+
+      // 4. Weekly tip stats (count + volume) - single query for all 4 weeks
+      prisma.$queryRaw<{ week_start: string; tip_count: bigint; tip_volume: string }[]>`
+        SELECT 
+          DATE_TRUNC('week', "createdAt") as week_start,
+          COUNT(*) as tip_count,
+          COALESCE(SUM("amountAtomic"), 0) as tip_volume
+        FROM "Tip"
+        WHERE "status" = 'COMPLETED'
+        AND "createdAt" >= ${fourWeeksAgo}
+        AND "createdAt" < ${now}
+        GROUP BY DATE_TRUNC('week', "createdAt")
+        ORDER BY week_start DESC
+      `,
+
+      // 5. Weekly game stats - single query for all 4 weeks
+      prisma.$queryRaw<{ week_start: string; game_count: bigint }[]>`
+        SELECT 
+          DATE_TRUNC('week', "createdAt") as week_start,
+          COUNT(*) as game_count
+        FROM "Match"
+        WHERE "status" = 'COMPLETED'
+        AND "createdAt" >= ${fourWeeksAgo}
+        AND "createdAt" < ${now}
+        GROUP BY DATE_TRUNC('week', "createdAt")
+        ORDER BY week_start DESC
+      `,
+
+      // 6. Weekly new users - single query for all 4 weeks
+      prisma.$queryRaw<{ week_start: string; user_count: bigint }[]>`
+        SELECT 
+          DATE_TRUNC('week', "createdAt") as week_start,
+          COUNT(*) as user_count
+        FROM "User"
+        WHERE "createdAt" >= ${fourWeeksAgo}
+        AND "createdAt" < ${now}
+        GROUP BY DATE_TRUNC('week', "createdAt")
+        ORDER BY week_start DESC
+      `
+    ]);
+
+    // Build lookup maps for O(1) access
+    const dailyTipMap = new Map<string, { count: number; volume: string }>();
+    dailyTips.forEach(row => {
+      dailyTipMap.set(row.date, {
+        count: Number(row.tip_count),
+        volume: row.tip_volume
+      });
+    });
+
+    const dailyGameMap = new Map<string, number>();
+    dailyGames.forEach(row => {
+      dailyGameMap.set(row.date, Number(row.game_count));
+    });
+
+    const dailyUserMap = new Map<string, number>();
+    dailyUsers.forEach(row => {
+      dailyUserMap.set(row.date, Number(row.user_count));
+    });
+
+    const weeklyTipMap = new Map<string, { count: number; volume: string }>();
+    weeklyTips.forEach(row => {
+      weeklyTipMap.set(row.week_start, {
+        count: Number(row.tip_count),
+        volume: row.tip_volume
+      });
+    });
+
+    const weeklyGameMap = new Map<string, number>();
+    weeklyGames.forEach(row => {
+      weeklyGameMap.set(row.week_start, Number(row.game_count));
+    });
+
+    const weeklyUserMap = new Map<string, number>();
+    weeklyUsers.forEach(row => {
+      weeklyUserMap.set(row.week_start, Number(row.user_count));
+    });
+
+    // Generate daily stats array (30 days)
+    const daily = Array.from({ length: 30 }, (_, i) => {
       const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
       const dateStr = date.toISOString().split('T')[0];
-      const dayStart = new Date(date.setHours(0, 0, 0, 0));
-      const dayEnd = new Date(date.setHours(23, 59, 59, 999));
+      
+      const tipData = dailyTipMap.get(dateStr) || { count: 0, volume: '0' };
+      const games = dailyGameMap.get(dateStr) || 0;
+      const newUsers = dailyUserMap.get(dateStr) || 0;
 
-      return this.getDayStats(dateStr, dayStart, dayEnd);
-    });
+      return {
+        date: dateStr,
+        tips: tipData.count,
+        games,
+        newUsers,
+        volume: tipData.volume
+      };
+    }).reverse(); // Most recent first
 
-    // Weekly stats for last 4 weeks
-    const weeklyStatsPromises = Array.from({ length: 4 }, (_, i) => {
+    // Generate weekly stats array (4 weeks)
+    const weekly = Array.from({ length: 4 }, (_, i) => {
       const weekStart = new Date(now.getTime() - (i + 1) * 7 * 24 * 60 * 60 * 1000);
       weekStart.setHours(0, 0, 0, 0);
-      const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
       
-      return this.getWeekStats(weekStart.toISOString().split('T')[0], weekStart, weekEnd);
-    });
+      // Align with SQL DATE_TRUNC('week') which uses Monday as week start
+      const mondayStart = new Date(weekStart);
+      const dayOfWeek = mondayStart.getDay();
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      mondayStart.setDate(mondayStart.getDate() - daysToMonday);
+      
+      const weekStartStr = mondayStart.toISOString().split('T')[0];
+      
+      const tipData = weeklyTipMap.get(weekStartStr) || { count: 0, volume: '0' };
+      const games = weeklyGameMap.get(weekStartStr) || 0;
+      const newUsers = weeklyUserMap.get(weekStartStr) || 0;
 
-    const [daily, weekly] = await Promise.all([
-      Promise.all(dailyStatsPromises),
-      Promise.all(weeklyStatsPromises)
-    ]);
+      return {
+        weekStart: weekStartStr,
+        tips: tipData.count,
+        games,
+        newUsers,
+        volume: tipData.volume
+      };
+    }).reverse(); // Most recent first
 
-    return {
-      daily: daily.reverse(), // Most recent first
-      weekly: weekly.reverse()
-    };
+    const result = { daily, weekly };
+    
+    // Cache for 10 minutes
+    timeStatsCache.set(cacheKey, result);
+    
+    console.log('✅ Time breakdown cached for 10 minutes');
+    return result;
   }
 
-  private async getDayStats(dateStr: string, dayStart: Date, dayEnd: Date): Promise<DailyStats> {
-    const [tips, games, newUsers, volume] = await Promise.all([
-      prisma.tip.count({
-        where: { 
-          status: 'COMPLETED',
-          createdAt: { gte: dayStart, lte: dayEnd }
-        }
-      }),
-
-      prisma.match.count({
-        where: { 
-          status: 'COMPLETED',
-          createdAt: { gte: dayStart, lte: dayEnd }
-        }
-      }),
-
-      prisma.user.count({
-        where: { createdAt: { gte: dayStart, lte: dayEnd } }
-      }),
-
-      prisma.tip.aggregate({
-        where: { 
-          status: 'COMPLETED',
-          createdAt: { gte: dayStart, lte: dayEnd }
-        },
-        _sum: { amountAtomic: true }
-      })
-    ]);
-
-    return {
-      date: dateStr,
-      tips,
-      games,
-      newUsers,
-      volume: volume._sum.amountAtomic ? volume._sum.amountAtomic.toString() : '0'
-    };
+  // ✅ Cache invalidation methods for when data changes
+  invalidateTimeStatsCache(key?: string) {
+    timeStatsCache.invalidate(key);
   }
 
-  private async getWeekStats(weekStart: string, start: Date, end: Date): Promise<WeeklyStats> {
-    const [tips, games, newUsers, volume] = await Promise.all([
-      prisma.tip.count({
-        where: { 
-          status: 'COMPLETED',
-          createdAt: { gte: start, lte: end }
-        }
-      }),
-
-      prisma.match.count({
-        where: { 
-          status: 'COMPLETED',
-          createdAt: { gte: start, lte: end }
-        }
-      }),
-
-      prisma.user.count({
-        where: { createdAt: { gte: start, lte: end } }
-      }),
-
-      prisma.tip.aggregate({
-        where: { 
-          status: 'COMPLETED',
-          createdAt: { gte: start, lte: end }
-        },
-        _sum: { amountAtomic: true }
-      })
-    ]);
-
-    return {
-      weekStart,
-      tips,
-      games,
-      newUsers,
-      volume: volume._sum.amountAtomic ? volume._sum.amountAtomic.toString() : '0'
-    };
+  // Helper method to invalidate cache when new data is added
+  onDataChanged() {
+    this.invalidateTimeStatsCache();
   }
 }
 

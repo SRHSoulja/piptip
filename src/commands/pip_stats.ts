@@ -55,18 +55,18 @@ export default async function pipStats(i: ChatInputCommandInteraction) {
         orderBy: { expiresAt: 'desc' }
       }),
 
-      // Direct tips sent aggregated by token (revert to work with current schema)
+      // Direct tips sent aggregated by token (only completed)
       prisma.tip.groupBy({
         by: ['tokenId'],
-        where: { fromUserId: user.id },
+        where: { fromUserId: user.id, status: 'COMPLETED' },
         _count: { id: true },
         _sum: { amountAtomic: true }
       }),
 
-      // Direct tips received aggregated by token (revert to work with current schema)
+      // Direct tips received aggregated by token (only completed)
       prisma.tip.groupBy({
         by: ['tokenId'],
-        where: { toUserId: user.id },
+        where: { toUserId: user.id, status: 'COMPLETED' },
         _count: { id: true },
         _sum: { amountAtomic: true }
       }),
@@ -80,7 +80,7 @@ export default async function pipStats(i: ChatInputCommandInteraction) {
           _sum: { totalAmount: true }
         }),
         prisma.groupTipClaim.count({
-          where: { userId: user.id }
+          where: { userId: user.id, status: 'CLAIMED' }
         })
       ]).then(([created, claimed]) => ({ created, claimed })),
 

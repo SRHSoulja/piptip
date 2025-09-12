@@ -2304,7 +2304,7 @@ adminRouter.get("/system/db-stats", async (req, res) => {
     const [users, transactions, tips, activeGroupTips, deposits, withdrawals] = await Promise.all([
       prisma.user.count(),
       prisma.transaction.count(),
-      prisma.tip.count(),
+      prisma.tip.count({ where: { status: 'COMPLETED' } }),
       prisma.groupTip.count({ where: { status: "ACTIVE" } }),
       prisma.transaction.count({ where: { type: "DEPOSIT" } }),
       prisma.transaction.count({ where: { type: "WITHDRAW" } })

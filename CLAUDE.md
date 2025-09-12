@@ -10,6 +10,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Database**: `npx prisma migrate dev` - Apply schema migrations
 - **Schema push**: `npm run prisma:push` - Push schema without migrations
 
+## Production Readiness & Validation
+
+- **Full Validation**: `npx tsx scripts/deployment_validation.ts` - Comprehensive deployment readiness check
+- **Environment Check**: `npx tsx src/services/env_validator.ts` - Validate all required environment variables
+- **Database Integrity**: `npx tsx scripts/db_integrity_check.ts` - Run database integrity validation
+- **Smoke Tests**: `npx tsx scripts/smoke_tests.ts` - End-to-end production validation
+- **Test Import Check**: `node scripts/check-test-imports.cjs` - Ensure no test code in production
+
+## Deployment
+
+- **CI/CD**: Automated deployment via GitHub Actions on push to main branch
+- **Manual**: Follow procedures in `DEPLOYMENT_RUNBOOK.md`
+- **Environment**: Use `.env.example` as template for production environment setup
+
 ## Architecture
 
 PIPTip is a Discord tipping bot for Abstract Chain tokens (Penguin, Ice, Pebble) with integrated web admin interface.
@@ -37,4 +51,23 @@ PIPTip is a Discord tipping bot for Abstract Chain tokens (Penguin, Ice, Pebble)
 
 ### Environment Setup
 
-Requires extensive `.env` configuration including Discord credentials, PostgreSQL database URL, Abstract Chain RPC settings, token addresses, fee configurations, and admin secrets. See README.md for complete environment variable list.
+Requires extensive `.env` configuration including Discord credentials, PostgreSQL database URL, Abstract Chain RPC settings, token addresses, fee configurations, and admin secrets. Use `.env.example` as template and run `npx tsx scripts/env_validator.ts` to validate configuration.
+
+## Production Security
+
+### Secret Management
+- **Log Scrubbing**: `src/services/log_scrubber.ts` automatically scrubs sensitive data from logs
+- **Environment Validation**: Required vs optional variables clearly defined and validated
+- **Admin Protection**: Bearer token authentication on admin and internal API routes
+- **Secret Detection**: Automated detection prevents secrets from leaking into logs
+
+### Code Quality
+- **Build Guards**: CI/CD prevents test imports from reaching production (`scripts/check-test-imports.cjs`)
+- **Type Safety**: Comprehensive TypeScript validation with `--noEmit --pretty false`
+- **Database Integrity**: Automated validation of data consistency and constraints
+
+### Deployment Safety
+- **Health Checks**: 3-second timeout health validation with retry logic
+- **Automated Rollback**: CI/CD automatically reverts on health check failure
+- **Smoke Testing**: End-to-end validation of critical functionality post-deployment
+- **Migration Validation**: Database schema consistency verification before deployment

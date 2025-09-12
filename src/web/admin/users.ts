@@ -90,12 +90,12 @@ usersRouter.get("/users/search", async (req, res) => {
     // Get tip statistics and last activity for the user
     const [tipsSent, tipsReceived, lastTip, lastMatch] = await Promise.all([
       prisma.tip.aggregate({
-        where: { fromUserId: user.id },
+        where: { fromUserId: user.id, status: 'COMPLETED' },
         _count: { id: true },
         _sum: { amountAtomic: true }
       }),
       prisma.tip.aggregate({
-        where: { toUserId: user.id },
+        where: { toUserId: user.id, status: 'COMPLETED' },
         _count: { id: true },
         _sum: { amountAtomic: true }
       }),
@@ -175,12 +175,12 @@ usersRouter.get("/users/top", async (req, res) => {
       users.map(async (user) => {
         const [tipsSent, tipsReceived, lastTip, lastMatch] = await Promise.all([
           prisma.tip.aggregate({
-            where: { fromUserId: user.id },
+            where: { fromUserId: user.id, status: 'COMPLETED' },
             _count: { id: true },
             _sum: { amountAtomic: true }
           }),
           prisma.tip.aggregate({
-            where: { toUserId: user.id },
+            where: { toUserId: user.id, status: 'COMPLETED' },
             _count: { id: true },
             _sum: { amountAtomic: true }
           }),

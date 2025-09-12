@@ -24,7 +24,13 @@
       "Bash(rm:*)",
       "Bash(git add:*)",
       "Bash(git rm:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm test:*)",
+      "Bash(npx tsx:*)",
+      "Bash(USERS=5 SINGLE_TIPS=10 GROUP_TIPS=3 CONCURRENCY=3 EXPIRE_COUNT=1 npx tsx tests/load/loadTest.ts)",
+      "Bash(chmod:*)",
+      "Bash(git grep:*)",
+      "Bash(npx prisma migrate:*)"
     ],
     "deny": [],
     "ask": []

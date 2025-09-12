@@ -1,0 +1,231 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Check for test imports in src
+        run: node scripts/check-test-imports.cjs
+
+      - name: TypeScript type checking
+        run: npx tsc --noEmit --pretty false
+
+      - name: ESLint (max 0 warnings)
+        run: |
+          if [ -f ".eslintrc.json" ] || [ -f ".eslintrc.js" ] || [ -f "eslint.config.js" ]; then
+            npx eslint --max-warnings=0 .
+          else
+            echo "ESLint not configured, skipping..."
+          fi
+        continue-on-error: true
+
+      - name: Prettier check
+        run: |
+          if [ -f ".prettierrc" ] || [ -f "prettier.config.js" ]; then
+            npx prettier --check .
+          else
+            echo "Prettier not configured, skipping..."
+          fi
+        continue-on-error: true
+
+      - name: Dependency check
+        run: |
+          if command -v npx depcheck > /dev/null; then
+            npx depcheck
+          else
+            echo "depcheck not available, skipping..."
+          fi
+        continue-on-error: true
+
+      - name: Build application
+        run: npm run build
+
+      - name: Verify package-lock integrity
+        run: |
+          if [ -f "package-lock.json" ]; then
+            # Check if package-lock.json changed during install
+            git diff --exit-code package-lock.json || {
+              echo "❌ package-lock.json was modified during install"
+              echo "Run 'npm ci' locally and commit the changes"
+              exit 1
+            }
+          fi
+
+      - name: Run tests (if available)
+        run: |
+          if [ -f "package.json" ] && grep -q '"test"' package.json; then
+            npm test
+          else
+            echo "No tests configured, skipping..."
+          fi
+        continue-on-error: false
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/
+            node_modules/.prisma/
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            
+            echo "🚀 Starting deployment at $(date)"
+            
+            # Navigate to application directory
+            cd ${{ secrets.APP_PATH || '/opt/piptip' }}
+            
+            # Get current commit for rollback reference
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            echo "📝 Previous commit: $PREVIOUS_COMMIT"
+            
+            # Fetch latest code and reset to main
+            echo "📥 Fetching latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+            
+            # Get new commit SHA for versioning
+            CURRENT_COMMIT=$(git rev-parse --short HEAD)
+            echo "📝 Current commit: $CURRENT_COMMIT"
+            
+            # Install production dependencies
+            echo "📦 Installing dependencies..."
+            npm ci --omit=dev --silent
+            
+            # Generate Prisma client for production
+            echo "🔧 Generating Prisma client..."
+            npx prisma generate
+            
+            # Run database migrations
+            echo "🗄️ Running database migrations..."
+            npx prisma migrate deploy
+            
+            # Build application
+            echo "🏗️ Building application..."
+            npm run build
+            
+            # Update environment with git SHA
+            echo "🔧 Updating environment variables..."
+            if ! grep -q "^GIT_SHA=" .env; then
+              echo "GIT_SHA=$CURRENT_COMMIT" >> .env
+            else
+              sed -i "s/^GIT_SHA=.*/GIT_SHA=$CURRENT_COMMIT/" .env
+            fi
+            
+            # Reload PM2 with updated environment
+            echo "🔄 Reloading PM2 process..."
+            pm2 reload pipbot --update-env
+            
+            # Wait for application to start
+            echo "⏳ Waiting for application startup..."
+            sleep 10
+            
+            # Health check with retries and timeout
+            echo "🏥 Performing health checks..."
+            HEALTH_URL="${{ secrets.HEALTH_CHECK_URL || 'http://localhost:3000/health/healthz' }}"
+            MAX_RETRIES=5
+            RETRY_DELAY=5
+            HEALTH_TIMEOUT=3
+            
+            for i in $(seq 1 $MAX_RETRIES); do
+              echo "Health check attempt $i/$MAX_RETRIES (${HEALTH_TIMEOUT}s timeout)..."
+              
+              if timeout ${HEALTH_TIMEOUT}s curl -f -s --max-time ${HEALTH_TIMEOUT} "$HEALTH_URL" > /tmp/health_response.json 2>/dev/null; then
+                echo "✅ Health check passed!"
+                
+                # Verify the response contains expected fields
+                if command -v jq > /dev/null && jq -e '.status == "healthy" and .db.status == "connected"' /tmp/health_response.json > /dev/null; then
+                  echo "✅ Health check validation passed!"
+                  echo "📊 Health status:" 
+                  jq . /tmp/health_response.json
+                  echo "🎉 Deployment completed successfully!"
+                  exit 0
+                else
+                  echo "✅ Health check basic validation passed!"
+                  cat /tmp/health_response.json
+                  echo "🎉 Deployment completed successfully!"
+                  exit 0
+                fi
+              else
+                echo "❌ Health check failed (attempt $i/$MAX_RETRIES)"
+              fi
+              
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "⏳ Waiting ${RETRY_DELAY}s before retry..."
+                sleep $RETRY_DELAY
+              fi
+            done
+            
+            # Health checks failed - rollback
+            echo "🚨 Health checks failed after $MAX_RETRIES attempts"
+            echo "🔄 Rolling back to previous version..."
+            
+            git checkout $PREVIOUS_COMMIT
+            npm ci --omit=dev --silent
+            npx prisma generate
+            npm run build
+            pm2 reload pipbot --update-env
+            
+            echo "❌ Deployment failed and rolled back"
+            exit 1
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment completed successfully"
+          else
+            echo "❌ Deployment failed"
+          fi

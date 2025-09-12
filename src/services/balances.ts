@@ -2,6 +2,7 @@
 import { prisma } from "./db.js";
 import { formatUnits, parseUnits } from "ethers";
 import type { Prisma } from "@prisma/client";
+import { incrementNegativeBalanceAttempts } from "./metrics.js";
 
 // Legacy compatibility function for existing commands
 export async function debit(discordId: string, amountAtomic: bigint, type = "MATCH_WAGER") {
@@ -142,6 +143,12 @@ export async function debitToken(
   if (bal < total) throw new Error("Insufficient balance");
 
   const newBal = bal - total;
+  
+  // Monitor for negative balance attempts (should never happen after sufficient balance check)
+  if (newBal < 0n) {
+    incrementNegativeBalanceAttempts();
+    throw new Error("Negative balance prevented");
+  }
 
   await prisma.$transaction(async (db) => {
     await db.userBalance.update({
@@ -326,6 +333,12 @@ export async function debitTokenTx(
   if (bal < total) throw new Error("Insufficient balance");
 
   const newBal = bal - total;
+  
+  // Monitor for negative balance attempts
+  if (newBal < 0n) {
+    incrementNegativeBalanceAttempts();
+    throw new Error("Negative balance prevented");
+  }
 
   await tx.userBalance.update({
     where: { userId_tokenId: { userId: user.id, tokenId } },

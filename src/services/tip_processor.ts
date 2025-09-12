@@ -9,6 +9,7 @@ import { userHasActiveTaxFreeTier } from "./tiers.js";
 import { groupTipEmbed } from "../ui/embeds.js";
 import { groupTipClaimRow } from "../ui/components.js";
 import { scheduleGroupTipExpiry } from "../features/group_tip_expiry.js";
+import { RefundEngine } from "./refund_engine.js";
 
 export interface TipData {
   amount: number;
@@ -107,6 +108,7 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
           tokenId: token.id,
           amountAtomic: atomic.toString(), // Store atomic units, not converted amounts
           feeAtomic: feeAtomic.toString(), // Store atomic units, not converted amounts
+          taxAtomic: feeAtomic.toString(), // Store tax amount for refunds
           note: data.note,
           status: "COMPLETED",
         },
@@ -180,6 +182,7 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
           creatorId: fromUser.id,
           tokenId: token.id,
           totalAmount: data.amount.toString(),
+          taxAtomic: feeAtomic.toString(), // Store tax amount for refunds
           duration: data.duration * 60,
           status: "ACTIVE",
           expiresAt,
@@ -243,13 +246,12 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
       } catch (error: any) {
         console.error("Failed to post group tip message:", error);
         
-        // If posting fails, refund the user
+        // If posting fails, refund the user using centralized engine
         try {
-          // Credit back the principal + fee to user
-          await creditToken(data.userId, token.id, atomic + feeAtomic, "TIP", { 
-            guildId: data.guildId,
-            note: "Group tip posting failed - refund"
-          });
+          const refundResult = await RefundEngine.refundContribution(result.id);
+          if (!refundResult.success) {
+            console.error("Failed to refund group tip:", refundResult.message);
+          }
           
           // Mark group tip as failed (use string since schema expects string)
           await prisma.groupTip.update({
