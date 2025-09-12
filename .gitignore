@@ -18,4 +18,6 @@ pids
 
 # OS generated files
 .DS_Store
-Thumbs.db
+Thumbs.db*.tgz
+*.tar.gz
+node_modules_*.tgz
