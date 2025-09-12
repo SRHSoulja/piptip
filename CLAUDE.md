@@ -18,6 +18,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Smoke Tests**: `npx tsx scripts/smoke_tests.ts` - End-to-end production validation
 - **Test Import Check**: `node scripts/check-test-imports.cjs` - Ensure no test code in production
 
+## Database Synchronization & Management
+
+- **Sync Validation**: `npx tsx scripts/sync_validation.ts` - Validate Supabase-Prisma synchronization
+- **Deployment Sync**: `npx tsx scripts/deployment_sync.ts [pre|migrate|post|rollback]` - Deployment-safe migrations
+- **Grand Reset**: `npx tsx scripts/grand_reset.ts` - Wipe all user/financial data for fresh starts
+- **Init Config**: `npx tsx scripts/init_app_config.ts` - Initialize AppConfig with emergency controls
+- **Auto-Fix Sync**: Set `AUTO_FIX_SYNC=true` environment variable for automatic sync repair
+
 ## Deployment
 
 - **CI/CD**: Automated deployment via GitHub Actions on push to main branch

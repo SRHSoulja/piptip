@@ -286,6 +286,9 @@ model AppConfig {
   withdrawDailyCap Decimal  @default(500)
   houseFeeBps      Int      @default(200)
   tipFeeBps        Int      @default(100)
+  emergencyMode    Boolean  @default(false)
+  withdrawalsPaused Boolean @default(false)
+  tippingPaused    Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
