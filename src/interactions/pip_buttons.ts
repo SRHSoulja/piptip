@@ -1,5 +1,7 @@
 // src/interactions/pip_buttons.ts
-import type { ButtonInteraction, ModalSubmitInteraction } from "discord.js";
+import type { ButtonInteraction, ModalSubmitInteraction, Interaction } from "discord.js";
+import { isButtonInteraction, isModalSubmitInteraction } from "../discord/guards.js";
+import { parseCustomId, type CustomIdPayload, assertNever } from "../discord/customId.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 import { prisma } from "../services/db.js";
 import { PipMove, judge, label } from "../services/matches.js";
@@ -10,6 +12,7 @@ import { debitTokenTx, creditTokenTx } from "../services/balances.js";
 import { getConfig } from "../config.js";
 import { getActiveAd } from "../services/ads.js";
 import { EmbedBuilder } from "discord.js";
+import { handleGroupTipClaim } from "./group_tip_buttons.js";
 
 // payout helper uses dynamic house fee (bps) from AppConfig
 function rpsPayout(wagerAtomic: bigint, houseFeeBps: bigint) {
@@ -599,7 +602,203 @@ async function handlePurchaseMembership(i: ButtonInteraction) {
 }
 
 /** Router for pip button customIds: pip:<action>:<matchId>:<move?> */
-export async function handlePipButton(i: ButtonInteraction | ModalSubmitInteraction) {
+// Main handler that routes by interaction type using type guards
+export async function handlePipButton(i: Interaction) {
+  if (isButtonInteraction(i)) {
+    return handlePipButtonInteraction(i);
+  }
+  
+  if (isModalSubmitInteraction(i)) {
+    return handlePipModalInteraction(i);
+  }
+  
+  console.warn("Unsupported interaction type in handlePipButton:", i.type);
+}
+
+// Handle button interactions with proper typing
+async function handlePipButtonInteraction(i: ButtonInteraction) {
+  const payload = parseCustomId(i.customId);
+  
+  switch (payload.kind) {
+    case 'PIP_PROFILE_REFRESH':
+      return handleRefreshProfile(i);
+    
+    case 'PIP_PROFILE_DISMISS':
+      return handleDismissProfile(i);
+    
+    case 'PIP_SHOW_HELP':
+      return handleShowHelp(i);
+    
+    case 'PIP_SHOW_DEPOSIT_INSTRUCTIONS':
+      return handleShowDepositInstructions(i);
+    
+    case 'PIP_PURCHASE_MEMBERSHIP':
+      return handlePurchaseMembership(i);
+    
+    case 'PIP_EXPORT_CSV':
+      return handleExportCSV(i);
+    
+    case 'PIP_PROMPT_LINK_WALLET':
+      return handlePromptLinkWallet(i);
+    
+    case 'PIP_LINK_WALLET_MODAL':
+      return handleLinkWalletModal(i);
+    
+    case 'GROUP_TIP_CLAIM':
+      return handleGroupTipClaim(i, payload.groupTipId);
+    
+    case 'PIP_PICK':
+      return handlePick(i, payload.matchId, payload.move as PipMove);
+    
+    case 'PIP_JOIN':
+      return handleJoin(i, payload.matchId, payload.move as PipMove);
+    
+    case 'PIP_CANCEL':
+      return handleCancel(i, payload.matchId);
+    
+    case 'UNKNOWN':
+      return handleLegacyPipButton(i);
+    
+    default:
+      // Modal-only interactions should not reach here
+      if (payload.kind === 'PIP_LINK_WALLET_SUBMIT') {
+        console.error("Modal interaction received in button handler:", payload.kind);
+        return i.reply({ content: "Invalid interaction type for button.", flags: 64 });
+      }
+      
+      // Other unknown button actions
+      console.warn("Unknown button interaction:", payload);
+      return i.reply({ content: "Unknown button action.", flags: 64 });
+  }
+}
+
+// Handle modal interactions with proper typing
+async function handlePipModalInteraction(i: ModalSubmitInteraction) {
+  const payload = parseCustomId(i.customId);
+  
+  switch (payload.kind) {
+    case 'PIP_LINK_WALLET_SUBMIT':
+      return handleLinkWalletSubmit(i);
+    
+    case 'UNKNOWN':
+      return handleLegacyPipModal(i);
+    
+    default:
+      return i.reply({ content: "Unknown modal action.", flags: 64 });
+  }
+}
+
+// Handle link wallet modal button - shows the modal
+async function handleLinkWalletModal(i: ButtonInteraction) {
+  try {
+    const modal = new ModalBuilder()
+      .setCustomId("pip:link_wallet_submit")
+      .setTitle("🔗 Link Your Abstract Wallet");
+
+    const addressInput = new TextInputBuilder()
+      .setCustomId("wallet_address")
+      .setLabel("Enter your Abstract wallet address")
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder("0x...")
+      .setRequired(true)
+      .setMinLength(42)
+      .setMaxLength(42);
+
+    const actionRow = new ActionRowBuilder<TextInputBuilder>()
+      .addComponents(addressInput);
+
+    modal.addComponents(actionRow);
+
+    await i.showModal(modal);
+
+  } catch (error: any) {
+    console.error("Link wallet modal error:", error);
+    await i.reply({ 
+      content: `❌ **Error showing modal**\n${error?.message || String(error)}`, 
+      flags: 64 
+    }).catch(() => {});
+  }
+}
+
+// Handle link wallet modal submission
+async function handleLinkWalletSubmit(i: ModalSubmitInteraction) {
+  await i.deferReply({ flags: 64 }).catch(() => {});
+  
+  try {
+    const rawAddr = i.fields.getTextInputValue("wallet_address");
+    if (!rawAddr || typeof rawAddr !== "string") {
+      return i.editReply({ content: "Invalid address format." });
+    }
+    
+    const addr = rawAddr.trim().toLowerCase();
+    const isAddress = (s: string) => /^0x[a-fA-F0-9]{40}$/.test(s);
+    
+    if (!isAddress(addr)) {
+      return i.editReply({
+        content: [
+          "❌ **Invalid wallet address format**",
+          "",
+          "Please provide a valid Abstract wallet address (starts with 0x).",
+          "",
+          "**Don't have an Abstract wallet?**",
+          "Get one free at **abs.xyz**"
+        ].join("\n")
+      });
+    }
+
+    // Prevent sharing the same wallet
+    const taken = await prisma.user.findFirst({
+      where: { agwAddress: addr, discordId: { not: i.user.id } }
+    });
+    if (taken) {
+      return i.editReply({ content: "That wallet is already linked to another user." });
+    }
+
+    await prisma.user.upsert({
+      where: { discordId: i.user.id },
+      update: { agwAddress: addr },
+      create: { discordId: i.user.id, agwAddress: addr }
+    });
+
+    await i.editReply({
+      content: [
+        `✅ **Wallet Successfully Linked!**`,
+        "",
+        `🔗 **Address:** \`${addr}\``,
+        "",
+        "**What's next?**",
+        "• Use `/pip_profile` to view your wallet and balances",
+        "• Use deposit instructions to add tokens",
+        "• Start tipping and gaming with your tokens!"
+      ].join("\n")
+    });
+
+  } catch (error: any) {
+    console.error("Link wallet submit error:", error);
+    await i.editReply({
+      content: `❌ **Error linking wallet**\n${error?.message || String(error)}`
+    });
+  }
+}
+
+// Handle legacy modal submissions that don't match the new parsing system
+async function handleLegacyPipModal(i: ModalSubmitInteraction) {
+  const parts = i.customId.split(":");
+  const [ns, action] = parts;
+  if (ns !== "pip") return;
+
+  // Handle modal submissions with legacy customId format
+  if (action === "withdraw_custom_modal") {
+    return handleWithdrawCustomModal(i, parts);
+  }
+
+  // Add other legacy modal handlers here as needed
+  console.warn("Unknown legacy modal action:", action);
+  await i.reply({ content: "Unknown modal action.", flags: 64 }).catch(() => {});
+}
+
+// Legacy handler for old customId format (fallback)
+async function handleLegacyPipButton(i: ButtonInteraction) {
   const parts = i.customId.split(":");
   const [ns, action] = parts;
   if (ns !== "pip") return;
@@ -672,10 +871,8 @@ export async function handlePipButton(i: ButtonInteraction | ModalSubmitInteract
     return handleConfirmWithdraw(i, parts);
   }
 
-  // Handle modal submissions
-  if (action === "withdraw_custom_modal") {
-    return handleWithdrawCustomModal(i as ModalSubmitInteraction, parts);
-  }
+  // Modal submissions are now handled by handleLegacyPipModal
+  // This function only handles ButtonInteractions
 
   // Handle stats actions
   if (action === "export_csv") {
@@ -774,7 +971,7 @@ async function handleRefreshProfile(i: ButtonInteraction) {
     await i.editReply({
       content: null,
       embeds: [embed],
-      components: [profileButtons]
+      components: profileButtons
     });
     
   } catch (error: any) {

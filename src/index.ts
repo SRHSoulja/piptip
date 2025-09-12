@@ -24,6 +24,7 @@ import pipHelp from "./commands/pip_help.js";
 import pipStats from "./commands/pip_stats.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
+import { isButtonInteraction, isModalSubmitInteraction } from "./discord/guards.js";
 import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
 
 // shared command defs + registrar
@@ -185,19 +186,21 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
     }
   }
 
-  // Buttons (unchanged)
-  if ("isButton" in i && (i as any).isButton()) {
-    const customId = (i as any).customId;
-    if (customId.startsWith("pip:"))      return handlePipButton(i as any);
-    if (customId.startsWith("grouptip:")) return handleGroupTipButton(i as any);
+  // Button interactions
+  if (isButtonInteraction(i)) {
+    const customId = i.customId;
+    if (customId.startsWith("pip:"))      return handlePipButton(i);
+    if (customId.startsWith("grouptip:")) return handleGroupTipButton(i);
     console.warn("Unknown button interaction:", customId);
+    return;
   }
 
   // Modal submissions
-  if ("isModalSubmit" in i && (i as any).isModalSubmit()) {
-    const customId = (i as any).customId;
-    if (customId.startsWith("pip:")) return handlePipButton(i as any);
+  if (isModalSubmitInteraction(i)) {
+    const customId = i.customId;
+    if (customId.startsWith("pip:")) return handlePipButton(i);
     console.warn("Unknown modal interaction:", customId);
+    return;
   }
 }));
 

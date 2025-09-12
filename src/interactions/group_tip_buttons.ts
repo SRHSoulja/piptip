@@ -3,7 +3,7 @@ import { prisma } from "../services/db.js";
 import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { finalizeExpiredGroupTip } from "../features/finalizeExpiredGroupTip.js";
 
-async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
+export async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
   await i.deferReply({ ephemeral: true });
 
   try {
