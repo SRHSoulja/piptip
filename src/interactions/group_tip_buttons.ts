@@ -13,7 +13,6 @@ async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
         include: {
           Creator: true,
           Token: true,
-          claims: { include: { User: true } },
         },
       });
       if (!tip) throw new Error("Group tip not found");
@@ -35,11 +34,7 @@ async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
         throw new Error("You cannot claim your own group tip");
       }
 
-      // Already claimed?
-      const already = tip.claims.some(c => c.User.discordId === i.user.id);
-      if (already) {
-        throw new Error("You have already claimed this group tip");
-      }
+      // Skip preloaded claims check - rely on DB unique constraint below
 
       // Ensure user exists
 // Ensure user exists
@@ -57,16 +52,24 @@ try {
 } catch (err: any) {
   // Prisma unique constraint on @@unique([groupTipId, userId])
   if (err?.code === "P2002") {
+    // Track unique violation for monitoring
+    const { incrementUniqueViolationClaims } = await import("../services/metrics.js");
+    incrementUniqueViolationClaims();
     throw new Error("You have already claimed this group tip");
   }
   throw err;
 }
 
 
+      // Get current claim count after successful insert
+      const claimCount = await tx.groupTipClaim.count({
+        where: { groupTipId: tip.id },
+      });
+
       return {
         expired: false,
         groupTipId: tip.id,
-        newClaimCount: tip.claims.length + 1,
+        newClaimCount: claimCount,
       };
     });
 

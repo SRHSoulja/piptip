@@ -138,6 +138,8 @@ model Match {
 
   @@index([status, offerDeadline])
   @@index([createdAt])
+  @@index([challengerId])
+  @@index([joinerId])
 }
 
 enum TipStatus {
@@ -165,6 +167,8 @@ model Tip {
 
   @@index([createdAt])
   @@index([status])
+  @@index([fromUserId])
+  @@index([toUserId])
 }
 
 enum GroupTipStatus {
@@ -196,6 +200,8 @@ model GroupTip {
 
   @@index([status, expiresAt])
   @@index([createdAt])
+  @@index([creatorId])
+  @@index([guildId])
 }
 
 enum GroupContributionStatus {
@@ -216,7 +222,10 @@ model GroupTipClaim {
   GroupTip GroupTip @relation(fields: [groupTipId], references: [id])
   User     User?    @relation("GroupTipClaims", fields: [userId], references: [id])
 
+  @@unique([groupTipId, userId])
   @@index([status])
+  @@index([groupTipId])
+  @@index([userId])
 }
 
 model Token {
@@ -316,6 +325,7 @@ model Transaction {
   @@index([createdAt])
   @@index([guildId])
   @@index([type])
+  @@index([userId])
 }
 
 model WebhookEvent {

@@ -77,18 +77,18 @@ export async function generateProfileData(userId: string, discordUser: User) {
       orderBy: { expiresAt: 'desc' }
     }),
 
-    // OPTIMIZED: Aggregate direct tips sent by token (revert to work with current schema)
+    // OPTIMIZED: Aggregate direct tips sent by token (only completed)
     prisma.tip.groupBy({
       by: ['tokenId'],
-      where: { fromUserId: u.id },
+      where: { fromUserId: u.id, status: 'COMPLETED' },
       _count: { id: true },
       _sum: { amountAtomic: true }
     }),
 
-    // OPTIMIZED: Aggregate direct tips received by token (revert to work with current schema)
+    // OPTIMIZED: Aggregate direct tips received by token (only completed)
     prisma.tip.groupBy({
       by: ['tokenId'],
-      where: { toUserId: u.id },
+      where: { toUserId: u.id, status: 'COMPLETED' },
       _count: { id: true },
       _sum: { amountAtomic: true }
     }),
@@ -102,10 +102,10 @@ export async function generateProfileData(userId: string, discordUser: User) {
         _count: { id: true },
         _sum: { totalAmount: true }
       }),
-      // Group tips claimed by user
+      // Group tips claimed by user (only successfully claimed)
       prisma.groupTipClaim.groupBy({
         by: ['groupTipId'],
-        where: { userId: u.id },
+        where: { userId: u.id, status: 'CLAIMED' },
         _count: { id: true }
       })
     ]).then(async ([groupTipsCreated, groupTipClaims]) => {
