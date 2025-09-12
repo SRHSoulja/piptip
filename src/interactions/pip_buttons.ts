@@ -29,6 +29,9 @@ async function handlePick(i: ButtonInteraction, matchId: number, move: PipMove) 
     include: { Challenger: true, Token: true }
   });
   if (!m) return i.followUp({ content: "Match not found.", flags: 64 });
+  if (!m.Challenger) {
+    return i.followUp({ content: "Match challenger not found.", flags: 64 });
+  }
   if (m.Challenger.discordId !== i.user.id) {
     return i.followUp({ content: "Not your match.", flags: 64 });
   }
@@ -54,7 +57,7 @@ async function handlePick(i: ButtonInteraction, matchId: number, move: PipMove) 
   const msg = await (ch as any).send({
     embeds: [
       matchOfferEmbed(
-        `<@${m.Challenger.discordId}>`,
+        `<@${m.Challenger?.discordId || 'Unknown'}>`,
         wagerTxt,
         ad ?? undefined
       )
@@ -89,6 +92,9 @@ async function handleJoin(i: ButtonInteraction, matchId: number, move: PipMove) 
       });
       if (!m) throw new Error("Match not found");
       if (m.status !== "OFFERED") throw new Error("Not available");
+      if (!m.Challenger) {
+        throw new Error("Match challenger not found");
+      }
       if (m.Challenger.discordId === i.user.id) {
         throw new Error("You cannot join your own match");
       }
@@ -125,6 +131,9 @@ async function handleJoin(i: ButtonInteraction, matchId: number, move: PipMove) 
         await creditTokenTx(tx, i.user.id, m.Token.id, wager, "MATCH_PAYOUT", {
           guildId: i.guildId ?? null
         });
+        if (!m.Challenger) {
+          throw new Error("Match challenger not found");
+        }
         await creditTokenTx(tx, m.Challenger.discordId, m.Token.id, wager, "MATCH_PAYOUT", {
           guildId: i.guildId ?? null
         });
@@ -133,6 +142,9 @@ async function handleJoin(i: ButtonInteraction, matchId: number, move: PipMove) 
           where: { id: joiner.id },
           data: { ties: { increment: 1 } }
         });
+        if (!m.Challenger) {
+          throw new Error("Match challenger not found");
+        }
         await tx.user.update({
           where: { id: m.Challenger.id },
           data: { ties: { increment: 1 } }
@@ -144,6 +156,9 @@ async function handleJoin(i: ButtonInteraction, matchId: number, move: PipMove) 
         if (outcome === 1) {
           // challenger wins
           result = "WIN_CHALLENGER";
+          if (!m.Challenger) {
+            throw new Error("Match challenger not found");
+          }
           winnerUserId = m.Challenger.id;
 
           await creditTokenTx(tx, m.Challenger.discordId, m.Token.id, payout, "MATCH_PAYOUT", {
@@ -171,6 +186,9 @@ async function handleJoin(i: ButtonInteraction, matchId: number, move: PipMove) 
             where: { id: joiner.id },
             data: { wins: { increment: 1 } }
           });
+          if (!m.Challenger) {
+            throw new Error("Match challenger not found");
+          }
           await tx.user.update({
             where: { id: m.Challenger.id },
             data: { losses: { increment: 1 } }
@@ -217,7 +235,7 @@ const final = await tx.match.update({
     try {
       const ch2 = await i.client.channels.fetch(settled.channelId!);
       if (ch2?.isTextBased() && "messages" in ch2 && settled.messageId) {
-        const challengerTag = `<@${settled.Challenger.discordId}>`;
+        const challengerTag = settled.Challenger ? `<@${settled.Challenger.discordId}>` : "Unknown Challenger";
         const joinerTag = settled.Joiner ? `<@${settled.Joiner.discordId}>` : "Opponent";
 
         const potBig = 2n * decToBigDirect(settled.wagerAtomic, settled.Token.decimals);
@@ -241,11 +259,11 @@ const final = await tx.match.update({
             payoutText: settled.result === "TIE" ? undefined : formatAmount(payoutBig, settled.Token),
             rakeText: settled.result === "TIE" ? undefined : formatAmount(rakeBig, settled.Token),
             potText: formatAmount(potBig, settled.Token),
-            challengerStats: {
+            challengerStats: settled.Challenger ? {
               wins: settled.Challenger.wins,
               losses: settled.Challenger.losses, 
               ties: settled.Challenger.ties
-            },
+            } : { wins: 0, losses: 0, ties: 0 },
             joinerStats: settled.Joiner ? {
               wins: settled.Joiner.wins,
               losses: settled.Joiner.losses,
@@ -279,11 +297,13 @@ async function handleCancel(i: ButtonInteraction, matchId: number) {
       });
       if (!m) throw new Error("Match not found");
       if (m.status !== "OFFERED") throw new Error("Cannot cancel now");
+      if (!m.Challenger) throw new Error("Match challenger not found");
       if (m.Challenger.discordId !== i.user.id) throw new Error("Only the challenger can cancel");
 
       const wager = decToBigDirect(m.wagerAtomic, m.Token.decimals);
 
       // refund challenger using tx-aware credit
+      if (!m.Challenger) throw new Error("Match challenger not found");
       await creditTokenTx(tx, m.Challenger.discordId, m.Token.id, wager, "MATCH_PAYOUT", {
         guildId: i.guildId ?? null
       });
@@ -2304,7 +2324,7 @@ async function handleExportCSV(i: ButtonInteraction) {
         activity: activityName,
         amount: formatDecimal(tip.amountAtomic, tip.Token.symbol),
         token: tip.Token.symbol,
-        counterparty: tip.To.discordId,
+        counterparty: tip.To?.discordId || 'Unknown',
         direction: "OUT",
         fee: formatDecimal(tip.feeAtomic, tip.Token.symbol),
         note: statusNote,
@@ -2328,7 +2348,7 @@ async function handleExportCSV(i: ButtonInteraction) {
         activity: activityName,
         amount: formatDecimal(tip.amountAtomic, tip.Token.symbol),
         token: tip.Token.symbol,
-        counterparty: tip.From.discordId,
+        counterparty: tip.From?.discordId || 'Unknown',
         direction: "IN",
         fee: "0",
         note: statusNote,
@@ -2426,13 +2446,13 @@ async function handleExportCSV(i: ButtonInteraction) {
 
     // Add group tips claimed
     for (const claim of groupTipsClaimed) {
-      const key = `group_tip_claimed_${claim.claimedAt.getTime()}`;
+      const key = `group_tip_claimed_${claim.claimedAt?.getTime() || Date.now()}`;
       activities.set(key, {
-        date: claim.claimedAt,
+        date: claim.claimedAt || new Date(),
         activity: "Group Tip Claimed",
         amount: formatDecimal(claim.GroupTip.totalAmount, claim.GroupTip.Token.symbol),
         token: claim.GroupTip.Token.symbol,
-        counterparty: claim.GroupTip.Creator.discordId,
+        counterparty: claim.GroupTip.Creator?.discordId || 'Unknown',
         direction: "IN",
         fee: "0",
         note: "Claimed from group tip",

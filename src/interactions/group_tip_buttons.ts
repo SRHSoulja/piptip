@@ -30,7 +30,7 @@ async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
       }
 
       // Don't let creator claim
-      if (tip.Creator.discordId === i.user.id) {
+      if (tip.Creator && tip.Creator.discordId === i.user.id) {
         throw new Error("You cannot claim your own group tip");
       }
 
