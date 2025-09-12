@@ -45,7 +45,7 @@ export function scrubSecretsFromObject(obj: any): any {
     return obj;
   }
   
-  const scrubbed = Array.isArray(obj) ? [] : {};
+  const scrubbed: any = Array.isArray(obj) ? [] : {};
   
   for (const [key, value] of Object.entries(obj)) {
     // Scrub sensitive keys

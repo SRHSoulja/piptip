@@ -113,7 +113,7 @@ usersRouter.get("/users/search", async (req, res) => {
 
     // Determine last activity from most recent tip or match
     const lastActivity = [lastTip?.createdAt, lastMatch?.createdAt, user.updatedAt]
-      .filter(Boolean)
+      .filter((date): date is Date => date !== null && date !== undefined)
       .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 
     // Fetch Discord username
@@ -198,7 +198,7 @@ usersRouter.get("/users/top", async (req, res) => {
 
         // Determine last activity from most recent tip or match
         const lastActivity = [lastTip?.createdAt, lastMatch?.createdAt, user.updatedAt]
-          .filter(Boolean)
+          .filter((date): date is Date => date !== null && date !== undefined)
           .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 
         return {

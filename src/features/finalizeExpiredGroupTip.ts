@@ -86,6 +86,10 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
     for (let idx = 0; idx < claimedClaims.length; idx++) {
       const c = claimedClaims[idx];
       const share = idx === 0 ? per + rem : per;
+      if (!c.User) {
+        console.error(`GroupTipClaim ${c.id} has no associated User`);
+        continue;
+      }
       await creditTokenTx(tx, c.User.discordId, tip.Token.id, share, "TIP", {
         guildId: tip.guildId ?? undefined,
       });
