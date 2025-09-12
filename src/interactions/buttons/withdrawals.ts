@@ -355,11 +355,27 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
   await i.deferUpdate().catch(() => {});
   
   try {
+    // Check for emergency mode first
+    const emergencyConfig = await prisma.appConfig.findFirst();
+    
+    if (emergencyConfig?.withdrawalsPaused || emergencyConfig?.emergencyMode) {
+      return i.editReply({
+        content: [
+          "🚨 **Withdrawals Temporarily Disabled**",
+          "",
+          "Withdrawals are currently paused for maintenance.",
+          "Please try again later or contact support if this is urgent."
+        ].join("\n"),
+        embeds: [],
+        components: []
+      });
+    }
+
     const tokenId = parseInt(parts[2]);
     const amount = parseFloat(parts[3]);
     
     // Get user, token, and config
-    const [user, token, config] = await Promise.all([
+    const [user, token, appConfig] = await Promise.all([
       prisma.user.findUnique({
         where: { discordId: i.user.id },
         select: { id: true, agwAddress: true }
@@ -393,11 +409,11 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
     // Get withdrawal limits
     const maxPerTxHuman = token.withdrawMaxPerTx != null 
       ? Number(token.withdrawMaxPerTx) 
-      : Number(config?.withdrawMaxPerTx ?? 0);
+      : Number(appConfig?.withdrawMaxPerTx ?? 0);
     
     const dailyCapHuman = token.withdrawDailyCap != null 
       ? Number(token.withdrawDailyCap) 
-      : Number(config?.withdrawDailyCap ?? 0);
+      : Number(appConfig?.withdrawDailyCap ?? 0);
 
     const maxLine = maxPerTxHuman > 0 ? `max per tx ${maxPerTxHuman} ${token.symbol}` : "no per-tx max";
     const dailyLine = dailyCapHuman > 0 ? `daily cap ${dailyCapHuman} ${token.symbol}` : "no daily cap";

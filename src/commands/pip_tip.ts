@@ -6,6 +6,23 @@ import { getActiveTokens, formatAmount } from "../services/token.js";
 
 export default async function pipTip(i: ChatInputCommandInteraction) {
   try {
+    // Check for emergency mode
+    const config = await prisma.appConfig.findFirst();
+    
+    if (config?.tippingPaused || config?.emergencyMode) {
+      return i.reply({
+        content: [
+          "🚨 **Tipping Temporarily Disabled**",
+          "",
+          "Tipping is currently paused for maintenance.",
+          "Please try again later or contact support if this is urgent.",
+          "",
+          "All other bot functions remain available."
+        ].join("\n"),
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
     const amount = i.options.getNumber("amount", true);
     const targetUser = i.options.getUser("user") as User | null;
     const note = i.options.getString("note")?.trim().slice(0, 200).replace(/[<>@&]/g, "") || "";
