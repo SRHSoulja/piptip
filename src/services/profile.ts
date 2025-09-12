@@ -146,7 +146,7 @@ export async function generateProfileData(userId: string, discordUser: User) {
       return Array.from(statsMap.values());
     }),
 
-    // Recent transaction history (keep limited)
+    // Recent transaction history (keep limited, avoid duplicates and fee-only records)
     prisma.transaction.findMany({
       where: { 
         OR: [
@@ -155,7 +155,72 @@ export async function generateProfileData(userId: string, discordUser: User) {
         ]
       },
       orderBy: { createdAt: 'desc' },
-      take: 3
+      take: 10  // Fetch more to handle filtering
+    }).then(transactions => {
+      // Filter out fee-only transactions and deduplicate by transaction hash/metadata
+      const unique: typeof transactions = [];
+      const seen = new Set<number>();
+      const seenTipEvents = new Set<string>(); // Track unique tip events
+      
+      for (const tx of transactions) {
+        // Skip if we've already seen this transaction ID
+        if (seen.has(tx.id)) continue;
+        
+        // Parse metadata to check transaction details
+        let metadata: any = {};
+        try {
+          if (tx.metadata) {
+            metadata = JSON.parse(tx.metadata);
+          }
+        } catch (e) {
+          // Invalid JSON, treat as regular transaction
+        }
+        
+        // Skip fee-only group tip creation records
+        if (metadata.kind === "GROUP_TIP_CREATE" && !tx.otherUserId && Number(tx.amount) === 0) {
+          continue;
+        }
+        
+        // For tip transactions, create a more robust deduplication key
+        if (tx.type === 'TIP') {
+          // Create unique key using core tip details and involved users
+          // Sort user IDs to ensure consistent key regardless of sender/receiver perspective
+          const userIds = [tx.userId, tx.otherUserId].filter(Boolean).sort();
+          const tipKey = `TIP-${userIds.join('-')}-${tx.amount}-${tx.tokenId}-${Math.floor(tx.createdAt.getTime() / 1000)}`;
+          
+          if (seenTipEvents.has(tipKey)) {
+            continue; // Skip this duplicate tip event
+          }
+          seenTipEvents.add(tipKey);
+          
+          // For the same tip event, prefer showing the transaction from the current user's perspective as sender
+          // This ensures we show "sent X tokens" rather than multiple confusing entries
+          const existingIndex = unique.findIndex(existing => {
+            if (existing.type !== 'TIP') return false;
+            const existingUserIds = [existing.userId, existing.otherUserId].filter(Boolean).sort();
+            const existingKey = `TIP-${existingUserIds.join('-')}-${existing.amount}-${existing.tokenId}-${Math.floor(existing.createdAt.getTime() / 1000)}`;
+            return existingKey === tipKey;
+          });
+          
+          // If we find a duplicate, prefer the one where current user is the sender (userId matches)
+          if (existingIndex >= 0) {
+            const existing = unique[existingIndex];
+            if (tx.userId === u.id && existing.userId !== u.id) {
+              // Replace with sender's perspective
+              unique[existingIndex] = tx;
+            }
+            continue;
+          }
+        }
+        
+        seen.add(tx.id);
+        unique.push(tx);
+        
+        // Limit to 3 unique transactions for display
+        if (unique.length >= 3) break;
+      }
+      
+      return unique;
     })
   ]);
 
@@ -195,7 +260,7 @@ export async function generateProfileData(userId: string, discordUser: User) {
     const token = tokenMap.get(stat.tokenId);
     if (!token) continue;
     
-    const atomicAmount = BigInt(stat._sum.amountAtomic || 0);
+    const atomicAmount = BigInt(Number(stat._sum.amountAtomic || 0));
     const decimalAmount = parseFloat(Number(bigToDecDirect(atomicAmount, token.decimals)).toFixed(2));
     
     tipsSentByToken.set(token.symbol, {
@@ -212,7 +277,7 @@ export async function generateProfileData(userId: string, discordUser: User) {
     const token = tokenMap.get(stat.tokenId);
     if (!token) continue;
     
-    const atomicAmount = BigInt(stat._sum.amountAtomic || 0);
+    const atomicAmount = BigInt(Number(stat._sum.amountAtomic || 0));
     const decimalAmount = parseFloat(Number(bigToDecDirect(atomicAmount, token.decimals)).toFixed(2));
     
     tipsReceivedByToken.set(token.symbol, {
@@ -255,11 +320,11 @@ export async function generateProfileData(userId: string, discordUser: User) {
 
   // Format tip statistics for display
   const tipsSentText = Array.from(tipsSentByToken.entries())
-    .map(([symbol, data]) => `${data.count} tips (${formatDecimal(data.amount, symbol)})`)
+    .map(([symbol, data]) => `${data.count} tips (${formatDecimal(Number(data.amount), symbol)})`)
     .join('\n') || 'No tips sent';
 
   const tipsReceivedText = Array.from(tipsReceivedByToken.entries())
-    .map(([symbol, data]) => `${data.count} tips (${formatDecimal(data.amount, symbol)})`)
+    .map(([symbol, data]) => `${data.count} tips (${formatDecimal(Number(data.amount), symbol)})`)
     .join('\n') || 'No tips received';
 
   // Calculate group tip totals from aggregated stats first
@@ -272,12 +337,13 @@ export async function generateProfileData(userId: string, discordUser: User) {
   // For "received": direct tips received + group tips claimed by this user  
   const totalTipsReceivedCount = directTipsReceivedCount + groupTipsClaimedTotal;
 
-  // Format recent activity
+  // Format recent activity - transactions are already deduplicated by ID above
   const recentActivity = recentTransactions.length > 0
     ? recentTransactions
-        .map(tx => {
-          const amount = formatDecimal(tx.amount, "tokens");
+        .map((tx, index) => {
+          const amount = formatDecimal(Number(tx.amount), "tokens");
           const timeAgo = `<t:${Math.floor(tx.createdAt.getTime() / 1000)}:R>`;
+          // Include transaction ID or index to differentiate identical-looking transactions
           return `${tx.type}: ${amount} ${timeAgo}`;
         })
         .join("\n")
