@@ -123,6 +123,25 @@ async function isGuildApproved(guildId: string | null): Promise<boolean> {
   }
 }
 
+// Check if user is banned from PIPTip
+async function isUserBanned(discordId: string): Promise<{ banned: boolean; reason?: string }> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { discordId },
+      select: { isBanned: true, bannedReason: true }
+    });
+    
+    if (user?.isBanned) {
+      return { banned: true, reason: user.bannedReason || "No reason provided" };
+    }
+    
+    return { banned: false };
+  } catch (error) {
+    console.error("Ban check failed:", error);
+    return { banned: false }; // Allow on error to prevent false positives
+  }
+}
+
 
 // Handle autocomplete for token selection
 // Simple visibility logs to trace flow (LOGGING ONLY)
@@ -179,6 +198,20 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
       }).catch(() => {});
     }
     return;
+  }
+
+  // Ban check
+  if ("user" in i && (i as any).user?.id) {
+    const banStatus = await isUserBanned((i as any).user.id);
+    if (banStatus.banned) {
+      if ("isRepliable" in i && (i as any).isRepliable()) {
+        await (i as any).reply({
+          content: `❌ **You are banned from using PIPTip.**\n\n**Reason:** ${banStatus.reason}\n\nIf you believe this is an error, please contact the administrators.`,
+          flags: 64, // MessageFlags.Ephemeral
+        }).catch(() => {});
+      }
+      return;
+    }
   }
 
   // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓

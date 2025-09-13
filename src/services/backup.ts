@@ -396,6 +396,7 @@ export class BackupService {
 export const backupService = new BackupService();
 
 // Auto-start backup service when module is imported
-if (process.env.NODE_ENV !== 'test') {
-  backupService.start().catch(console.error);
-}
+// DISABLED - using external cron job with backup-script.js
+// if (process.env.NODE_ENV !== 'test') {
+//   backupService.start().catch(console.error);
+// }

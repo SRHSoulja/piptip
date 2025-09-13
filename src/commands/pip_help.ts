@@ -36,6 +36,17 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
         inline: false
       },
       {
+        name: "📖 PenguBook Social Features",
+        value:
+          "**Create Bio**: `/pip_bio set text:\"Your bio here\"` - Create your PenguBook profile\n" +
+          "**Browse Profiles**: `/pip_pengubook` - Discover other users and their bios\n" +
+          "**🔍 Search Users**: Use the search feature to find specific Discord usernames safely\n" +
+          "**Send Messages**: Tip with notes through PenguBook - messages go to their inbox\n" +
+          "**View Inbox**: Check your PenguBook messages from profile tips\n\n" +
+          "🛡️ *Safety: Always verify exact usernames to avoid impersonators!*",
+        inline: false
+      },
+      {
         name: "⭐ Premium Features",
         value:
           "🔹 **Tier Memberships**: Purchase premium tiers for reduced fees and special perks\n" +
@@ -54,7 +65,9 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
           "`/pip_deposit` - Add funds to your account\n" +
           "`/pip_withdraw` - Send tokens to your wallet\n" +
           "`/pip_tip` - Send tips (direct or group)\n\n" +
-          "**Gaming & Help**:\n" +
+          "**Social & Gaming**:\n" +
+          "`/pip_bio` - Manage your PenguBook profile\n" +
+          "`/pip_pengubook` - Browse community profiles\n" +
           "`/pip_game` - Challenge others to play\n" +
           "`/pip_help` - Show this guide",
         inline: false
