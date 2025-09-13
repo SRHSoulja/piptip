@@ -42,7 +42,7 @@ export async function generateProfileData(userId, discordUser) {
         create: { discordId: userId }
     });
     // Get comprehensive user data in parallel - OPTIMIZED with aggregation
-    const [balances, activeMemberships, tipStatsSent, tipStatsReceived, groupTipStats, recentTransactions] = await Promise.all([
+    const [balances, activeMemberships, tipStatsSent, tipStatsReceived, groupTipStats, recentTransactions, penguBookMessages] = await Promise.all([
         // Token balances
         prisma.userBalance.findMany({
             where: { userId: u.id },
@@ -125,7 +125,11 @@ export async function generateProfileData(userId, discordUser) {
                 OR: [
                     { userId: u.id },
                     { otherUserId: u.id }
-                ]
+                ],
+                tokenId: { not: null } // Ensure we only get transactions with valid token references
+            },
+            include: {
+                Token: { select: { symbol: true } }
             },
             orderBy: { createdAt: 'desc' },
             take: 10 // Fetch more to handle filtering
@@ -152,34 +156,14 @@ export async function generateProfileData(userId, discordUser) {
                 if (metadata.kind === "GROUP_TIP_CREATE" && !tx.otherUserId && Number(tx.amount) === 0) {
                     continue;
                 }
-                // For tip transactions, create a more robust deduplication key
+                // For tip transactions, ensure we only show one entry per unique tip
                 if (tx.type === 'TIP') {
-                    // Create unique key using core tip details and involved users
-                    // Sort user IDs to ensure consistent key regardless of sender/receiver perspective
-                    const userIds = [tx.userId, tx.otherUserId].filter(Boolean).sort();
-                    const tipKey = `TIP-${userIds.join('-')}-${tx.amount}-${tx.tokenId}-${Math.floor(tx.createdAt.getTime() / 1000)}`;
+                    // Create unique key using core tip details and time
+                    const tipKey = `TIP-${tx.amount}-${tx.tokenId}-${Math.floor(tx.createdAt.getTime() / 1000)}`;
                     if (seenTipEvents.has(tipKey)) {
                         continue; // Skip this duplicate tip event
                     }
                     seenTipEvents.add(tipKey);
-                    // For the same tip event, prefer showing the transaction from the current user's perspective as sender
-                    // This ensures we show "sent X tokens" rather than multiple confusing entries
-                    const existingIndex = unique.findIndex(existing => {
-                        if (existing.type !== 'TIP')
-                            return false;
-                        const existingUserIds = [existing.userId, existing.otherUserId].filter(Boolean).sort();
-                        const existingKey = `TIP-${existingUserIds.join('-')}-${existing.amount}-${existing.tokenId}-${Math.floor(existing.createdAt.getTime() / 1000)}`;
-                        return existingKey === tipKey;
-                    });
-                    // If we find a duplicate, prefer the one where current user is the sender (userId matches)
-                    if (existingIndex >= 0) {
-                        const existing = unique[existingIndex];
-                        if (tx.userId === u.id && existing.userId !== u.id) {
-                            // Replace with sender's perspective
-                            unique[existingIndex] = tx;
-                        }
-                        continue;
-                    }
                 }
                 seen.add(tx.id);
                 unique.push(tx);
@@ -188,6 +172,25 @@ export async function generateProfileData(userId, discordUser) {
                     break;
             }
             return unique;
+        }),
+        // Get unread PenguBook messages for inbox display
+        prisma.penguBookMessage.findMany({
+            where: {
+                toUserId: u.id,
+                read: false
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            include: {
+                from: { select: { discordId: true } },
+                tip: {
+                    select: {
+                        amountAtomic: true,
+                        tokenId: true,
+                        Token: { select: { symbol: true, decimals: true } }
+                    }
+                }
+            }
         })
     ]);
     // Format balance display
@@ -284,17 +287,44 @@ export async function generateProfileData(userId, discordUser) {
     const totalTipsSentCount = directTipsSentCount + completedGroupTipsFromSent;
     // For "received": direct tips received + group tips claimed by this user  
     const totalTipsReceivedCount = directTipsReceivedCount + groupTipsClaimedTotal;
-    // Format recent activity - transactions are already deduplicated by ID above
+    // Format recent activity with proper direction and token symbols
     const recentActivity = recentTransactions.length > 0
         ? recentTransactions
-            .map((tx, index) => {
-            const amount = formatDecimal(Number(tx.amount), "tokens");
+            .map((tx) => {
+            // Determine direction based on user's role in the transaction
+            let direction = "";
+            if (tx.type === "TIP") {
+                if (tx.userId === u.id) {
+                    direction = " SENT";
+                }
+                else if (tx.otherUserId === u.id) {
+                    direction = " RECEIVED";
+                }
+            }
+            // Get token symbol from transaction data
+            const tokenSymbol = tx.Token?.symbol || "tokens";
+            const amount = formatDecimal(Number(tx.amount), tokenSymbol);
             const timeAgo = `<t:${Math.floor(tx.createdAt.getTime() / 1000)}:R>`;
-            // Include transaction ID or index to differentiate identical-looking transactions
-            return `${tx.type}: ${amount} ${timeAgo}`;
+            return `${tx.type}${direction}: ${amount} ${timeAgo}`;
         })
             .join("\n")
         : "No recent activity";
+    // Format PenguBook inbox messages
+    const inboxMessages = penguBookMessages.length > 0
+        ? penguBookMessages.map(msg => {
+            const timeAgo = `<t:${Math.floor(msg.createdAt.getTime() / 1000)}:R>`;
+            if (msg.tip) {
+                // Format tip message
+                const amount = formatDecimal(Number(msg.tip.amountAtomic) / Math.pow(10, msg.tip.Token.decimals), msg.tip.Token.symbol);
+                return `💸 **Tip**: ${amount} ${timeAgo}`;
+            }
+            else {
+                // Regular message
+                const preview = msg.message.length > 30 ? msg.message.substring(0, 30) + "..." : msg.message;
+                return `💬 **Message**: ${preview} ${timeAgo}`;
+            }
+        }).join("\n")
+        : "";
     return {
         user: u,
         balanceText,
@@ -306,6 +336,7 @@ export async function generateProfileData(userId, discordUser) {
         groupTipsCreated: groupTipsCreatedTotal,
         groupTipsClaimed: groupTipsClaimedTotal,
         recentActivity,
+        inboxMessages,
         activeMemberships,
         discordUser,
         hasBio: !!u.bio // Add bio status for PenguBook CTA
@@ -402,6 +433,7 @@ export function createProfileEmbed(data) {
             claimed: data.groupTipsClaimed
         },
         recentActivity: data.recentActivity,
+        inboxMessages: data.inboxMessages,
         createdAt: data.user.createdAt,
         hasActiveMembership: data.activeMemberships.length > 0
     });

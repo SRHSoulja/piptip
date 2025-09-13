@@ -71,6 +71,14 @@ export function profileEmbed(data) {
             inline: false
         });
     }
+    // Inbox messages (PenguBook)
+    if (data.inboxMessages) {
+        embed.addFields({
+            name: "📨 PenguBook Inbox",
+            value: data.inboxMessages,
+            inline: false
+        });
+    }
     return embed;
 }
 /** Public offer embed */
