@@ -83,15 +83,15 @@ export async function processTip(data, client) {
                     status: "COMPLETED",
                 },
             });
-            // Create PenguBook message if this tip came from PenguBook and has a note
-            if (data.fromPenguBook && data.note && data.note.trim()) {
+            // Create PenguBook message if this tip came from PenguBook
+            if (data.fromPenguBook) {
                 try {
                     await prisma.penguBookMessage.create({
                         data: {
                             fromUserId: fromUser.id,
                             toUserId: toUser.id,
                             tipId: createdTip.id,
-                            message: data.note
+                            message: data.note || `Received ${formatAmount(atomic, token)} tip via PenguBook!`
                         }
                     });
                     console.log(`📬 PenguBook message created for tip ${createdTip.id}: ${data.userId} → ${data.targetUserId}`);

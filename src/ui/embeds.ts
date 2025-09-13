@@ -8,8 +8,8 @@ export function profileEmbed(data: {
   agwAddress?: string | null;
   balanceText?: string;
   balanceAtomic?: any; // Legacy support
-  wins: number; 
-  losses: number; 
+  wins: number;
+  losses: number;
   ties: number;
   membershipText?: string;
   tippingStats?: {
@@ -23,6 +23,7 @@ export function profileEmbed(data: {
     claimed: number;
   };
   recentActivity?: string;
+  inboxMessages?: string;
   createdAt?: Date;
   hasActiveMembership?: boolean;
 }) {

@@ -86,13 +86,9 @@ authRouter.get("/discord/callback", async (req, res) => {
         // Redirect to intended destination
         const redirectUrl = stateData.redirectTo || "/pengubook";
         if (redirectUrl.startsWith("/")) {
-            // Convert internal redirects to proxy URLs
-            // Use PUBLIC_BASE_URL from env, fallback to request host, then localhost
-            const baseUrl = process.env.PUBLIC_BASE_URL ||
-                (req.get('x-forwarded-host') ? `https://${req.get('x-forwarded-host')}` : null) ||
-                (req.secure || req.get('x-forwarded-proto') === 'https' ? `https://${req.get('host')}` : `http://${req.get('host')}`) ||
-                'http://localhost:3000';
-            res.redirect(`${baseUrl}/pengubook.php?path=${encodeURIComponent(redirectUrl.slice(1))}`);
+            // Direct redirect to ngrok URL
+            const baseUrl = req.get('host') ? `${req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http'}://${req.get('host')}` : 'http://localhost:3000';
+            res.redirect(`${baseUrl}${redirectUrl}`);
         }
         else {
             res.redirect(redirectUrl);

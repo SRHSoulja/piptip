@@ -4,7 +4,9 @@ import { requireAuth, getCurrentUser } from "./auth.js";
 import { prisma } from "../services/db.js";
 import { findOrCreateUser } from "../services/user_helpers.js";
 import { getUnreadMessageCount } from "../interactions/buttons/pengubook.js";
-import { getActiveTokens, formatAmount } from "../services/token.js";
+import { getActiveTokens, getTokenByAddress } from "../services/token.js";
+import { processTip } from "../services/tip_processor.js";
+import { getDiscordClient } from "../services/discord_users.js";
 export const pengubookRouter = Router();
 // Middleware to require authentication for all PenguBook routes
 pengubookRouter.use(requireAuth);
@@ -209,35 +211,35 @@ pengubookRouter.post("/api/tip", async (req, res) => {
         if (!recipientUser) {
             return res.status(404).json({ success: false, error: "Recipient not found" });
         }
-        // Get token info
-        const token = await prisma.token.findUnique({
-            where: { address: tokenAddress }
-        });
+        // Get token info using proper token service
+        const token = await getTokenByAddress(tokenAddress);
         if (!token) {
             return res.status(404).json({ success: false, error: "Token not found" });
         }
-        // Convert amount to atomic units
-        const atomicAmount = BigInt(Math.floor(parseFloat(amount) * Math.pow(10, token.decimals)));
-        // For now, create a simple tip without using processTip
-        // TODO: Implement proper tip processing for web interface
-        const result = { success: false, message: 'Web tipping not yet implemented' };
+        // Get Discord client
+        const discordClient = getDiscordClient();
+        if (!discordClient) {
+            return res.status(500).json({ success: false, error: "Discord client not available" });
+        }
+        // Process the tip using the same logic as Discord tipping
+        const tipData = {
+            amount: parseFloat(amount),
+            tipType: "direct",
+            targetUserId: recipient,
+            note: message || "",
+            tokenId: token.id,
+            userId: currentUser.discordId,
+            guildId: null, // Web tips are not guild-specific
+            channelId: null, // Web tips don't have a channel
+            fromPenguBook: true // Flag to indicate this came from PenguBook
+        };
+        const result = await processTip(tipData, discordClient);
         if (!result.success) {
             return res.status(400).json({ success: false, error: result.message });
         }
-        // Send PenguBook message notification
-        const senderUser = await findOrCreateUser(currentUser.discordId);
-        await prisma.penguBookMessage.create({
-            data: {
-                fromUserId: senderUser.id,
-                toUserId: recipientUser.id,
-                tipId: null, // TODO: Get tip ID from proper implementation
-                message: message || `Received ${formatAmount(atomicAmount, token)} from web tip!`,
-                read: false
-            }
-        });
         res.json({
             success: true,
-            message: `Successfully sent ${formatAmount(atomicAmount, token)} to user!`
+            message: result.message
         });
     }
     catch (error) {
@@ -270,6 +272,26 @@ pengubookRouter.post("/api/profile", async (req, res) => {
     catch (error) {
         console.error("Profile update error:", error);
         res.status(500).json({ success: false, error: "Failed to update profile" });
+    }
+});
+// GET /pengubook/api/balance - Get current user's balance
+pengubookRouter.get("/api/balance", async (req, res) => {
+    try {
+        const currentUser = getCurrentUser(req);
+        if (!currentUser) {
+            return res.status(401).json({ success: false, error: "Not authenticated" });
+        }
+        const user = await findOrCreateUser(currentUser.discordId);
+        const balances = await prisma.userBalance.findMany({
+            where: { userId: user.id },
+            include: { Token: true },
+            orderBy: { Token: { symbol: "asc" } }
+        });
+        res.json({ success: true, balances });
+    }
+    catch (error) {
+        console.error("Balance fetch error:", error);
+        res.status(500).json({ success: false, error: "Failed to fetch balance" });
     }
 });
 // Helper function to generate HTML pages
@@ -813,7 +835,7 @@ function generateUserProfileHTML(data) {
                 ${data.balances.map((balance) => `
                 <div class="balance-card">
                     <div>${balance.Token.symbol}</div>
-                    <div class="balance-amount">${balance.amount / Math.pow(10, balance.Token.decimals)}</div>
+                    <div class="balance-amount">${Number(balance.amount).toFixed(2).replace(/\.?0+$/, '')}</div>
                 </div>
                 `).join('')}
             </div>
@@ -883,6 +905,9 @@ function generateUserProfileHTML(data) {
                     result.innerHTML = '✅ Tip sent successfully!';
                     result.style.color = '#10b981';
                     document.getElementById('tipForm').reset();
+
+                    // Refresh balance display
+                    await refreshBalance();
                 } else {
                     result.innerHTML = '❌ ' + (data.error || 'Failed to send tip');
                     result.style.color = '#ef4444';
@@ -892,6 +917,27 @@ function generateUserProfileHTML(data) {
                 result.style.color = '#ef4444';
             }
         });
+
+        async function refreshBalance() {
+            try {
+                const response = await fetch('/pengubook/api/balance');
+                if (response.ok) {
+                    const data = await response.json();
+                    // Update balance display
+                    const balanceSection = document.querySelector('.card h3');
+                    if (balanceSection && data.balances && data.balances.length > 0) {
+                        let balanceText = '';
+                        data.balances.forEach(balance => {
+                            const amount = Number(balance.amount).toFixed(2).replace(/\\.?0+$/, '');
+                            balanceText += amount + ' ' + balance.Token.symbol + ' ';
+                        });
+                        balanceSection.textContent = '💰 Balance: ' + balanceText.trim();
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to refresh balance:', error);
+            }
+        }
     </script>
 </body>
 </html>`;

@@ -96,17 +96,39 @@ export default async function pipStats(i) {
                     OR: [
                         { userId: user.id },
                         { otherUserId: user.id }
-                    ]
+                    ],
+                    tokenId: { not: null } // Ensure we only get transactions with valid token references
+                },
+                include: {
+                    Token: { select: { symbol: true } }
                 },
                 orderBy: { createdAt: 'desc' },
-                take: 5
+                take: 10 // Fetch more to handle filtering
+            }).then(transactions => {
+                // Filter out duplicates like in profile.ts
+                const unique = [];
+                const seen = new Set();
+                const seenTipEvents = new Set();
+                for (const tx of transactions) {
+                    if (seen.has(tx.id))
+                        continue;
+                    // For tip transactions, ensure we only show one entry per unique tip
+                    if (tx.type === 'TIP') {
+                        const tipKey = `TIP-${tx.amount}-${tx.tokenId}-${Math.floor(tx.createdAt.getTime() / 1000)}`;
+                        if (seenTipEvents.has(tipKey)) {
+                            continue;
+                        }
+                        seenTipEvents.add(tipKey);
+                    }
+                    seen.add(tx.id);
+                    unique.push(tx);
+                    if (unique.length >= 5)
+                        break; // Limit to 5 for display
+                }
+                return unique;
             })
         ]);
-        // Get all tokens for mapping
-        const allTokens = await prisma.token.findMany({
-            select: { id: true, symbol: true }
-        });
-        const tokenMap = new Map(allTokens.map(t => [t.id, t.symbol]));
+        // No need for tokenMap anymore since we include Token data in the transaction query
         // Format balance display
         const balanceText = balances.length > 0
             ? balances
@@ -167,10 +189,20 @@ export default async function pipStats(i) {
         if (recentTransactions.length > 0) {
             const recentActivity = recentTransactions
                 .map(tx => {
+                // Determine direction based on user's role in the transaction
+                let direction = "";
+                if (tx.type === "TIP") {
+                    if (tx.userId === user.id) {
+                        direction = " SENT";
+                    }
+                    else if (tx.otherUserId === user.id) {
+                        direction = " RECEIVED";
+                    }
+                }
                 const timeAgo = `<t:${Math.floor(tx.createdAt.getTime() / 1000)}:R>`;
-                const tokenSymbol = tx.tokenId ? tokenMap.get(tx.tokenId) || "tokens" : "tokens";
+                const tokenSymbol = tx.Token?.symbol || "tokens";
                 const amount = formatDecimal(tx.amount, tokenSymbol);
-                return `${tx.type}: ${amount} ${timeAgo}`;
+                return `${tx.type}${direction}: ${amount} ${timeAgo}`;
             })
                 .join("\n");
             embed.addFields({

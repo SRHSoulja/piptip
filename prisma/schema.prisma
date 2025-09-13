@@ -270,13 +270,11 @@ model Token {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  balances  UserBalance[]
-  matches   Match[]
-  tips      Tip[]
-  groupTips GroupTip[]
-
-  // ❌ REMOVE this old line:
-  // tiers     Tier[]
+  balances     UserBalance[]
+  matches      Match[]
+  tips         Tip[]
+  groupTips    GroupTip[]
+  transactions Transaction[]
 
   // ✅ back-relation to TierPrice
   tierPrices TierPrice[] @relation("TokenToTierPrices")
@@ -351,6 +349,8 @@ model Transaction {
   txHash      String?
   metadata    String?
   createdAt   DateTime @default(now())
+
+  Token Token? @relation(fields: [tokenId], references: [id])
 
   @@index([createdAt])
   @@index([guildId])
