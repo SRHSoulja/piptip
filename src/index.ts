@@ -40,6 +40,16 @@ const PORT = Number(process.env.PORT || 3000);
 // ---------- Express (REST) ----------
 const app = express();
 app.use(express.json({ limit: "256kb" }));
+
+// Favicon route to prevent 404 errors
+app.get("/favicon.ico", (_req: Request, res: Response) => {
+  // Return a simple 1x1 transparent PNG
+  const favicon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+  res.send(favicon);
+});
+
 app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
 app.use("/admin", adminRouter);
