@@ -310,6 +310,28 @@ pengubookRouter.post("/api/profile", async (req: Request, res: Response) => {
   }
 });
 
+// GET /pengubook/api/balance - Get current user's balance
+pengubookRouter.get("/api/balance", async (req: Request, res: Response) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
+    }
+
+    const user = await findOrCreateUser(currentUser.discordId);
+    const balances = await prisma.userBalance.findMany({
+      where: { userId: user.id },
+      include: { Token: true },
+      orderBy: { Token: { symbol: "asc" } }
+    });
+
+    res.json({ success: true, balances });
+  } catch (error) {
+    console.error("Balance fetch error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch balance" });
+  }
+});
+
 // Helper function to generate HTML pages
 function generatePenguBookHTML(data: any): string {
   return `<!DOCTYPE html>
@@ -928,6 +950,9 @@ function generateUserProfileHTML(data: any): string {
                     result.innerHTML = '✅ Tip sent successfully!';
                     result.style.color = '#10b981';
                     document.getElementById('tipForm').reset();
+
+                    // Refresh balance display
+                    await refreshBalance();
                 } else {
                     result.innerHTML = '❌ ' + (data.error || 'Failed to send tip');
                     result.style.color = '#ef4444';
@@ -937,6 +962,27 @@ function generateUserProfileHTML(data: any): string {
                 result.style.color = '#ef4444';
             }
         });
+
+        async function refreshBalance() {
+            try {
+                const response = await fetch('/pengubook/api/balance');
+                if (response.ok) {
+                    const data = await response.json();
+                    // Update balance display
+                    const balanceSection = document.querySelector('.card h3');
+                    if (balanceSection && data.balances && data.balances.length > 0) {
+                        let balanceText = '';
+                        data.balances.forEach(balance => {
+                            const amount = Number(balance.amount).toFixed(2).replace(/\\.?0+$/, '');
+                            balanceText += amount + ' ' + balance.Token.symbol + ' ';
+                        });
+                        balanceSection.textContent = '💰 Balance: ' + balanceText.trim();
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to refresh balance:', error);
+            }
+        }
     </script>
 </body>
 </html>`;
