@@ -14,6 +14,7 @@ import { handleLegacyPipModal } from "./buttons/legacy.js";
 import { handlePick, handleJoin, handleCancel } from "./buttons/matches.js";
 import { handlePromptLinkWallet, handleLinkWalletModal, handleLinkWalletSubmit } from "./buttons/wallet.js";
 import { handleShowDepositInstructions, handleDepositToken, handleCancelDeposit } from "./buttons/deposits.js";
+import { handlePenguBookNav, handlePenguBookModes, handleBioToggle, handleTipFromBook, handleViewOwnBio, handlePenguBookCTA, handlePenguBookBioSetup } from "./buttons/pengubook.js";
 
 /** Router for pip button customIds: pip:<action>:<matchId>:<move?> */
 // Main handler that routes by interaction type using type guards
@@ -192,6 +193,40 @@ async function handleLegacyPipButton(i: ButtonInteraction) {
 
   if (action === "dismiss_stats") {
     return handleDismissStats(i);
+  }
+
+  // Handle PenguBook actions
+  if (action === "pengubook_browse") {
+    return handlePenguBookNav(i, "recent", 1);
+  }
+
+  if (action === "pengubook_nav") {
+    const mode = parts[2] || "recent";
+    const page = parseInt(parts[3]) || 1;
+    return handlePenguBookNav(i, mode, page);
+  }
+
+  if (action === "pengubook_modes") {
+    return handlePenguBookModes(i);
+  }
+
+  if (action === "bio_view_own") {
+    return handleViewOwnBio(i);
+  }
+
+  if (action === "bio_toggle") {
+    const setting = parts[2];
+    const value = parts[3] === "true";
+    return handleBioToggle(i, setting, value);
+  }
+
+  if (action === "tip_from_book") {
+    const targetDiscordId = parts[2];
+    return handleTipFromBook(i, targetDiscordId);
+  }
+
+  if (action === "pengubook_cta") {
+    return handlePenguBookCTA(i);
   }
 
   // Handle tip token selection

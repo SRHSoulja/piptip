@@ -1,4 +1,5 @@
 import { handleWithdrawCustomModal } from "./withdrawals.js";
+import { handlePenguBookBioSetup } from "./pengubook.js";
 // Handle legacy modal submissions that don't match the new parsing system
 export async function handleLegacyPipModal(i) {
     const parts = i.customId.split(":");
@@ -8,6 +9,9 @@ export async function handleLegacyPipModal(i) {
     // Handle modal submissions with legacy customId format
     if (action === "withdraw_custom_modal") {
         return handleWithdrawCustomModal(i, parts);
+    }
+    if (action === "pengubook_bio_setup") {
+        return handlePenguBookBioSetup(i);
     }
     // Add other legacy modal handlers here as needed
     console.warn("Unknown legacy modal action:", action);

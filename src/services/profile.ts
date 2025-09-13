@@ -361,11 +361,12 @@ export async function generateProfileData(userId: string, discordUser: User) {
     groupTipsClaimed: groupTipsClaimedTotal,
     recentActivity,
     activeMemberships,
-    discordUser
+    discordUser,
+    hasBio: !!u.bio  // Add bio status for PenguBook CTA
   };
 }
 
-export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: boolean = true) {
+export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: boolean = true, hasBio: boolean = false) {
   const actionRows = [];
   
   // First row: Wallet actions (if no wallet) or membership actions
@@ -415,18 +416,42 @@ export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: 
     actionRows.push(membershipRow);
   }
   
-  // Second row: Standard profile actions
-  const profileRow = new ActionRowBuilder<ButtonBuilder>()
-    .addComponents(
+  // Second row: Profile actions + PenguBook CTA
+  const profileRowComponents = [
+    new ButtonBuilder()
+      .setCustomId("pip:refresh_profile")
+      .setLabel("🔄 Refresh")
+      .setStyle(ButtonStyle.Secondary),
+  ];
+
+  // Add PenguBook CTA if user doesn't have a bio (conversion funnel!)
+  if (!hasBio) {
+    profileRowComponents.push(
       new ButtonBuilder()
-        .setCustomId("pip:refresh_profile")
-        .setLabel("🔄 Refresh")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("pip:dismiss_profile")
-        .setLabel("❌ Dismiss")
-        .setStyle(ButtonStyle.Secondary)
+        .setCustomId("pip:pengubook_cta")
+        .setLabel("Join PenguBook")
+        .setStyle(ButtonStyle.Success)
+        .setEmoji("<a:PenguEnter:1415471346439421972>")
     );
+  } else {
+    // User has bio - show browse PenguBook option
+    profileRowComponents.push(
+      new ButtonBuilder()
+        .setCustomId("pip:pengubook_browse")
+        .setLabel("Browse PenguBook")
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("<a:NerdPengu:1415469352660107324>")
+    );
+  }
+
+  profileRowComponents.push(
+    new ButtonBuilder()
+      .setCustomId("pip:dismiss_profile")
+      .setLabel("❌ Dismiss")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  const profileRow = new ActionRowBuilder<ButtonBuilder>().addComponents(...profileRowComponents);
   actionRows.push(profileRow);
   
   return actionRows;

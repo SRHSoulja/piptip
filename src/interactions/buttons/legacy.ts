@@ -1,6 +1,7 @@
 // src/interactions/buttons/legacy.ts
 import type { ModalSubmitInteraction } from "discord.js";
 import { handleWithdrawCustomModal } from "./withdrawals.js";
+import { handlePenguBookBioSetup } from "./pengubook.js";
 
 // Handle legacy modal submissions that don't match the new parsing system
 export async function handleLegacyPipModal(i: ModalSubmitInteraction) {
@@ -11,6 +12,10 @@ export async function handleLegacyPipModal(i: ModalSubmitInteraction) {
   // Handle modal submissions with legacy customId format
   if (action === "withdraw_custom_modal") {
     return handleWithdrawCustomModal(i, parts);
+  }
+
+  if (action === "pengubook_bio_setup") {
+    return handlePenguBookBioSetup(i);
   }
 
   // Add other legacy modal handlers here as needed

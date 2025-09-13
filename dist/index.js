@@ -15,6 +15,8 @@ import pipGame from "./commands/pip_game.js";
 import pipTip from "./commands/pip_tip.js";
 import pipHelp from "./commands/pip_help.js";
 import pipStats from "./commands/pip_stats.js";
+import pipBio from "./commands/pip_bio.js";
+import pipPenguBook from "./commands/pip_pengubook.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
 import { isButtonInteraction, isModalSubmitInteraction } from "./discord/guards.js";
@@ -167,6 +169,8 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
             case "pip_tip": return pipTip(i);
             case "pip_help": return pipHelp(i);
             case "pip_stats": return pipStats(i);
+            case "pip_bio": return pipBio(i);
+            case "pip_pengubook": return pipPenguBook(i);
             default:
                 console.warn("Unknown command:", i.commandName);
         }
