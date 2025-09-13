@@ -1,0 +1,45 @@
+// src/services/deposits.ts
+import { prisma } from "../services/db.js";
+import { getTokenByAddress, toAtomicDirect } from "../services/token.js";
+import { creditToken } from "../services/balances.js";
+const TREASURY = (process.env.TREASURY_AGW_ADDRESS || "").toLowerCase();
+/**
+ * Core deposit handler. Used by the webhook AND /internal/credit (PHP relay).
+ * Enforces: treasury address, active token, minDeposit per token, idempotency, wallet link.
+ */
+export async function applyDeposit(input) {
+    const from = input.from.toLowerCase();
+    const to = input.to.toLowerCase();
+    const tok = input.token.toLowerCase();
+    const amt = BigInt(input.valueAtomic);
+    // Validate positive amount
+    if (amt <= 0n)
+        return { ok: false, reason: "invalid amount" };
+    if (!TREASURY || to !== TREASURY)
+        return { ok: false, reason: "wrong treasury" };
+    const tokenRow = await getTokenByAddress(tok);
+    if (!tokenRow || !tokenRow.active)
+        return { ok: false, reason: "token not active/known" };
+    // Idempotency
+    const key = `${input.tx}:${from}:${amt}`;
+    try {
+        await prisma.processedDeposit.create({ data: { key } });
+    }
+    catch (error) {
+        // Log duplicate for monitoring if needed
+        console.log(`Duplicate deposit detected: ${key}`);
+        return { ok: true, duplicate: true };
+    }
+    // Enforce per-token minimum from DB (Decimal -> atomic)
+    const minAtomic = toAtomicDirect(String(tokenRow.minDeposit), tokenRow.decimals);
+    if (amt < minAtomic) {
+        return { ok: true, skipped: `below minimum ${tokenRow.minDeposit} ${tokenRow.symbol}` };
+    }
+    // Must be a linked wallet
+    const user = await prisma.user.findFirst({ where: { agwAddress: from } });
+    if (!user)
+        return { ok: true, ignored: "wallet not linked" };
+    // Credit balance & record
+    await creditToken(user.discordId, tokenRow.id, amt, "DEPOSIT", { txHash: input.tx });
+    return { ok: true, credited: true, userId: user.id, token: tokenRow.symbol, amount: amt.toString() };
+}

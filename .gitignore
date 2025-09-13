@@ -3,7 +3,7 @@ node_modules
 /generated/prisma
 
 # Build outputs
-dist/
+# dist/ - now committing compiled files
 build/
 
 # Logs
