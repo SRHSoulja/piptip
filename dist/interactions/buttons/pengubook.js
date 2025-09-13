@@ -378,6 +378,62 @@ export async function handlePenguBookBioSetup(i) {
         });
     }
 }
+// Handle tip modal submission from PenguBook
+export async function handleTipModal(i, parts) {
+    const targetDiscordId = parts[2];
+    const amount = parseFloat(i.fields.getTextInputValue("amount"));
+    const tokenSymbol = i.fields.getTextInputValue("token").toUpperCase();
+    const note = i.fields.getTextInputValue("note") || null;
+    try {
+        // Import the tip processing function and get active tokens
+        const { processTip } = await import("../../services/tip_processor.js");
+        const { getActiveTokens } = await import("../../services/token.js");
+        const { getDiscordClient } = await import("../../services/discord_users.js");
+        await i.deferReply({ ephemeral: true });
+        // Find the token by symbol
+        const tokens = await getActiveTokens();
+        const token = tokens.find(t => t.symbol.toUpperCase() === tokenSymbol);
+        if (!token) {
+            return i.editReply({
+                content: `❌ **Invalid token:** ${tokenSymbol}. Available tokens: ${tokens.map(t => t.symbol).join(", ")}`
+            });
+        }
+        // Get Discord client
+        const client = getDiscordClient();
+        if (!client) {
+            return i.editReply({
+                content: `❌ **System error:** Discord client not available`
+            });
+        }
+        // Process the tip using existing tip logic
+        const result = await processTip({
+            amount,
+            tipType: "direct",
+            targetUserId: targetDiscordId,
+            note: note || "",
+            tokenId: token.id,
+            userId: i.user.id,
+            guildId: i.guildId,
+            channelId: i.channelId
+        }, client);
+        if (result.success) {
+            return i.editReply({
+                content: `✅ **Tip sent successfully!**\n💰 Sent ${amount} ${tokenSymbol} to <@${targetDiscordId}>${note ? `\n📝 "${note}"` : ""}`
+            });
+        }
+        else {
+            return i.editReply({
+                content: `❌ **Tip failed:** ${result.message}`
+            });
+        }
+    }
+    catch (error) {
+        console.error("Error processing tip from PenguBook:", error);
+        return i.editReply({
+            content: `❌ **Tip failed:** ${error?.message || String(error)}`
+        });
+    }
+}
 // Handle viewing a specific user's profile from PenguBook
 export async function handlePenguBookProfile(i, targetDiscordId) {
     await i.deferReply({ ephemeral: true });
