@@ -6,6 +6,7 @@ import { findOrCreateUser } from "../services/user_helpers.js";
 import { getUnreadMessageCount } from "../interactions/buttons/pengubook.js";
 import { getActiveTokens, formatAmount, getTokenByAddress } from "../services/token.js";
 import { processTip } from "../services/tip_processor.js";
+import { getDiscordClient } from "../services/discord_users.js";
 
 export const pengubookRouter = Router();
 
@@ -239,32 +240,34 @@ pengubookRouter.post("/api/tip", async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "Token not found" });
     }
 
-    // Convert amount to atomic units
-    const atomicAmount = BigInt(Math.floor(parseFloat(amount) * Math.pow(10, token.decimals)));
+    // Get Discord client
+    const discordClient = getDiscordClient();
+    if (!discordClient) {
+      return res.status(500).json({ success: false, error: "Discord client not available" });
+    }
 
-    // For now, create a simple tip without using processTip
-    // TODO: Implement proper tip processing for web interface
-    const result = { success: false, message: 'Web tipping not yet implemented' };
+    // Process the tip using the same logic as Discord tipping
+    const tipData = {
+      amount: parseFloat(amount),
+      tipType: "direct" as const,
+      targetUserId: recipient,
+      note: message || "",
+      tokenId: token.id,
+      userId: currentUser.discordId,
+      guildId: null, // Web tips are not guild-specific
+      channelId: null, // Web tips don't have a channel
+      fromPenguBook: true // Flag to indicate this came from PenguBook
+    };
+
+    const result = await processTip(tipData, discordClient);
 
     if (!result.success) {
       return res.status(400).json({ success: false, error: result.message });
     }
 
-    // Send PenguBook message notification
-    const senderUser = await findOrCreateUser(currentUser.discordId);
-    await prisma.penguBookMessage.create({
-      data: {
-        fromUserId: senderUser.id,
-        toUserId: recipientUser.id,
-        tipId: null, // TODO: Get tip ID from proper implementation
-        message: message || `Received ${formatAmount(atomicAmount, token)} from web tip!`,
-        read: false
-      }
-    });
-
-    res.json({ 
-      success: true, 
-      message: `Successfully sent ${formatAmount(atomicAmount, token)} to user!`
+    res.json({
+      success: true,
+      message: result.message
     });
 
   } catch (error) {
