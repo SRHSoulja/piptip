@@ -130,7 +130,8 @@ authRouter.get("/discord/callback", async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error("Discord OAuth callback error:", error);
-    res.status(500).send("Authentication failed");
+    console.error("Request details:", { code: req.query.code, state: req.query.state, headers: req.headers });
+    res.status(500).send(`Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 });
 
