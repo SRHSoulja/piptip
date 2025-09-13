@@ -4,7 +4,7 @@ import { requireAuth, getCurrentUser } from "./auth.js";
 import { prisma } from "../services/db.js";
 import { findOrCreateUser } from "../services/user_helpers.js";
 import { getUnreadMessageCount } from "../interactions/buttons/pengubook.js";
-import { getActiveTokens, formatAmount } from "../services/token.js";
+import { getActiveTokens, formatAmount, getTokenByAddress } from "../services/token.js";
 import { processTip } from "../services/tip_processor.js";
 
 export const pengubookRouter = Router();
@@ -232,10 +232,8 @@ pengubookRouter.post("/api/tip", async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "Recipient not found" });
     }
 
-    // Get token info
-    const token = await prisma.token.findUnique({
-      where: { address: tokenAddress }
-    });
+    // Get token info using proper token service
+    const token = await getTokenByAddress(tokenAddress);
     
     if (!token) {
       return res.status(404).json({ success: false, error: "Token not found" });
