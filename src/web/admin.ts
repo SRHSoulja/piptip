@@ -18,6 +18,7 @@ import { groupTipsRouter } from "./admin/groupTips.js";
 import { systemRouter } from "./admin/system.js";
 import { backupRouter } from "./admin/backup.js";
 import { statsRouter } from "./admin/stats.js";
+import { pengubookRouter } from "./admin/pengubook.js";
 
 // Import remaining services and utilities
 import { Prisma } from "@prisma/client";
@@ -523,6 +524,7 @@ adminRouter.use(groupTipsRouter);
 adminRouter.use(systemRouter);
 adminRouter.use(backupRouter);
 adminRouter.use(statsRouter);
+adminRouter.use(pengubookRouter);
 
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */

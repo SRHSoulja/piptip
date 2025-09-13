@@ -62,6 +62,10 @@ model User {
   profileViewsGiven    BioBrowse[] @relation("BioBrowseViewer")
   profileViewsReceived BioBrowse[] @relation("BioBrowseProfile")
 
+  // PenguBook messaging relations
+  penguBookMessagesSent     PenguBookMessage[] @relation("PenguBookMessageSender")
+  penguBookMessagesReceived PenguBookMessage[] @relation("PenguBookMessageReceiver")
+
   @@index([agwAddress])
   @@index([createdAt])
   @@index([showInPenguBook, bioLastUpdated])
@@ -177,6 +181,9 @@ model Tip {
   From  User?  @relation("TipFrom", fields: [fromUserId], references: [id])
   To    User?  @relation("TipTo", fields: [toUserId], references: [id])
   Token Token @relation(fields: [tokenId], references: [id])
+
+  // PenguBook message relation
+  penguBookMessages PenguBookMessage[] @relation("PenguBookTipMessage")
 
   @@index([createdAt])
   @@index([status])
@@ -368,4 +375,22 @@ model BioBrowse {
   @@unique([viewerId, profileId]) // prevent duplicate views from same user
   @@index([profileId, createdAt]) // for getting recent viewers
   @@index([viewerId, createdAt])  // for user's browsing history
+}
+
+// PenguBook messages - direct messages sent with tips from PenguBook
+model PenguBookMessage {
+  id        Int      @id @default(autoincrement())
+  fromUserId Int     // sender
+  toUserId   Int     // recipient  
+  tipId      Int?    // link to tip if it was a tip message
+  message    String  @db.Text
+  read       Boolean @default(false)
+  createdAt  DateTime @default(now())
+  
+  from User @relation("PenguBookMessageSender", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to   User @relation("PenguBookMessageReceiver", fields: [toUserId], references: [id], onDelete: Cascade)
+  tip  Tip? @relation("PenguBookTipMessage", fields: [tipId], references: [id], onDelete: SetNull)
+  
+  @@index([toUserId, read, createdAt]) // for inbox queries
+  @@index([fromUserId, createdAt])     // for sent messages
 }

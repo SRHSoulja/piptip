@@ -21,6 +21,7 @@ export interface TipData {
   userId: string;
   guildId: string | null;
   channelId: string | null;
+  fromPenguBook?: boolean; // Flag to indicate tip came from PenguBook
 }
 
 export interface TipResult {
@@ -101,7 +102,7 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
       });
 
       // Record tip (using current schema)
-      await prisma.tip.create({
+      const createdTip = await prisma.tip.create({
         data: {
           fromUserId: fromUser.id,
           toUserId: toUser.id,
@@ -113,6 +114,24 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
           status: "COMPLETED",
         },
       });
+
+      // Create PenguBook message if this tip came from PenguBook and has a note
+      if (data.fromPenguBook && data.note && data.note.trim()) {
+        try {
+          await prisma.penguBookMessage.create({
+            data: {
+              fromUserId: fromUser.id,
+              toUserId: toUser.id,
+              tipId: createdTip.id,
+              message: data.note
+            }
+          });
+          console.log(`📬 PenguBook message created for tip ${createdTip.id}: ${data.userId} → ${data.targetUserId}`);
+        } catch (messageError) {
+          console.error("Failed to create PenguBook message:", messageError);
+          // Don't fail the tip for message creation errors
+        }
+      }
 
       // Record transaction
       await prisma.transaction.create({
