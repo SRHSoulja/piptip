@@ -26,6 +26,7 @@ export async function handlePipButton(i) {
 // Handle button interactions with proper typing
 async function handlePipButtonInteraction(i) {
     const payload = parseCustomId(i.customId);
+    console.log(`🔍 Button interaction - customId: ${i.customId}, parsed:`, payload);
     switch (payload.kind) {
         case 'PIP_PROFILE_REFRESH':
             return handleRefreshProfile(i);
@@ -80,6 +81,7 @@ async function handlePipModalInteraction(i) {
 async function handleLegacyPipButton(i) {
     const parts = i.customId.split(":");
     const [ns, action] = parts;
+    console.log(`🔧 Legacy handler - customId: ${i.customId}, parts:`, parts, `ns: ${ns}, action: ${action}`);
     if (ns !== "pip")
         return;
     // Handle membership purchase (no match ID needed)
