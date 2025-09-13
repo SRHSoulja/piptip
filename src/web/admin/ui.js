@@ -1762,63 +1762,133 @@ $("grandReset").onclick = async () => {
 };
 
 $("syncStatus").onclick = async () => {
+  const msgEl = $("systemMsg");
   try {
+    if (msgEl) msgEl.textContent = "🔄 Checking sync status...";
     const r = await API("/admin/sync/status");
     const j = await r.json();
     if (j.ok) {
       const status = j.sync.overallHealthy ? "✅ HEALTHY" : "⚠️ ISSUES DETECTED";
-      alert(`Database Sync Status: ${status}\n\n• Schema in sync: ${j.sync.schemaInSync ? '✅' : '❌'}\n• Migrations applied: ${j.sync.migrationsApplied ? '✅' : '❌'}\n• Connection healthy: ${j.sync.connectionHealthy ? '✅' : '❌'}\n• Issues: ${j.sync.issueCount}\n\nLast checked: ${new Date(j.sync.lastCheck).toLocaleString()}`);
+      const message = `Database Sync: ${status} | Schema: ${j.sync.schemaInSync ? '✅' : '❌'} | Migrations: ${j.sync.migrationsApplied ? '✅' : '❌'} | Connection: ${j.sync.connectionHealthy ? '✅' : '❌'} | Issues: ${j.sync.issueCount}`;
+      if (msgEl) {
+        msgEl.textContent = message;
+        msgEl.className = j.sync.overallHealthy ? "ok" : "err";
+      } else {
+        alert(message);
+      }
     } else {
-      alert(`❌ Sync Status Error: ${j.error}`);
+      const errorMsg = `❌ Sync Status Error: ${j.error}`;
+      if (msgEl) {
+        msgEl.textContent = errorMsg;
+        msgEl.className = "err";
+      } else {
+        alert(errorMsg);
+      }
     }
   } catch (error) {
-    alert(`❌ Sync Status Error: ${error.message}`);
+    const errorMsg = `❌ Sync Status Error: ${error.message}`;
+    if (msgEl) {
+      msgEl.textContent = errorMsg;
+      msgEl.className = "err";
+    } else {
+      alert(errorMsg);
+    }
   }
 };
 
 $("fixSync").onclick = async () => {
   if (!confirm("Auto-fix database synchronization issues?")) return;
+  const msgEl = $("systemMsg");
   try {
+    if (msgEl) msgEl.textContent = "🔧 Fixing sync issues...";
     const r = await API("/admin/sync/fix", { method: "POST" });
     const j = await r.json();
     if (j.ok) {
       const message = j.fixed ? "✅ Sync issues automatically resolved!" : "⚠️ Some issues could not be fixed automatically";
-      alert(`${message}\n\nBefore: ${j.beforeIssues.length} issues\nAfter: ${j.afterIssues.length} issues`);
+      const fullMessage = `${message} | Before: ${j.beforeIssues?.length || 0} issues | After: ${j.afterIssues?.length || 0} issues`;
+      if (msgEl) {
+        msgEl.textContent = fullMessage;
+        msgEl.className = j.fixed ? "ok" : "err";
+      } else {
+        alert(fullMessage);
+      }
     } else {
-      alert(`❌ Sync Fix Error: ${j.error}`);
+      const errorMsg = `❌ Sync Fix Error: ${j.error}`;
+      if (msgEl) {
+        msgEl.textContent = errorMsg;
+        msgEl.className = "err";
+      } else {
+        alert(errorMsg);
+      }
     }
   } catch (error) {
-    alert(`❌ Sync Fix Error: ${error.message}`);
+    const errorMsg = `❌ Sync Fix Error: ${error.message}`;
+    if (msgEl) {
+      msgEl.textContent = errorMsg;
+      msgEl.className = "err";
+    } else {
+      alert(errorMsg);
+    }
   }
 };
 
 $("clearCaches").onclick = async () => {
   if (!confirm("Clear all system caches?")) return;
+  const msgEl = $("systemMsg");
   try {
+    if (msgEl) msgEl.textContent = "🗑️ Clearing caches...";
     const r = await API("/admin/system/clear-caches", { method: "POST" });
     const j = await r.json();
-    if (j.ok) {
-      alert("✅ All caches cleared successfully!");
+    const message = j.ok ? "✅ All caches cleared successfully!" : `❌ Cache Clear Error: ${j.error}`;
+    if (msgEl) {
+      msgEl.textContent = message;
+      msgEl.className = j.ok ? "ok" : "err";
     } else {
-      alert(`❌ Cache Clear Error: ${j.error}`);
+      alert(message);
     }
   } catch (error) {
-    alert(`❌ Cache Clear Error: ${error.message}`);
+    const errorMsg = `❌ Cache Clear Error: ${error.message}`;
+    if (msgEl) {
+      msgEl.textContent = errorMsg;
+      msgEl.className = "err";
+    } else {
+      alert(errorMsg);
+    }
   }
 };
 
 $("systemStats").onclick = async () => {
+  const msgEl = $("systemMsg");
   try {
+    if (msgEl) msgEl.textContent = "📊 Loading system stats...";
     const r = await API("/admin/system/stats");
     const j = await r.json();
     if (j.ok) {
-      const stats = Object.entries(j.stats).map(([key, value]) => `${key}: ${value}`).join('\n');
-      alert(`📊 System Statistics\n\nTotal Records: ${j.totalRecords}\n\n${stats}`);
+      const statsText = Object.entries(j.stats).map(([key, value]) => `${key}: ${value}`).join(' | ');
+      const message = `📊 Total Records: ${j.totalRecords} | ${statsText}`;
+      if (msgEl) {
+        msgEl.textContent = message;
+        msgEl.className = "ok";
+      } else {
+        alert(`📊 System Statistics\n\nTotal Records: ${j.totalRecords}\n\n${statsText.replace(/\|/g, '\n')}`);
+      }
     } else {
-      alert(`❌ System Stats Error: ${j.error}`);
+      const errorMsg = `❌ System Stats Error: ${j.error}`;
+      if (msgEl) {
+        msgEl.textContent = errorMsg;
+        msgEl.className = "err";
+      } else {
+        alert(errorMsg);
+      }
     }
   } catch (error) {
-    alert(`❌ System Stats Error: ${error.message}`);
+    const errorMsg = `❌ System Stats Error: ${error.message}`;
+    if (msgEl) {
+      msgEl.textContent = errorMsg;
+      msgEl.className = "err";
+    } else {
+      alert(errorMsg);
+    }
   }
 };
 
