@@ -358,7 +358,7 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
       <thead>
         <tr>
           <th>ID</th><th>Type</th><th>User</th><th>Amount</th><th>Token</th>
-          <th>Fee</th><th>Time</th><th>Guild</th><th>Details</th>
+          <th>Fee</th><th>Time</th><th>Guild</th><th>Details</th><th>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>

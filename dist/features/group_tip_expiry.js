@@ -19,7 +19,7 @@ async function announceResult(client, tipId) {
     const summary = await finalizeExpiredGroupTip(tipId);
     await updateGroupTipMessage(client, tipId).catch(() => { });
     if (summary.kind === "REFUNDED") {
-        await channel.send(`⏰ Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>.`).catch(() => { });
+        await channel.send(`<a:PenguNo:1415469218681585674> Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>.`).catch(() => { });
     }
     else if (summary.kind === "FINALIZED") {
         const list = summary.payouts

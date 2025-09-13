@@ -37,6 +37,41 @@ export function getCommandsJson() {
         new SlashCommandBuilder()
             .setName("pip_stats")
             .setDescription("📊 View your comprehensive statistics and export transaction history"),
+        new SlashCommandBuilder()
+            .setName("pip_bio")
+            .setDescription("📝 Manage your PenguBook profile - bio, X/Twitter, and settings")
+            .addSubcommand(subcommand => subcommand
+            .setName("set")
+            .setDescription("Set your bio and social links")
+            .addStringOption(option => option.setName("bio")
+            .setDescription("Your bio text (max 500 characters)")
+            .setRequired(true))
+            .addStringOption(option => option.setName("x_username")
+            .setDescription("Your X/Twitter username (without @)")
+            .setRequired(false)))
+            .addSubcommand(subcommand => subcommand
+            .setName("view")
+            .setDescription("View a user's bio")
+            .addUserOption(option => option.setName("user")
+            .setDescription("User to view (leave empty for your own)")
+            .setRequired(false)))
+            .addSubcommand(subcommand => subcommand
+            .setName("clear")
+            .setDescription("Clear your bio and remove from PenguBook"))
+            .addSubcommand(subcommand => subcommand
+            .setName("settings")
+            .setDescription("Manage your PenguBook privacy settings")),
+        new SlashCommandBuilder()
+            .setName("pip_pengubook")
+            .setDescription("📖 Browse user profiles, discover the community, and send tips!")
+            .addStringOption(option => option.setName("mode")
+            .setDescription("How to browse profiles")
+            .setRequired(false)
+            .addChoices({ name: "🕒 Recent - Most recently updated", value: "recent" }, { name: "🔥 Popular - Most profile views", value: "popular" }, { name: "🎲 Random - Random discovery", value: "random" }))
+            .addIntegerOption(option => option.setName("page")
+            .setDescription("Page number to start from")
+            .setRequired(false)
+            .setMinValue(1)),
     ];
     return defs.map(d => d.toJSON());
 }

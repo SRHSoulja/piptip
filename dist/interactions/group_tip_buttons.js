@@ -68,7 +68,7 @@ export async function handleGroupTipClaim(i, groupTipId) {
                 await finalizeExpiredGroupTip(result.groupTipId);
             }
             await updateGroupTipMessage(i.client, result.groupTipId);
-            return i.editReply({ content: "This group tip has expired — claims are closed." });
+            return i.editReply({ content: "<a:PenguNo:1415469218681585674> This group tip has expired — claims are closed." });
         }
         // Normal path: update card and confirm claim
         await updateGroupTipMessage(i.client, result.groupTipId);

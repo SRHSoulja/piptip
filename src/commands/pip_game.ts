@@ -48,7 +48,7 @@ const match = await prisma.match.create({
 
     // finish the deferred reply
     await i.editReply({
-      content: `Wager: **${formatAmount(atomic, token)}**\nPick your secret move to post the match.`,
+      content: `<a:BoxingPengu:1415471596717477949> Wager: **${formatAmount(atomic, token)}**\nPick your secret move to post the match.`,
       components: [secretPickRow(match.id)],
     });
   } catch (error: any) {

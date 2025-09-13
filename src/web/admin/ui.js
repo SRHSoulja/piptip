@@ -1603,6 +1603,7 @@ async function loadTransactions() {
         <td>${new Date(tx.createdAt).toLocaleString()}</td>
         <td>${tx.guildId || "N/A"}</td>
         <td>${tx.metadata || ""}</td>
+        <td><button onclick="deleteTransaction(${tx.id})" style="background:#dc2626; font-size:11px; padding:2px 6px;">🗑️ Delete</button></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1612,6 +1613,28 @@ async function loadTransactions() {
     showMessage("txMsg", "Failed to load transactions", true);
   } finally {
     setLoading("loadTransactions", false);
+  }
+}
+
+// Delete transaction function
+async function deleteTransaction(transactionId) {
+  if (!confirm(`⚠️ Delete Transaction #${transactionId}?\n\nThis action is IRREVERSIBLE and will permanently remove this transaction from the database.\n\nAre you sure you want to continue?`)) {
+    return;
+  }
+  
+  try {
+    const r = await API(`/admin/transactions/${transactionId}`, { method: "DELETE" });
+    const j = await r.json();
+    
+    if (j.ok) {
+      showMessage("txMsg", `✅ Transaction #${transactionId} deleted successfully`, false);
+      // Reload the transactions table to reflect the deletion
+      loadTransactions();
+    } else {
+      showMessage("txMsg", `❌ Failed to delete transaction: ${j.error}`, true);
+    }
+  } catch (error) {
+    showMessage("txMsg", `❌ Delete error: ${error.message}`, true);
   }
 }
 
@@ -1770,6 +1793,14 @@ $("syncStatus").onclick = async () => {
     if (j.ok) {
       const status = j.sync.overallHealthy ? "✅ HEALTHY" : "⚠️ ISSUES DETECTED";
       const message = `Database Sync: ${status} | Schema: ${j.sync.schemaInSync ? '✅' : '❌'} | Migrations: ${j.sync.migrationsApplied ? '✅' : '❌'} | Connection: ${j.sync.connectionHealthy ? '✅' : '❌'} | Issues: ${j.sync.issueCount}`;
+      
+      // Show detailed issues if any exist
+      if (j.sync.issues && j.sync.issues.length > 0) {
+        console.log("🔍 Sync Issues Details:", j.sync.issues);
+        const detailedMessage = message + "\n\nDetailed Issues:\n" + j.sync.issues.join("\n");
+        alert(detailedMessage);
+      }
+      
       if (msgEl) {
         msgEl.textContent = message;
         msgEl.className = j.sync.overallHealthy ? "ok" : "err";

@@ -24,7 +24,7 @@ async function announceResult(client: Client, tipId: number) {
 
   if (summary.kind === "REFUNDED") {
     await channel.send(
-      `⏰ Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>.`
+      `<a:PenguNo:1415469218681585674> Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>.`
     ).catch(() => {});
   } else if (summary.kind === "FINALIZED") {
     const list = summary.payouts

@@ -327,3 +327,45 @@ transactionsRouter.get("/transactions/export/guild/:guildId", async (req: Reques
     res.status(500).json({ ok: false, error: "Failed to export guild data" });
   }
 });
+
+// Delete transaction endpoint
+transactionsRouter.delete("/transactions/:id", async (req: Request, res: Response) => {
+  try {
+    const transactionId = parseInt(req.params.id);
+    
+    if (!Number.isFinite(transactionId)) {
+      return res.status(400).json({ ok: false, error: "Invalid transaction ID" });
+    }
+
+    // Get the transaction first for logging
+    const transaction = await prisma.transaction.findUnique({
+      where: { id: transactionId }
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ ok: false, error: "Transaction not found" });
+    }
+
+    // Delete the transaction
+    await prisma.transaction.delete({
+      where: { id: transactionId }
+    });
+
+    console.log(`🗑️ Admin deleted transaction: ID ${transactionId}, Type: ${transaction.type}, Amount: ${transaction.amount}`);
+
+    res.json({ 
+      ok: true, 
+      message: "Transaction deleted successfully",
+      deletedTransaction: {
+        id: transaction.id,
+        type: transaction.type,
+        amount: transaction.amount,
+        createdAt: transaction.createdAt
+      }
+    });
+
+  } catch (error: any) {
+    console.error("Delete transaction error:", error);
+    res.status(500).json({ ok: false, error: `Failed to delete transaction: ${error.message}` });
+  }
+});

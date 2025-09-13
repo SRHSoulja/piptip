@@ -76,7 +76,7 @@ export function profileEmbed(data) {
 /** Public offer embed */
 export function matchOfferEmbed(challengerTag, wagerText, ad) {
     const e = new EmbedBuilder()
-        .setTitle("🐧🧊🪨 Penguin Ice Pebble — Challenge!")
+        .setTitle("<a:BoxingPengu:1415471596717477949> Penguin Ice Pebble — Challenge!")
         .setDescription(`${challengerTag} has started a match.\n**Wager:** ${wagerText}\nClick a button to join.`);
     if (ad) {
         e.addFields({
@@ -108,7 +108,7 @@ export function matchResultEmbed(opts) {
         const winnerTag = winner === "challenger" ? opts.challengerTag : opts.joinerTag;
         const winnerEmoji = winner === "challenger" ? challengerEmoji : joinerEmoji;
         const loserEmoji = winner === "challenger" ? joinerEmoji : challengerEmoji;
-        title = "🏆 Victory Achieved!";
+        title = "<a:BoxingPengu:1415471596717477949> Victory Achieved!";
         color = 0x00FF00; // Green
         description = `${challengerEmoji} vs ${joinerEmoji}\n\n🎉 **${winnerTag} WINS!**\n${winnerEmoji} beats ${loserEmoji}`;
     }

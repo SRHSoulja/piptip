@@ -50,8 +50,21 @@ model User {
   // Notifications
   notifications Notification[]
 
+  // PenguBook profile fields
+  bio               String?   @db.Text
+  bioLastUpdated    DateTime?
+  bioViewCount      Int       @default(0)
+  xUsername         String?   // X/Twitter handle (without @)
+  allowTipsFromBook Boolean   @default(true)
+  showInPenguBook   Boolean   @default(true)
+
+  // PenguBook browsing relations
+  profileViewsGiven    BioBrowse[] @relation("BioBrowseViewer")
+  profileViewsReceived BioBrowse[] @relation("BioBrowseProfile")
+
   @@index([agwAddress])
   @@index([createdAt])
+  @@index([showInPenguBook, bioLastUpdated])
 }
 
 model Tier {
@@ -340,4 +353,19 @@ model WebhookEvent {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// PenguBook browsing history - track who viewed whose profile
+model BioBrowse {
+  id        Int      @id @default(autoincrement())
+  viewerId  Int      // who viewed the profile
+  profileId Int      // whose profile was viewed
+  createdAt DateTime @default(now())
+  
+  viewer  User @relation("BioBrowseViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  profile User @relation("BioBrowseProfile", fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([viewerId, profileId]) // prevent duplicate views from same user
+  @@index([profileId, createdAt]) // for getting recent viewers
+  @@index([viewerId, createdAt])  // for user's browsing history
 }

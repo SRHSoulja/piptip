@@ -1,5 +1,7 @@
-// Cache for usernames and server names to avoid repeated API calls
+// Cache for usernames, avatars, and server names to avoid repeated API calls
 const usernameCache = new Map();
+const avatarCache = new Map();
+const userDataCache = new Map();
 const servernameCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 export async function fetchDiscordUsername(client, discordId) {
@@ -20,6 +22,62 @@ export async function fetchDiscordUsername(client, discordId) {
         console.error(`Failed to fetch username for ${discordId}:`, error);
         return `User#${discordId.slice(-4)}`;
     }
+}
+// Enhanced function to fetch both username and avatar
+export async function fetchDiscordUserData(client, discordId) {
+    try {
+        // Check cache first
+        const cached = userDataCache.get(discordId);
+        if (cached && (Date.now() - cached.fetchedAt) < CACHE_DURATION) {
+            return { username: cached.username, avatarURL: cached.avatarURL };
+        }
+        // Fetch from Discord API
+        const user = await client.users.fetch(discordId);
+        const username = user.username || user.displayName || `User#${discordId.slice(-4)}`;
+        const avatarURL = user.displayAvatarURL({ size: 256, extension: 'png' });
+        // Cache the result
+        userDataCache.set(discordId, { username, avatarURL, fetchedAt: Date.now() });
+        return { username, avatarURL };
+    }
+    catch (error) {
+        console.error(`Failed to fetch user data for ${discordId}:`, error);
+        return {
+            username: `User#${discordId.slice(-4)}`,
+            avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png` // Default Discord avatar
+        };
+    }
+}
+// Fetch multiple users with both usernames and avatars
+export async function fetchMultipleUserData(client, discordIds) {
+    const results = new Map();
+    // Process in batches to avoid rate limiting
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < discordIds.length; i += BATCH_SIZE) {
+        const batch = discordIds.slice(i, i + BATCH_SIZE);
+        const promises = batch.map(async (id) => {
+            const userData = await fetchDiscordUserData(client, id);
+            return { id, userData };
+        });
+        const batchResults = await Promise.allSettled(promises);
+        batchResults.forEach((result, index) => {
+            const discordId = batch[index];
+            if (result.status === 'fulfilled') {
+                results.set(discordId, result.value.userData);
+            }
+            else {
+                // Fallback for failed requests
+                results.set(discordId, {
+                    username: `User#${discordId.slice(-4)}`,
+                    avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+                });
+            }
+        });
+        // Small delay between batches to be nice to Discord API
+        if (i + BATCH_SIZE < discordIds.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+    return results;
 }
 export async function fetchMultipleUsernames(client, discordIds) {
     const results = new Map();
