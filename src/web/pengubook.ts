@@ -857,7 +857,7 @@ function generateUserProfileHTML(data: any): string {
                 ${data.balances.map((balance: any) => `
                 <div class="balance-card">
                     <div>${balance.Token.symbol}</div>
-                    <div class="balance-amount">${balance.amount / Math.pow(10, balance.Token.decimals)}</div>
+                    <div class="balance-amount">${Number(balance.amount).toFixed(2).replace(/\.?0+$/, '')}</div>
                 </div>
                 `).join('')}
             </div>
