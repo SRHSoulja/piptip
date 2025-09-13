@@ -84,7 +84,14 @@ authRouter.get("/discord/callback", async (req, res) => {
         req.session.accessToken = access_token;
         req.session.refreshToken = refresh_token;
         // Redirect to intended destination
-        res.redirect(stateData.redirectTo || "/pengubook");
+        const redirectUrl = stateData.redirectTo || "/pengubook";
+        if (redirectUrl.startsWith("/")) {
+            // Convert internal redirects to proxy URLs
+            res.redirect(`https://gmgnrepeat.com/pengubook.php?path=${encodeURIComponent(redirectUrl.slice(1))}`);
+        }
+        else {
+            res.redirect(redirectUrl);
+        }
     }
     catch (error) {
         console.error("Discord OAuth callback error:", error);
