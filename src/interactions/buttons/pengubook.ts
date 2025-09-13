@@ -484,3 +484,129 @@ export async function handlePenguBookBioSetup(i: ModalSubmitInteraction) {
     });
   }
 }
+
+// Handle viewing a specific user's profile from PenguBook
+export async function handlePenguBookProfile(i: ButtonInteraction, targetDiscordId: string) {
+  await i.deferReply({ ephemeral: true });
+  
+  try {
+    // Get the target user's profile
+    const profile = await prisma.user.findUnique({
+      where: { discordId: targetDiscordId },
+      select: {
+        discordId: true,
+        bio: true,
+        xUsername: true,
+        bioViewCount: true,
+        bioLastUpdated: true,
+        allowTipsFromBook: true,
+        showInPenguBook: true,
+        wins: true,
+        losses: true,
+        ties: true,
+        createdAt: true,
+        _count: {
+          select: {
+            tipsSent: true,
+            tipsReceived: true
+          }
+        }
+      }
+    });
+    
+    if (!profile || !profile.bio || !profile.showInPenguBook) {
+      return i.editReply({
+        content: "❌ This profile is not available or has been made private."
+      });
+    }
+    
+    // Fetch Discord user data
+    let userInfo = { 
+      username: `User ${profile.discordId.slice(0, 8)}...`,
+      avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(profile.discordId.slice(-1)) % 6}.png`
+    };
+    
+    try {
+      const client = getDiscordClient();
+      if (client) {
+        const userData = await fetchMultipleUserData(client, [profile.discordId]);
+        userInfo = userData.get(profile.discordId) || userInfo;
+      }
+    } catch (error) {
+      console.warn("Failed to fetch user data for profile view:", error);
+    }
+    
+    // Create detailed profile embed
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(`👤 ${userInfo.username}'s Profile`)
+      .setThumbnail(userInfo.avatarURL)
+      .setDescription(profile.bio)
+      .addFields(
+        { name: "🎮 Game Record", value: `${profile.wins}W ${profile.losses}L ${profile.ties}T`, inline: true },
+        { name: "👀 Profile Views", value: profile.bioViewCount.toString(), inline: true },
+        { name: "💌 Tips Sent", value: profile._count.tipsSent.toString(), inline: true },
+        { name: "🎁 Tips Received", value: profile._count.tipsReceived.toString(), inline: true },
+        ...(profile.xUsername ? [{ name: "🐦 X/Twitter", value: `[@${profile.xUsername}](https://x.com/${profile.xUsername})`, inline: true }] : []),
+        ...(profile.bioLastUpdated ? [{ name: "📅 Last Updated", value: `<t:${Math.floor(profile.bioLastUpdated.getTime() / 1000)}:R>`, inline: true }] : [])
+      )
+      .setFooter({ text: `Member since ${profile.createdAt.toLocaleDateString()}` });
+    
+    // Create action buttons
+    const buttons = new ActionRowBuilder<ButtonBuilder>();
+    
+    if (profile.allowTipsFromBook && profile.discordId !== i.user.id) {
+      buttons.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`pip:tip_from_book:${profile.discordId}`)
+          .setLabel("Send Tip")
+          .setStyle(ButtonStyle.Success)
+          .setEmoji("<a:PenguSipJuice:1415470745491996673>")
+      );
+    }
+    
+    // Track that user viewed this profile
+    if (profile.discordId !== i.user.id) {
+      try {
+        const viewerUser = await findOrCreateUser(i.user.id);
+        const profileUser = await findOrCreateUser(profile.discordId);
+        
+        // Increment view count
+        await prisma.user.update({
+          where: { discordId: profile.discordId },
+          data: { bioViewCount: { increment: 1 } }
+        });
+        
+        // Track browsing
+        await prisma.bioBrowse.upsert({
+          where: {
+            viewerId_profileId: {
+              viewerId: viewerUser.id,
+              profileId: profileUser.id
+            }
+          },
+          create: {
+            viewerId: viewerUser.id,
+            profileId: profileUser.id
+          },
+          update: {
+            createdAt: new Date()
+          }
+        });
+      } catch (error) {
+        console.warn("Failed to track profile view:", error);
+      }
+    }
+    
+    return i.editReply({
+      embeds: [embed],
+      components: buttons.components.length > 0 ? [buttons] : []
+    });
+    
+  } catch (error) {
+    console.error("Error viewing PenguBook profile:", error);
+    return i.editReply({
+      content: "❌ Failed to load profile. Please try again later."
+    });
+  }
+}

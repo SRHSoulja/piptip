@@ -11,7 +11,7 @@ import { handleLegacyPipModal } from "./buttons/legacy.js";
 import { handlePick, handleJoin, handleCancel } from "./buttons/matches.js";
 import { handlePromptLinkWallet, handleLinkWalletModal, handleLinkWalletSubmit } from "./buttons/wallet.js";
 import { handleShowDepositInstructions, handleDepositToken, handleCancelDeposit } from "./buttons/deposits.js";
-import { handlePenguBookNav, handlePenguBookModes, handleBioToggle, handleTipFromBook, handleViewOwnBio, handlePenguBookCTA } from "./buttons/pengubook.js";
+import { handlePenguBookNav, handlePenguBookModes, handleBioToggle, handleTipFromBook, handleViewOwnBio, handlePenguBookCTA, handlePenguBookProfile } from "./buttons/pengubook.js";
 /** Router for pip button customIds: pip:<action>:<matchId>:<move?> */
 // Main handler that routes by interaction type using type guards
 export async function handlePipButton(i) {
@@ -173,6 +173,10 @@ async function handleLegacyPipButton(i) {
     }
     if (action === "pengubook_cta") {
         return handlePenguBookCTA(i);
+    }
+    if (action === "pengubook_profile") {
+        const targetDiscordId = parts[2];
+        return handlePenguBookProfile(i, targetDiscordId);
     }
     // Handle tip token selection
     if (action === "select_token") {
