@@ -26,7 +26,7 @@ import { getCommandsJson } from "./services/commands_def.js";
 import { registerCommandsForApprovedGuilds } from "./services/command_registry.js";
 import { getActiveTokens } from "./services/token.js";
 import { setDiscordClient } from "./services/discord_users.js";
-import { backupService } from "./services/backup.js";
+// import { backupService } from "./services/backup.js"; // Disabled - using external cron job
 const TOKEN = process.env.DISCORD_TOKEN;
 const PORT = Number(process.env.PORT || 3000);
 // ---------- Express (REST) ----------
@@ -218,9 +218,9 @@ async function main() {
     try {
         await ensurePrisma();
         console.log("Database connected");
-        // Start backup service
-        await backupService.start();
-        console.log("Backup service started");
+        // Backup service disabled - using external cron job with backup-script.js
+        // await backupService.start();
+        console.log("Backup service: using external cron job");
         // Register slash commands to all approved guilds (or fallback)
         const cmds = getCommandsJson();
         await registerCommandsForApprovedGuilds(cmds);
@@ -232,7 +232,7 @@ async function main() {
         });
         const shutdown = async () => {
             console.log("Shutting down...");
-            await backupService.stop();
+            // await backupService.stop(); // Disabled - using external cron job
             server.close(() => {
                 bot.destroy();
                 process.exit(0);
