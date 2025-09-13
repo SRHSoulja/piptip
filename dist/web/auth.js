@@ -86,8 +86,10 @@ authRouter.get("/discord/callback", async (req, res) => {
         // Redirect to intended destination
         const redirectUrl = stateData.redirectTo || "/pengubook";
         if (redirectUrl.startsWith("/")) {
-            // Convert internal redirects to proxy URLs
-            res.redirect(`https://gmgnrepeat.com/pengubook.php?path=${encodeURIComponent(redirectUrl.slice(1))}`);
+            // Convert internal redirects to proxy URLs using request host
+            const host = req.get('host') || 'localhost:3000';
+            const protocol = req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+            res.redirect(`${protocol}://${host}/pengubook.php?path=${encodeURIComponent(redirectUrl.slice(1))}`);
         }
         else {
             res.redirect(redirectUrl);
