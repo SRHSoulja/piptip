@@ -169,7 +169,15 @@ async function handleLegacyPipButton(i) {
         const value = parts[3] === "true";
         return handleBioToggle(i, setting, value);
     }
+    if (action === "bio_settings") {
+        // Show bio settings - this should open the bio settings modal/embed
+        return handleBioToggle(i, "showInPenguBook", true); // Placeholder - implement proper settings handler
+    }
     if (action === "tip_from_book") {
+        const targetDiscordId = parts[2];
+        return handleTipFromBook(i, targetDiscordId);
+    }
+    if (action === "tip_modal") {
         const targetDiscordId = parts[2];
         return handleTipFromBook(i, targetDiscordId);
     }

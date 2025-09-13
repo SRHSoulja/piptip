@@ -130,7 +130,7 @@ export async function handlePenguBookNav(i: ButtonInteraction, mode: string, pag
     if (page > 1) {
       navButtons.addComponents(
         new ButtonBuilder()
-          .setCustomId(`pip_pengubook_nav:${mode}:${page - 1}`)
+          .setCustomId(`pip:pengubook_nav:${mode}:${page - 1}`)
           .setLabel("← Previous")
           .setStyle(ButtonStyle.Secondary)
       );
@@ -139,7 +139,7 @@ export async function handlePenguBookNav(i: ButtonInteraction, mode: string, pag
     if (page < totalPages) {
       navButtons.addComponents(
         new ButtonBuilder()
-          .setCustomId(`pip_pengubook_nav:${mode}:${page + 1}`)
+          .setCustomId(`pip:pengubook_nav:${mode}:${page + 1}`)
           .setLabel("Next →")
           .setStyle(ButtonStyle.Secondary)
       );
@@ -147,7 +147,7 @@ export async function handlePenguBookNav(i: ButtonInteraction, mode: string, pag
     
     navButtons.addComponents(
       new ButtonBuilder()
-        .setCustomId(`pip_pengubook_nav:random:1`)
+        .setCustomId(`pip:pengubook_nav:random:1`)
         .setLabel("🎲 Random")
         .setStyle(ButtonStyle.Primary)
     );
@@ -155,7 +155,7 @@ export async function handlePenguBookNav(i: ButtonInteraction, mode: string, pag
     if (profile.allowTipsFromBook && profile.discordId !== i.user.id) {
       actionButtons.addComponents(
         new ButtonBuilder()
-          .setCustomId(`pip_tip_from_book:${profile.discordId}`)
+          .setCustomId(`pip:tip_from_book:${profile.discordId}`)
           .setLabel("💰 Send Tip")
           .setStyle(ButtonStyle.Success)
       );
@@ -163,7 +163,7 @@ export async function handlePenguBookNav(i: ButtonInteraction, mode: string, pag
     
     actionButtons.addComponents(
       new ButtonBuilder()
-        .setCustomId("pip_pengubook_modes")
+        .setCustomId("pip:pengubook_modes")
         .setLabel("📊 Browse Modes")
         .setStyle(ButtonStyle.Primary)
     );
@@ -226,15 +226,15 @@ export async function handlePenguBookModes(i: ButtonInteraction) {
   const buttons = new ActionRowBuilder<ButtonBuilder>()
     .addComponents(
       new ButtonBuilder()
-        .setCustomId("pip_pengubook_nav:recent:1")
+        .setCustomId("pip:pengubook_nav:recent:1")
         .setLabel("🕒 Recent")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId("pip_pengubook_nav:popular:1")
+        .setCustomId("pip:pengubook_nav:popular:1")
         .setLabel("🔥 Popular")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId("pip_pengubook_nav:random:1")
+        .setCustomId("pip:pengubook_nav:random:1")
         .setLabel("🎲 Random")
         .setStyle(ButtonStyle.Primary)
     );
@@ -278,11 +278,11 @@ export async function handleBioToggle(i: ButtonInteraction, setting: string, val
     const buttons = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId(`pip_bio_toggle:showInPenguBook:${!updatedUser!.showInPenguBook}`)
+          .setCustomId(`pip:bio_toggle:showInPenguBook:${!updatedUser!.showInPenguBook}`)
           .setLabel(updatedUser!.showInPenguBook ? "Hide from PenguBook" : "Show in PenguBook")
           .setStyle(updatedUser!.showInPenguBook ? ButtonStyle.Danger : ButtonStyle.Success),
         new ButtonBuilder()
-          .setCustomId(`pip_bio_toggle:allowTipsFromBook:${!updatedUser!.allowTipsFromBook}`)
+          .setCustomId(`pip:bio_toggle:allowTipsFromBook:${!updatedUser!.allowTipsFromBook}`)
           .setLabel(updatedUser!.allowTipsFromBook ? "Disable Tips" : "Enable Tips")
           .setStyle(updatedUser!.allowTipsFromBook ? ButtonStyle.Danger : ButtonStyle.Success)
       );
@@ -305,7 +305,7 @@ export async function handleTipFromBook(i: ButtonInteraction, targetDiscordId: s
   // For now, show a modal for quick tip
   
   const modal = new ModalBuilder()
-    .setCustomId(`pip_tip_modal:${targetDiscordId}`)
+    .setCustomId(`pip:tip_modal:${targetDiscordId}`)
     .setTitle("💰 Send Tip from PenguBook");
   
   const amountInput = new TextInputBuilder()
@@ -373,11 +373,11 @@ export async function handleViewOwnBio(i: ButtonInteraction) {
     const buttons = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId("pip_pengubook_nav:recent:1")
+          .setCustomId("pip:pengubook_nav:recent:1")
           .setLabel("📖 Browse PenguBook")
           .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
-          .setCustomId("pip_bio_settings")
+          .setCustomId("pip:bio_settings")
           .setLabel("⚙️ Settings")
           .setStyle(ButtonStyle.Secondary)
       );
