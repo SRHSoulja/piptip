@@ -2,6 +2,22 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilde
 import { prisma } from "../../services/db.js";
 import { findOrCreateUser } from "../../services/user_helpers.js";
 import { fetchMultipleUserData, getDiscordClient } from "../../services/discord_users.js";
+// Helper function to get unread message count
+export async function getUnreadMessageCount(discordId) {
+    try {
+        const user = await findOrCreateUser(discordId);
+        return await prisma.penguBookMessage.count({
+            where: {
+                toUserId: user.id,
+                read: false
+            }
+        });
+    }
+    catch (error) {
+        console.warn("Failed to get unread message count:", error);
+        return 0;
+    }
+}
 // Handle PenguBook navigation
 export async function handlePenguBookNav(i, mode, page) {
     console.log(`📖 PenguBook nav - mode: ${mode}, page: ${page}, user: ${i.user.id}`);
@@ -288,11 +304,17 @@ export async function handleViewOwnBio(i) {
             .setTitle(`📖 Your PenguBook Profile`)
             .setDescription(user.bio)
             .addFields({ name: "👀 Profile Views", value: user.bioViewCount.toString(), inline: true }, ...(user.xUsername ? [{ name: "🐦 X/Twitter", value: `[@${user.xUsername}](https://x.com/${user.xUsername})`, inline: true }] : []), ...(user.bioLastUpdated ? [{ name: "📅 Last Updated", value: `<t:${Math.floor(user.bioLastUpdated.getTime() / 1000)}:R>`, inline: true }] : []));
+        // Get unread message count for inbox button
+        const unreadCount = await getUnreadMessageCount(i.user.id);
+        const inboxLabel = unreadCount > 0 ? `📬 Inbox (${unreadCount})` : "📬 Inbox";
         const buttons = new ActionRowBuilder()
             .addComponents(new ButtonBuilder()
             .setCustomId("pip:pengubook_nav:recent:1")
             .setLabel("📖 Browse PenguBook")
             .setStyle(ButtonStyle.Primary), new ButtonBuilder()
+            .setCustomId("pip:pengubook_inbox")
+            .setLabel(inboxLabel)
+            .setStyle(unreadCount > 0 ? ButtonStyle.Success : ButtonStyle.Secondary), new ButtonBuilder()
             .setCustomId("pip:bio_settings")
             .setLabel("⚙️ Settings")
             .setStyle(ButtonStyle.Secondary));
@@ -405,8 +427,8 @@ export async function handleTipModal(i, parts) {
                 content: `❌ **System error:** Discord client not available`
             });
         }
-        // Process the tip using existing tip logic
-        const result = await processTip({
+        // Process the tip using existing tip logic with PenguBook context
+        const tipData = {
             amount,
             tipType: "direct",
             targetUserId: targetDiscordId,
@@ -414,11 +436,14 @@ export async function handleTipModal(i, parts) {
             tokenId: token.id,
             userId: i.user.id,
             guildId: i.guildId,
-            channelId: i.channelId
-        }, client);
+            channelId: i.channelId,
+            // Add context that this is from PenguBook
+            fromPenguBook: true
+        };
+        const result = await processTip(tipData, client);
         if (result.success) {
             return i.editReply({
-                content: `✅ **Tip sent successfully!**\n💰 Sent ${amount} ${tokenSymbol} to <@${targetDiscordId}>${note ? `\n📝 "${note}"` : ""}`
+                content: `✅ **${result.message}**\n${result.details || ""}\n\n💬 *Your message was delivered to their PenguBook inbox!*`
             });
         }
         else {
@@ -435,6 +460,100 @@ export async function handleTipModal(i, parts) {
     }
 }
 // Handle viewing a specific user's profile from PenguBook
+// Handle PenguBook inbox view
+export async function handlePenguBookInbox(i) {
+    await i.deferReply({ ephemeral: true });
+    try {
+        const user = await findOrCreateUser(i.user.id);
+        // Get messages with sender info and pagination
+        const MESSAGES_PER_PAGE = 5;
+        const messages = await prisma.penguBookMessage.findMany({
+            where: { toUserId: user.id },
+            include: {
+                from: { select: { discordId: true } },
+                tip: {
+                    select: {
+                        amountAtomic: true,
+                        Token: { select: { symbol: true, decimals: true } }
+                    }
+                }
+            },
+            orderBy: { createdAt: "desc" },
+            take: MESSAGES_PER_PAGE
+        });
+        if (messages.length === 0) {
+            return i.editReply({
+                content: "📬 **Your PenguBook Inbox**\n\n*No messages yet! When someone sends you a tip with a message from PenguBook, it will appear here.*"
+            });
+        }
+        // Get sender usernames
+        const senderIds = messages.map(m => m.from.discordId);
+        let senderData = new Map();
+        try {
+            const client = getDiscordClient();
+            if (client) {
+                senderData = await fetchMultipleUserData(client, senderIds);
+            }
+        }
+        catch (error) {
+            console.warn("Failed to fetch sender data for inbox:", error);
+        }
+        const embed = new EmbedBuilder()
+            .setColor(0x5865f2)
+            .setTitle("📬 Your PenguBook Inbox")
+            .setDescription(`You have ${messages.length} recent messages`)
+            .setTimestamp();
+        // Add messages as fields
+        for (const message of messages) {
+            const senderInfo = senderData.get(message.from.discordId);
+            const senderName = senderInfo?.username || `User ${message.from.discordId.slice(0, 8)}...`;
+            const isNew = !message.read ? "✨ **NEW** " : "";
+            let tipInfo = "";
+            if (message.tip) {
+                // Simple amount formatting without requiring full TokenRow
+                const atomicAmount = BigInt(message.tip.amountAtomic.toString());
+                const decimals = message.tip.Token.decimals;
+                const divisor = BigInt(10 ** decimals);
+                const amount = Number(atomicAmount) / Number(divisor);
+                tipInfo = ` (with ${amount} ${message.tip.Token.symbol} tip)`;
+            }
+            const timeAgo = `<t:${Math.floor(message.createdAt.getTime() / 1000)}:R>`;
+            embed.addFields({
+                name: `${isNew}💬 From ${senderName}${tipInfo}`,
+                value: `"${message.message}"\n*${timeAgo}*`,
+                inline: false
+            });
+        }
+        // Mark all displayed messages as read
+        if (messages.some(m => !m.read)) {
+            await prisma.penguBookMessage.updateMany({
+                where: {
+                    id: { in: messages.map(m => m.id) },
+                    read: false
+                },
+                data: { read: true }
+            });
+        }
+        const buttons = new ActionRowBuilder()
+            .addComponents(new ButtonBuilder()
+            .setCustomId("pip:pengubook_inbox_refresh")
+            .setLabel("🔄 Refresh")
+            .setStyle(ButtonStyle.Secondary), new ButtonBuilder()
+            .setCustomId("pip:pengubook_browse")
+            .setLabel("📖 Browse PenguBook")
+            .setStyle(ButtonStyle.Primary));
+        return i.editReply({
+            embeds: [embed],
+            components: [buttons]
+        });
+    }
+    catch (error) {
+        console.error("Error showing PenguBook inbox:", error);
+        return i.editReply({
+            content: "❌ Failed to load your inbox. Please try again later."
+        });
+    }
+}
 export async function handlePenguBookProfile(i, targetDiscordId) {
     await i.deferReply({ ephemeral: true });
     try {

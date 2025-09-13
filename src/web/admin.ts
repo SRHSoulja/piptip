@@ -16,7 +16,7 @@ import { usersRouter } from "./admin/users.js";
 import { transactionsRouter } from "./admin/transactions.js";
 import { groupTipsRouter } from "./admin/groupTips.js";
 import { systemRouter } from "./admin/system.js";
-import { backupRouter } from "./admin/backup.js";
+// import { backupRouter } from "./admin/backup.js"; // Disabled due to environment issues
 import { statsRouter } from "./admin/stats.js";
 import { pengubookRouter } from "./admin/pengubook.js";
 
@@ -522,7 +522,7 @@ adminRouter.use(usersRouter);
 adminRouter.use(transactionsRouter);
 adminRouter.use(groupTipsRouter);
 adminRouter.use(systemRouter);
-adminRouter.use(backupRouter);
+// adminRouter.use(backupRouter); // Disabled due to environment issues
 adminRouter.use(statsRouter);
 adminRouter.use(pengubookRouter);
 
