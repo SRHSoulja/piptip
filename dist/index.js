@@ -1,12 +1,15 @@
 // src/index.ts
 import "dotenv/config";
 import express from "express";
+import session from "express-session";
 import { flushNoticesEphemeral } from "./services/notifier.js";
 import { Client, GatewayIntentBits, Events, } from "discord.js";
 import { ensurePrisma, prisma } from "./services/db.js";
 import { healthRouter } from "./web/health.js";
 import { internalRouter } from "./web/internal.js";
 import { adminRouter } from "./web/admin.js";
+import { authRouter } from "./web/auth.js";
+import { pengubookRouter } from "./web/pengubook.js";
 import pipWithdraw from "./commands/pip_withdraw.js";
 import pipLink from "./commands/pip_link.js";
 import pipProfile from "./commands/pip_profile.js";
@@ -32,6 +35,16 @@ const PORT = Number(process.env.PORT || 3000);
 // ---------- Express (REST) ----------
 const app = express();
 app.use(express.json({ limit: "256kb" }));
+// Session middleware for OAuth
+app.use(session({
+    secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-this",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
 // Favicon route to prevent 404 errors
 app.get("/favicon.ico", (_req, res) => {
     // Return a simple 1x1 transparent PNG
@@ -43,6 +56,8 @@ app.get("/favicon.ico", (_req, res) => {
 app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
 app.use("/admin", adminRouter);
+app.use("/auth", authRouter);
+app.use("/pengubook", pengubookRouter);
 // ---------- Discord bot ----------
 const bot = new Client({ intents: [GatewayIntentBits.Guilds] });
 // --- Auto-ACK wrapper: prevents Discord timeouts globally ---
@@ -111,6 +126,23 @@ async function isGuildApproved(guildId) {
         return false;
     }
 }
+// Check if user is banned from PIPTip
+async function isUserBanned(discordId) {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { discordId },
+            select: { isBanned: true, bannedReason: true }
+        });
+        if (user?.isBanned) {
+            return { banned: true, reason: user.bannedReason || "No reason provided" };
+        }
+        return { banned: false };
+    }
+    catch (error) {
+        console.error("Ban check failed:", error);
+        return { banned: false }; // Allow on error to prevent false positives
+    }
+}
 // Handle autocomplete for token selection
 // Simple visibility logs to trace flow (LOGGING ONLY)
 bot.on(Events.InteractionCreate, (i) => {
@@ -156,6 +188,19 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
             }).catch(() => { });
         }
         return;
+    }
+    // Ban check
+    if ("user" in i && i.user?.id) {
+        const banStatus = await isUserBanned(i.user.id);
+        if (banStatus.banned) {
+            if ("isRepliable" in i && i.isRepliable()) {
+                await i.reply({
+                    content: `❌ **You are banned from using PIPTip.**\n\n**Reason:** ${banStatus.reason}\n\nIf you believe this is an error, please contact the administrators.`,
+                    flags: 64, // MessageFlags.Ephemeral
+                }).catch(() => { });
+            }
+            return;
+        }
     }
     // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓
     if ("isChatInputCommand" in i && i.isChatInputCommand()) {

@@ -1,6 +1,7 @@
 // src/index.ts
 import "dotenv/config";
 import express, { Request, Response } from "express";
+import session from "express-session";
 import { flushNoticesEphemeral } from "./services/notifier.js";
 import {
   Client,
@@ -13,6 +14,8 @@ import { ensurePrisma, prisma } from "./services/db.js";
 import { healthRouter } from "./web/health.js";
 import { internalRouter } from "./web/internal.js";
 import { adminRouter } from "./web/admin.js";
+import { authRouter } from "./web/auth.js";
+import { pengubookRouter } from "./web/pengubook.js";
 
 import pipWithdraw from "./commands/pip_withdraw.js";
 import pipLink from "./commands/pip_link.js";
@@ -43,6 +46,17 @@ const PORT = Number(process.env.PORT || 3000);
 const app = express();
 app.use(express.json({ limit: "256kb" }));
 
+// Session middleware for OAuth
+app.use(session({
+  secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-this",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
 // Favicon route to prevent 404 errors
 app.get("/favicon.ico", (_req: Request, res: Response) => {
   // Return a simple 1x1 transparent PNG
@@ -55,6 +69,8 @@ app.get("/favicon.ico", (_req: Request, res: Response) => {
 app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
 app.use("/admin", adminRouter);
+app.use("/auth", authRouter);
+app.use("/pengubook", pengubookRouter);
 
 // ---------- Discord bot ----------
 const bot = new Client({ intents: [GatewayIntentBits.Guilds] });

@@ -16,6 +16,7 @@ export async function handleLegacyPipModal(i) {
     if (action === "tip_modal") {
         return handleTipModal(i, parts);
     }
+    // Note: pengubook_search_submit handler not implemented yet
     // Add other legacy modal handlers here as needed
     console.warn("Unknown legacy modal action:", action);
     await i.reply({ content: "Unknown modal action.", flags: 64 }).catch(() => { });

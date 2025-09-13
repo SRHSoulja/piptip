@@ -55,8 +55,15 @@ model User {
   bioLastUpdated    DateTime?
   bioViewCount      Int       @default(0)
   xUsername         String?   // X/Twitter handle (without @)
+  socials           String?   @db.Text // JSON string for social links
   allowTipsFromBook Boolean   @default(true)
   showInPenguBook   Boolean   @default(true)
+
+  // Ban system fields
+  isBanned          Boolean   @default(false)
+  bannedAt          DateTime?
+  bannedReason      String?
+  bannedByAdminId   String?
 
   // PenguBook browsing relations
   profileViewsGiven    BioBrowse[] @relation("BioBrowseViewer")
