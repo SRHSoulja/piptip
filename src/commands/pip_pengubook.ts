@@ -172,7 +172,7 @@ export default async function pipPenguBook(i: ChatInputCommandInteraction) {
     if (page > 1) {
       navButtons.addComponents(
         new ButtonBuilder()
-          .setCustomId(`pip_pengubook_nav:${mode}:${page - 1}`)
+          .setCustomId(`pip:pengubook_nav:${mode}:${page - 1}`)
           .setLabel("← Previous")
           .setStyle(ButtonStyle.Secondary)
       );
@@ -181,7 +181,7 @@ export default async function pipPenguBook(i: ChatInputCommandInteraction) {
     if (page < totalPages) {
       navButtons.addComponents(
         new ButtonBuilder()
-          .setCustomId(`pip_pengubook_nav:${mode}:${page + 1}`)
+          .setCustomId(`pip:pengubook_nav:${mode}:${page + 1}`)
           .setLabel("Next →")
           .setStyle(ButtonStyle.Secondary)
       );
@@ -189,7 +189,7 @@ export default async function pipPenguBook(i: ChatInputCommandInteraction) {
     
     navButtons.addComponents(
       new ButtonBuilder()
-        .setCustomId(`pip_pengubook_nav:random:1`)
+        .setCustomId(`pip:pengubook_nav:random:1`)
         .setLabel("🎲 Random")
         .setStyle(ButtonStyle.Primary)
     );
@@ -198,7 +198,7 @@ export default async function pipPenguBook(i: ChatInputCommandInteraction) {
     if (profile.allowTipsFromBook && profile.discordId !== i.user.id) {
       actionButtons.addComponents(
         new ButtonBuilder()
-          .setCustomId(`pip_tip_from_book:${profile.discordId}`)
+          .setCustomId(`pip:tip_from_book:${profile.discordId}`)
           .setLabel("Send Tip")
           .setStyle(ButtonStyle.Success)
           .setEmoji("<a:PenguSipJuice:1415470745491996673>")
@@ -207,11 +207,11 @@ export default async function pipPenguBook(i: ChatInputCommandInteraction) {
     
     actionButtons.addComponents(
       new ButtonBuilder()
-        .setCustomId(`pip_pengubook_profile:${profile.discordId}`)
+        .setCustomId(`pip:pengubook_profile:${profile.discordId}`)
         .setLabel("👀 View Full Profile")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId("pip_pengubook_modes")
+        .setCustomId("pip:pengubook_modes")
         .setLabel("Browse Modes")
         .setStyle(ButtonStyle.Primary)
         .setEmoji("<a:Pengu_Jamming:1415471056881455314>")
