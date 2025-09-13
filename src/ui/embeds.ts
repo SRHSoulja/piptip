@@ -111,6 +111,15 @@ export function profileEmbed(data: {
     });
   }
 
+  // Inbox messages (PenguBook)
+  if (data.inboxMessages) {
+    embed.addFields({
+      name: "📨 PenguBook Inbox",
+      value: data.inboxMessages,
+      inline: false
+    });
+  }
+
   return embed;
 }
 
