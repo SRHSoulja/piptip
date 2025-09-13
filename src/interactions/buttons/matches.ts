@@ -82,6 +82,9 @@ export async function handleJoin(i: ButtonInteraction, matchId: number, move: Pi
   const cfg = await getConfig();
   const houseFeeBps = BigInt(cfg.houseFeeBps ?? 200);
 
+  // Track streak updates to process after transaction
+  const streakUpdates: Array<{ discordId: string; won: boolean }> = [];
+
   try {
     const settled = await prisma.$transaction(async (tx) => {
       const m = await tx.match.findUnique({
@@ -171,6 +174,16 @@ export async function handleJoin(i: ButtonInteraction, matchId: number, move: Pi
             where: { id: joiner.id },
             data: { losses: { increment: 1 } }
           });
+
+          // Update streaks outside of database transaction
+          streakUpdates.push({
+            discordId: m.Challenger.discordId,
+            won: true
+          });
+          streakUpdates.push({
+            discordId: i.user.id,
+            won: false
+          });
         } else {
           // joiner wins
           result = "WIN_JOINER";
@@ -190,6 +203,16 @@ export async function handleJoin(i: ButtonInteraction, matchId: number, move: Pi
           await tx.user.update({
             where: { id: m.Challenger.id },
             data: { losses: { increment: 1 } }
+          });
+
+          // Update streaks outside of database transaction
+          streakUpdates.push({
+            discordId: i.user.id,
+            won: true
+          });
+          streakUpdates.push({
+            discordId: m.Challenger.discordId,
+            won: false
           });
         }
 
@@ -228,6 +251,24 @@ const final = await tx.match.update({
 
       return final;
     }, { timeout: 15000, maxWait: 15000 });
+
+    // Process streak updates after successful transaction
+    const streakResults = [];
+    for (const update of streakUpdates) {
+      try {
+        const { updateStreak } = await import("../../services/streaks.js");
+        const result = await updateStreak(update.discordId, update.won);
+        if (result.achievement) {
+          streakResults.push({
+            discordId: update.discordId,
+            achievement: result.achievement,
+            newStreak: result.newStreak
+          });
+        }
+      } catch (error) {
+        console.error("Failed to update streak:", error);
+      }
+    }
 
     // Update the public match message (AFTER COMMIT)
     try {

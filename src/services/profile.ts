@@ -4,6 +4,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { prisma } from "./db.js";
 import { profileEmbed } from "../ui/embeds.js";
 import { formatDecimal, bigToDecDirect } from "./token.js";
+import { getStreakStats, formatStreakText, getUserAchievements } from "./streaks.js";
 
 // Track active profile requests to prevent spam
 export const activeProfileRequests = new Set<string>();
@@ -59,7 +60,7 @@ export async function generateProfileData(userId: string, discordUser: User) {
   });
 
   // Get comprehensive user data in parallel - OPTIMIZED with aggregation
-  const [balances, activeMemberships, tipStatsSent, tipStatsReceived, groupTipStats, recentTransactions, penguBookMessages] = await Promise.all([
+  const [balances, activeMemberships, tipStatsSent, tipStatsReceived, groupTipStats, recentTransactions, unreadMessageCount] = await Promise.all([
     // Token balances
     prisma.userBalance.findMany({
       where: { userId: u.id },
@@ -206,23 +207,11 @@ export async function generateProfileData(userId: string, discordUser: User) {
       return unique;
     }),
 
-    // Get unread PenguBook messages for inbox display
-    prisma.penguBookMessage.findMany({
+    // Get unread PenguBook message count
+    prisma.penguBookMessage.count({
       where: {
         toUserId: u.id,
         read: false
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      include: {
-        from: { select: { discordId: true } },
-        tip: {
-          select: {
-            amountAtomic: true,
-            tokenId: true,
-            Token: { select: { symbol: true, decimals: true } }
-          }
-        }
       }
     })
   ]);
@@ -365,21 +354,18 @@ export async function generateProfileData(userId: string, discordUser: User) {
         .join("\n")
     : "No recent activity";
 
-  // Format PenguBook inbox messages
-  const inboxMessages = penguBookMessages.length > 0
-    ? penguBookMessages.map(msg => {
-        const timeAgo = `<t:${Math.floor(msg.createdAt.getTime() / 1000)}:R>`;
-        if (msg.tip) {
-          // Format tip message
-          const amount = formatDecimal(Number(msg.tip.amountAtomic) / Math.pow(10, msg.tip.Token.decimals), msg.tip.Token.symbol);
-          return `💸 **Tip**: ${amount} ${timeAgo}`;
-        } else {
-          // Regular message
-          const preview = msg.message.length > 30 ? msg.message.substring(0, 30) + "..." : msg.message;
-          return `💬 **Message**: ${preview} ${timeAgo}`;
-        }
-      }).join("\n")
-    : "";
+  // Get streak and achievement data
+  const streakStats = await getStreakStats(userId);
+  const achievementsRaw = await getUserAchievements(userId);
+  const streakText = formatStreakText(streakStats.currentWins, streakStats.longestWins);
+
+  // Format achievements for display
+  const { formatAchievementBadge } = await import("./streaks.js");
+  const achievements = achievementsRaw.length > 0
+    ? achievementsRaw.slice(0, 3)
+        .map(achievement => formatAchievementBadge(achievement))
+        .join("\n")
+    : null;
 
   return {
     user: u,
@@ -392,10 +378,13 @@ export async function generateProfileData(userId: string, discordUser: User) {
     groupTipsCreated: groupTipsCreatedTotal,
     groupTipsClaimed: groupTipsClaimedTotal,
     recentActivity,
-    inboxMessages,
+    unreadMessageCount,
     activeMemberships,
     discordUser,
-    hasBio: !!u.bio  // Add bio status for PenguBook CTA
+    hasBio: !!u.bio, // Add bio status for PenguBook CTA
+    streakStats,
+    streakText,
+    achievements
   };
 }
 
@@ -524,7 +513,9 @@ export function createProfileEmbed(data: any) {
       claimed: data.groupTipsClaimed
     },
     recentActivity: data.recentActivity,
-    inboxMessages: data.inboxMessages,
+    unreadMessageCount: data.unreadMessageCount,
+    streakText: data.streakText,
+    achievements: data.achievements,
     createdAt: data.user.createdAt,
     hasActiveMembership: data.activeMemberships.length > 0
   });

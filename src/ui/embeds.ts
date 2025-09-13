@@ -23,7 +23,9 @@ export function profileEmbed(data: {
     claimed: number;
   };
   recentActivity?: string;
-  inboxMessages?: string;
+  unreadMessageCount?: number;
+  streakText?: string;
+  achievements?: any[];
   createdAt?: Date;
   hasActiveMembership?: boolean;
 }) {
@@ -112,11 +114,33 @@ export function profileEmbed(data: {
     });
   }
 
-  // Inbox messages (PenguBook)
-  if (data.inboxMessages) {
+  // Show win streak if exists
+  if (data.streakText) {
     embed.addFields({
-      name: "📨 PenguBook Inbox",
-      value: data.inboxMessages,
+      name: "🎯 Win Streak",
+      value: data.streakText,
+      inline: true
+    });
+  }
+
+  // Show recent achievements (max 3)
+  if (data.achievements && data.achievements.length > 0) {
+    embed.addFields({
+      name: "🏆 Recent Achievements",
+      value: String(data.achievements), // achievements will be pre-formatted in profile service
+      inline: true
+    });
+  }
+
+  // Show unread message count if user has any
+  if (data.unreadMessageCount && data.unreadMessageCount > 0) {
+    const messageText = data.unreadMessageCount === 1
+      ? "📨 You have **1** unread PenguBook message!"
+      : `📨 You have **${data.unreadMessageCount}** unread PenguBook messages!`;
+
+    embed.addFields({
+      name: "💬 PenguBook Notifications",
+      value: messageText + "\n*Click the 📨 Inbox button to view*",
       inline: false
     });
   }

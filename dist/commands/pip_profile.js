@@ -20,7 +20,7 @@ export default async function pipProfile(i) {
         const profileData = await generateProfileData(userId, i.user);
         // Create profile components
         const hasLinkedWallet = !!profileData.user.agwAddress;
-        const hasInboxMessages = !!profileData.inboxMessages;
+        const hasInboxMessages = profileData.unreadMessageCount > 0;
         const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
         const embed = createProfileEmbed(profileData);
         // Update the reply with the full profile

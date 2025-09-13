@@ -101,6 +101,15 @@ export async function processTip(data, client) {
                     // Don't fail the tip for message creation errors
                 }
             }
+            // Update referral progress if user was referred
+            try {
+                const { updateReferralProgress } = await import("./referrals.js");
+                await updateReferralProgress(data.userId, Number(bigToDecDirect(atomic, token.decimals)));
+            }
+            catch (referralError) {
+                console.error("Failed to update referral progress:", referralError);
+                // Don't fail the tip for referral tracking errors
+            }
             // Record transaction
             await prisma.transaction.create({
                 data: {

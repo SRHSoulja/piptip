@@ -73,6 +73,14 @@ model User {
   penguBookMessagesSent     PenguBookMessage[] @relation("PenguBookMessageSender")
   penguBookMessagesReceived PenguBookMessage[] @relation("PenguBookMessageReceiver")
 
+  // Referral system relations
+  referralsMade     Referral[] @relation("UserReferrals")
+  referredBy        Referral[] @relation("UserReferred")
+
+  // Streak and achievement relations
+  streak       UserStreak? @relation("UserStreaks")
+  achievements Achievement[] @relation("UserAchievements")
+
   @@index([agwAddress])
   @@index([createdAt])
   @@index([showInPenguBook, bioLastUpdated])
@@ -400,4 +408,50 @@ model PenguBookMessage {
   
   @@index([toUserId, read, createdAt]) // for inbox queries
   @@index([fromUserId, createdAt])     // for sent messages
+}
+
+model Referral {
+  id            Int      @id @default(autoincrement())
+  referrerId    Int      // User who made the referral
+  referredId    Int      // User who was referred
+  referralCode  String   @unique // Unique code for tracking
+  isVerified    Boolean  @default(false) // True when referred user has tipped >= 20 tokens
+  verifiedAt    DateTime?
+  totalTipped   Decimal  @default(0) // Track total tipped by referred user
+  createdAt     DateTime @default(now())
+
+  referrer User @relation("UserReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred User @relation("UserReferred", fields: [referredId], references: [id], onDelete: Cascade)
+
+  @@unique([referrerId, referredId]) // Prevent duplicate referrals
+  @@index([referrerId, isVerified])
+  @@index([referredId])
+  @@index([referralCode])
+}
+
+model UserStreak {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  currentWins  Int      @default(0)
+  longestWins  Int      @default(0)
+  lastGameAt   DateTime?
+  updatedAt    DateTime @updatedAt
+
+  user User @relation("UserStreaks", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, currentWins])
+}
+
+model Achievement {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String   // "win_streak", "referral_count", "total_tips", etc.
+  level       Int      // Achievement level/tier
+  unlockedAt  DateTime @default(now())
+  data        Json?    // Extra achievement data
+
+  user User @relation("UserAchievements", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, level]) // Prevent duplicate achievements
+  @@index([userId, type])
 }

@@ -7,6 +7,8 @@ import { getUnreadMessageCount } from "../interactions/buttons/pengubook.js";
 import { getActiveTokens, getTokenByAddress } from "../services/token.js";
 import { processTip } from "../services/tip_processor.js";
 import { getDiscordClient } from "../services/discord_users.js";
+import { getConfig } from "../config.js";
+import { getReferralStats, createReferralCode } from "../services/referrals.js";
 export const pengubookRouter = Router();
 // Middleware to require authentication for all PenguBook routes
 pengubookRouter.use(requireAuth);
@@ -14,10 +16,32 @@ pengubookRouter.use(requireAuth);
 pengubookRouter.get("/", async (req, res) => {
     try {
         const currentUser = getCurrentUser(req);
-        if (!currentUser)
+        const referralCode = req.query.ref;
+        if (!currentUser) {
+            // If there's a referral code, store it in session for after auth
+            if (referralCode) {
+                req.session.pendingReferralCode = referralCode;
+            }
             return res.redirect("/auth/discord");
+        }
         const user = await findOrCreateUser(currentUser.discordId);
         const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+        // Process referral code if present and user just authenticated
+        if (referralCode || req.session.pendingReferralCode) {
+            const codeToProcess = referralCode || req.session.pendingReferralCode;
+            if (codeToProcess) {
+                const { processReferralSignup } = await import("../services/referrals.js");
+                const success = await processReferralSignup(codeToProcess, currentUser.discordId);
+                if (success) {
+                    // Clear the session referral code
+                    delete req.session.pendingReferralCode;
+                    // Redirect to profile page with success message
+                    return res.redirect("/pengubook/profile?referred=true");
+                }
+                // Clear invalid referral code from session
+                delete req.session.pendingReferralCode;
+            }
+        }
         res.send(generatePenguBookHTML({
             user: currentUser,
             dbUser: user,
@@ -162,12 +186,15 @@ pengubookRouter.get("/user/:discordId", async (req, res) => {
             where: { userId: currentDbUser.id },
             include: { Token: true }
         });
+        // Get app config for tax rates
+        const config = await getConfig();
         res.send(generateUserProfileHTML({
             user: currentUser,
             targetUser,
             tokens,
             balances,
-            unreadCount
+            unreadCount,
+            config
         }));
     }
     catch (error) {
@@ -183,10 +210,25 @@ pengubookRouter.get("/profile", async (req, res) => {
             return res.redirect("/auth/discord");
         const user = await findOrCreateUser(currentUser.discordId);
         const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+        // Get or create referral stats
+        let referralStats;
+        try {
+            referralStats = await getReferralStats(currentUser.discordId);
+            // Create referral code if user doesn't have one
+            if (!referralStats.referralCode) {
+                const newCode = await createReferralCode(currentUser.discordId);
+                referralStats = await getReferralStats(currentUser.discordId); // Refresh stats
+            }
+        }
+        catch (error) {
+            console.error("Error getting referral stats:", error);
+            referralStats = null;
+        }
         res.send(generateProfileHTML({
             user: currentUser,
             dbUser: user,
-            unreadCount
+            unreadCount,
+            referralStats
         }));
     }
     catch (error) {
@@ -860,7 +902,24 @@ function generateUserProfileHTML(data) {
                     <label>Message (optional)</label>
                     <textarea id="message" placeholder="Say something nice..." rows="3"></textarea>
                 </div>
-                
+
+                <!-- Tax Preview Section -->
+                <div id="taxPreview" style="background: rgba(96, 165, 250, 0.1); border: 1px solid #60a5fa; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; display: none;">
+                    <h4 style="color: #60a5fa; margin: 0 0 0.5rem 0;">💸 Tip Preview</h4>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>Tip Amount:</span>
+                        <span id="previewAmount">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>Tax Fee:</span>
+                        <span id="previewTax">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px solid #60a5fa; padding-top: 0.5rem; font-weight: bold;">
+                        <span>Total Deducted:</span>
+                        <span id="previewTotal" style="color: #60a5fa;">-</span>
+                    </div>
+                </div>
+
                 <button type="submit" class="btn">Send Tip</button>
             </form>
             
@@ -878,6 +937,54 @@ function generateUserProfileHTML(data) {
                     document.getElementById('profileAvatar').src = data.avatarURL;
                 }
             }).catch(() => {});
+
+        // Tax calculation preview functionality
+        const tokenSelect = document.getElementById('token');
+        const amountInput = document.getElementById('amount');
+        const taxPreview = document.getElementById('taxPreview');
+        const previewAmount = document.getElementById('previewAmount');
+        const previewTax = document.getElementById('previewTax');
+        const previewTotal = document.getElementById('previewTotal');
+
+        async function updateTaxPreview() {
+            const selectedTokenAddress = tokenSelect.value;
+            const amount = parseFloat(amountInput.value);
+
+            if (!selectedTokenAddress || !amount || amount <= 0) {
+                taxPreview.style.display = 'none';
+                return;
+            }
+
+            try {
+                // Find selected token info
+                const tokens = ${JSON.stringify(data.tokens)};
+                const selectedToken = tokens.find(t => t.address === selectedTokenAddress);
+
+                if (!selectedToken) return;
+
+                // Get actual tax rate from server config (basis points to percentage)
+                const config = ${JSON.stringify(data.config)};
+                const taxBps = selectedToken.tipFeeBps || config.tipFeeBps || 100; // Default 100 BPS = 1%
+                const taxRate = taxBps / 10000; // Convert basis points to decimal (100 BPS = 0.01 = 1%)
+                const taxAmount = amount * taxRate;
+                const totalDeducted = amount + taxAmount;
+
+                // Update preview display
+                previewAmount.textContent = amount.toFixed(2) + ' ' + selectedToken.symbol;
+                previewTax.textContent = taxAmount.toFixed(2) + ' ' + selectedToken.symbol;
+                previewTotal.textContent = totalDeducted.toFixed(2) + ' ' + selectedToken.symbol;
+
+                taxPreview.style.display = 'block';
+
+            } catch (error) {
+                console.error('Error calculating tax preview:', error);
+                taxPreview.style.display = 'none';
+            }
+        }
+
+        // Add event listeners for real-time preview updates
+        tokenSelect.addEventListener('change', updateTaxPreview);
+        amountInput.addEventListener('input', updateTaxPreview);
 
         document.getElementById('tipForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -905,6 +1012,7 @@ function generateUserProfileHTML(data) {
                     result.innerHTML = '✅ Tip sent successfully!';
                     result.style.color = '#10b981';
                     document.getElementById('tipForm').reset();
+                    taxPreview.style.display = 'none'; // Hide tax preview after reset
 
                     // Refresh balance display
                     await refreshBalance();
@@ -1063,6 +1171,69 @@ function generateProfileHTML(data) {
                 <button type="submit" class="btn">Update Links</button>
             </form>
         </div>
+
+        ${data.referralStats ? `
+        <div class="card">
+            <h2>🎁 Referral System</h2>
+            <p>Invite friends to PenguBook and reduce your tip taxes! Every 10 verified referrals earns you 1 week of tax-free tipping.</p>
+
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
+                <h3 style="color: #10b981; margin: 0 0 1rem 0;">📊 Your Referral Stats</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 2rem; color: #10b981; font-weight: bold;">${data.referralStats.verifiedReferrals}</div>
+                        <div style="color: #6b7280;">Verified Referrals</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2rem; color: #60a5fa; font-weight: bold;">${data.referralStats.totalReferrals}</div>
+                        <div style="color: #6b7280;">Total Referrals</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2rem; color: #f59e0b; font-weight: bold;">${data.referralStats.taxFreeWeeksEarned}</div>
+                        <div style="color: #6b7280;">Tax-Free Weeks Earned</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2rem; color: #ef4444; font-weight: bold;">${data.referralStats.referralsUntilTaxFree}</div>
+                        <div style="color: #6b7280;">Until Next Tax-Free Week</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: rgba(96, 165, 250, 0.1); border: 1px solid #60a5fa; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
+                <h3 style="color: #60a5fa; margin: 0 0 1rem 0;">🔗 Your Referral Link</h3>
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                    <input type="text" id="referralLink" readonly
+                           value="${data.referralStats.referralCode ? `${process.env.PUBLIC_BASE_URL || 'https://your-domain.com'}/pengubook?ref=${data.referralStats.referralCode}` : 'Generating...'}"
+                           style="flex: 1; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #4b5563; background: #374151; color: #e5e7eb;">
+                    <button onclick="copyReferralLink()" class="btn" style="white-space: nowrap;">📋 Copy Link</button>
+                </div>
+                <div style="font-size: 0.875rem; color: #9ca3af; margin-top: 0.5rem;">
+                    Share this link with friends! They'll be credited to you when they sign up via this link.
+                </div>
+            </div>
+
+            ${data.referralStats.pendingReferrals.length > 0 ? `
+            <div style="margin-top: 1rem;">
+                <h3>⏳ Pending Referrals</h3>
+                <div style="max-height: 200px; overflow-y: auto;">
+                    ${data.referralStats.pendingReferrals.map((pending) => `
+                    <div style="background: rgba(107, 114, 128, 0.1); border-radius: 0.5rem; padding: 1rem; margin: 0.5rem 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Joined: ${new Date(pending.joinedAt).toLocaleDateString()}</span>
+                            <span style="color: ${pending.progress >= 20 ? '#10b981' : '#f59e0b'};">
+                                ${pending.progress.toFixed(1)}/20 tokens tipped
+                            </span>
+                        </div>
+                        <div style="background: #374151; border-radius: 0.25rem; height: 0.5rem; margin-top: 0.5rem; overflow: hidden;">
+                            <div style="background: ${pending.progress >= 20 ? '#10b981' : '#f59e0b'}; height: 100%; width: ${Math.min(100, (pending.progress / 20) * 100)}%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+        </div>
+        ` : ''}
     </div>
     
     <script>
@@ -1133,6 +1304,30 @@ function generateProfileHTML(data) {
                 alert('Failed to update social links');
             }
         });
+
+        // Referral link copying functionality
+        function copyReferralLink() {
+            const referralInput = document.getElementById('referralLink');
+            referralInput.select();
+            referralInput.setSelectionRange(0, 99999); // For mobile devices
+
+            navigator.clipboard.writeText(referralInput.value).then(() => {
+                // Visual feedback
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = '✅ Copied!';
+                button.style.background = '#10b981';
+
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '';
+                }, 2000);
+            }).catch(() => {
+                // Fallback for older browsers
+                document.execCommand('copy');
+                alert('Referral link copied to clipboard!');
+            });
+        }
     </script>
 </body>
 </html>`;
