@@ -21,3 +21,7 @@ pids
 Thumbs.db*.tgz
 *.tar.gz
 node_modules_*.tgz
+
+# Ngrok files
+ngrok
+ngrok-v3-stable-linux-amd64.tgz
