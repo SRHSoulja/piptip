@@ -4,6 +4,7 @@ import { findOrCreateUser } from "../../services/user_helpers.js";
 import { fetchMultipleUserData, getDiscordClient } from "../../services/discord_users.js";
 // Handle PenguBook navigation
 export async function handlePenguBookNav(i, mode, page) {
+    console.log(`📖 PenguBook nav - mode: ${mode}, page: ${page}, user: ${i.user.id}`);
     await i.deferUpdate();
     try {
         const PROFILES_PER_PAGE = 1;

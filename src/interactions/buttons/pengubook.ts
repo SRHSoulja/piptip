@@ -6,6 +6,7 @@ import { fetchMultipleUsernames, fetchMultipleUserData, getDiscordClient } from 
 
 // Handle PenguBook navigation
 export async function handlePenguBookNav(i: ButtonInteraction, mode: string, page: number) {
+  console.log(`📖 PenguBook nav - mode: ${mode}, page: ${page}, user: ${i.user.id}`);
   await i.deferUpdate();
   
   try {
