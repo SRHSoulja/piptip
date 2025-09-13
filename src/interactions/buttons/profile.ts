@@ -25,7 +25,9 @@ export async function handleRefreshProfile(i: ButtonInteraction) {
     
     // Generate fresh profile data
     const profileData = await generateProfileData(userId, i.user);
-    const profileButtons = createProfileButtons(profileData.activeMemberships);
+    const hasLinkedWallet = !!profileData.user.agwAddress;
+    const hasInboxMessages = !!profileData.inboxMessages;
+    const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
     const embed = createProfileEmbed(profileData);
     
     // Update with fresh profile
@@ -79,7 +81,8 @@ export async function handleViewProfile(i: ButtonInteraction) {
     
     const profileData = await generateProfileData(i.user.id, i.user);
     const hasLinkedWallet = !!profileData.user.agwAddress;
-    const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet);
+    const hasInboxMessages = !!profileData.inboxMessages;
+    const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
     const embed = createProfileEmbed(profileData);
 
     await i.editReply({

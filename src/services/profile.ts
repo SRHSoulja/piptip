@@ -399,7 +399,7 @@ export async function generateProfileData(userId: string, discordUser: User) {
   };
 }
 
-export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: boolean = true, hasBio: boolean = false) {
+export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: boolean = true, hasBio: boolean = false, hasInboxMessages: boolean = false) {
   const actionRows = [];
   
   // First row: Wallet actions (if no wallet) or membership actions
@@ -474,6 +474,20 @@ export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: 
         .setLabel("Browse PenguBook")
         .setStyle(ButtonStyle.Primary)
         .setEmoji("<a:NerdPengu:1415469352660107324>")
+    );
+  }
+
+  // Add mailbox button if user has messages or is already using PenguBook
+  if (hasInboxMessages || hasBio) {
+    const mailboxLabel = hasInboxMessages ? "📨 Inbox" : "📬 Inbox";
+    const mailboxStyle = hasInboxMessages ? ButtonStyle.Success : ButtonStyle.Secondary;
+
+    profileRowComponents.push(
+      new ButtonBuilder()
+        .setCustomId("pip:pengubook_inbox")
+        .setLabel(mailboxLabel)
+        .setStyle(mailboxStyle)
+        .setEmoji("📨")
     );
   }
 

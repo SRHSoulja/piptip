@@ -968,16 +968,54 @@ function generateUserProfileHTML(data: any): string {
                 const response = await fetch('/pengubook/api/balance');
                 if (response.ok) {
                     const data = await response.json();
-                    // Update balance display
-                    const balanceSection = document.querySelector('.card h3');
-                    if (balanceSection && data.balances && data.balances.length > 0) {
-                        let balanceText = '';
+                    // Update balance display by finding and replacing existing balance cards
+                    const existingCards = document.querySelectorAll('.balance-card');
+
+                    if (existingCards.length > 0 && data.balances) {
+                        // Create a map of current balances for easy lookup
+                        const balanceMap = new Map();
                         data.balances.forEach(balance => {
-                            const amount = Number(balance.amount).toFixed(2).replace(/\\.?0+$/, '');
-                            balanceText += amount + ' ' + balance.Token.symbol + ' ';
+                            balanceMap.set(balance.Token.symbol, balance);
                         });
-                        balanceSection.textContent = '💰 Balance: ' + balanceText.trim();
+
+                        // Update existing cards or remove them if token no longer exists
+                        existingCards.forEach(card => {
+                            const symbolDiv = card.querySelector('div:first-child');
+                            const amountDiv = card.querySelector('.balance-amount');
+
+                            if (symbolDiv && amountDiv) {
+                                const symbol = symbolDiv.textContent;
+                                const balance = balanceMap.get(symbol);
+
+                                if (balance) {
+                                    // Update the amount
+                                    const amount = Number(balance.amount).toFixed(2).replace(/\\.?0+$/, '');
+                                    amountDiv.textContent = amount;
+                                    balanceMap.delete(symbol); // Mark as processed
+                                } else {
+                                    // Token no longer exists, remove the card
+                                    card.remove();
+                                }
+                            }
+                        });
+
+                        // Add any new tokens that weren't in the existing cards
+                        const balanceContainer = document.querySelector('.balance-card')?.parentElement;
+                        if (balanceContainer) {
+                            balanceMap.forEach(balance => {
+                                const amount = Number(balance.amount).toFixed(2).replace(/\\.?0+$/, '');
+                                const balanceCard = document.createElement('div');
+                                balanceCard.className = 'balance-card';
+                                balanceCard.innerHTML = \`
+                                    <div>\${balance.Token.symbol}</div>
+                                    <div class="balance-amount">\${amount}</div>
+                                \`;
+                                balanceContainer.appendChild(balanceCard);
+                            });
+                        }
                     }
+                } else {
+                    console.error('Failed to fetch updated balance:', response.status);
                 }
             } catch (error) {
                 console.error('Failed to refresh balance:', error);
