@@ -1167,25 +1167,43 @@ document.addEventListener("click", (e) => {
 });
 
 // Set up event handlers
-$("userSearchInput").oninput = handleUserSearchInput;
-$("userSearchInput").onkeydown = (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    searchUsers();
-  } else if (e.key === "Escape") {
-    hideSearchDropdown();
-  }
-};
-$("searchUserBtn").onclick = searchUsers;
-$("findUser").onclick = findUser;
-$("loadTopUsers").onclick = loadTopUsers;
-$("refreshUsers").onclick = loadTopUsers;
-$("clearSearch").onclick = () => {
-  $("searchUser").value = "";
-  const tbody = $("usersTbl").querySelector("tbody");
-  tbody.innerHTML = "";
-  showMessage("userMsg", "", false);
-};
+const userSearchInput = $("userSearchInput");
+if (userSearchInput) {
+  userSearchInput.oninput = handleUserSearchInput;
+  userSearchInput.onkeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      searchUsers();
+    } else if (e.key === "Escape") {
+      hideSearchDropdown();
+    }
+  };
+}
+const searchUserBtn = $("searchUserBtn");
+if (searchUserBtn) searchUserBtn.onclick = searchUsers;
+
+const findUserBtn = $("findUser");
+if (findUserBtn) findUserBtn.onclick = findUser;
+
+const loadTopUsersBtn = $("loadTopUsers");
+if (loadTopUsersBtn) loadTopUsersBtn.onclick = loadTopUsers;
+
+const refreshUsersBtn = $("refreshUsers");
+if (refreshUsersBtn) refreshUsersBtn.onclick = loadTopUsers;
+
+const clearSearchBtn = $("clearSearch");
+if (clearSearchBtn) {
+  clearSearchBtn.onclick = () => {
+    const searchUserEl = $("searchUser");
+    if (searchUserEl) searchUserEl.value = "";
+    const usersTbl = $("usersTbl");
+    if (usersTbl) {
+      const tbody = usersTbl.querySelector("tbody");
+      if (tbody) tbody.innerHTML = "";
+    }
+    showMessage("userMsg", "", false);
+  };
+}
 $("exportGuildData").onclick = exportGuildData;
 
 // ---------- Backup Management ----------
@@ -1714,6 +1732,95 @@ async function loadAllData() {
     console.log("✅ Initial admin data loaded including users.");
   } catch (e) { console.error("Failed to load data:", e); }
 }
+
+// Emergency and System Health Button Handlers
+$("grandReset").onclick = async () => {
+  if (!confirm("🚨 GRAND RESET WARNING 🚨\n\nThis will PERMANENTLY DELETE:\n• All users and their balances\n• All transactions and tips\n• All matches and group tips\n• All tier memberships\n\nThis action is IRREVERSIBLE!\n\nType 'DELETE EVERYTHING' to confirm:")) return;
+  
+  const confirmation = prompt("Type exactly: DELETE EVERYTHING");
+  if (confirmation !== "DELETE EVERYTHING") {
+    alert("Reset cancelled - confirmation text didn't match");
+    return;
+  }
+  
+  try {
+    const r = await API("/admin/system/grand-reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmToken: "RESET_ALL_DATA_PERMANENTLY" })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      alert(`✅ Grand Reset Complete!\nDeleted ${j.totalDeleted} records total`);
+      location.reload(); // Refresh the page
+    } else {
+      alert(`❌ Grand Reset Failed: ${j.error}`);
+    }
+  } catch (error) {
+    alert(`❌ Grand Reset Error: ${error.message}`);
+  }
+};
+
+$("syncStatus").onclick = async () => {
+  try {
+    const r = await API("/admin/sync/status");
+    const j = await r.json();
+    if (j.ok) {
+      const status = j.sync.overallHealthy ? "✅ HEALTHY" : "⚠️ ISSUES DETECTED";
+      alert(`Database Sync Status: ${status}\n\n• Schema in sync: ${j.sync.schemaInSync ? '✅' : '❌'}\n• Migrations applied: ${j.sync.migrationsApplied ? '✅' : '❌'}\n• Connection healthy: ${j.sync.connectionHealthy ? '✅' : '❌'}\n• Issues: ${j.sync.issueCount}\n\nLast checked: ${new Date(j.sync.lastCheck).toLocaleString()}`);
+    } else {
+      alert(`❌ Sync Status Error: ${j.error}`);
+    }
+  } catch (error) {
+    alert(`❌ Sync Status Error: ${error.message}`);
+  }
+};
+
+$("fixSync").onclick = async () => {
+  if (!confirm("Auto-fix database synchronization issues?")) return;
+  try {
+    const r = await API("/admin/sync/fix", { method: "POST" });
+    const j = await r.json();
+    if (j.ok) {
+      const message = j.fixed ? "✅ Sync issues automatically resolved!" : "⚠️ Some issues could not be fixed automatically";
+      alert(`${message}\n\nBefore: ${j.beforeIssues.length} issues\nAfter: ${j.afterIssues.length} issues`);
+    } else {
+      alert(`❌ Sync Fix Error: ${j.error}`);
+    }
+  } catch (error) {
+    alert(`❌ Sync Fix Error: ${error.message}`);
+  }
+};
+
+$("clearCaches").onclick = async () => {
+  if (!confirm("Clear all system caches?")) return;
+  try {
+    const r = await API("/admin/system/clear-caches", { method: "POST" });
+    const j = await r.json();
+    if (j.ok) {
+      alert("✅ All caches cleared successfully!");
+    } else {
+      alert(`❌ Cache Clear Error: ${j.error}`);
+    }
+  } catch (error) {
+    alert(`❌ Cache Clear Error: ${error.message}`);
+  }
+};
+
+$("systemStats").onclick = async () => {
+  try {
+    const r = await API("/admin/system/stats");
+    const j = await r.json();
+    if (j.ok) {
+      const stats = Object.entries(j.stats).map(([key, value]) => `${key}: ${value}`).join('\n');
+      alert(`📊 System Statistics\n\nTotal Records: ${j.totalRecords}\n\n${stats}`);
+    } else {
+      alert(`❌ System Stats Error: ${j.error}`);
+    }
+  } catch (error) {
+    alert(`❌ System Stats Error: ${error.message}`);
+  }
+};
 
 // Initialize on page load
 (() => {

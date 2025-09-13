@@ -411,7 +411,16 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
       <button id="pauseTipping" style="background:#dc2626;">Pause All Tipping</button>
       <button id="emergencyMode" style="background:#dc2626;">Emergency Mode</button>
       <button id="resumeAll" style="background:#059669;">Resume All Operations</button>
+      <button id="grandReset" style="background:#7c2d12;">💀 GRAND RESET</button>
       <span id="emergencyMsg"></span>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <label>🔄 System Health</label>
+      <button id="syncStatus">Check Sync Status</button>
+      <button id="fixSync">Auto-Fix Sync</button>
+      <button id="clearCaches">Clear Caches</button>
+      <button id="systemStats">System Stats</button>
+      <span id="systemMsg"></span>
     </div>
   </section>
 
@@ -599,5 +608,14 @@ adminRouter.get("/fees/export.csv", async (req: Request, res: Response) => {
   } catch {
     res.status(500).json({ ok: false, error: "Failed to export CSV" });
   }
+});
+
+// Favicon route to prevent 404 errors
+adminRouter.get("/favicon.ico", (_req: Request, res: Response) => {
+  // Return a simple 1x1 transparent PNG
+  const favicon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+  res.send(favicon);
 });
 
