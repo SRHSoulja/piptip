@@ -19,6 +19,9 @@ import { systemRouter } from "./admin/system.js";
 // import { backupRouter } from "./admin/backup.js"; // Disabled due to environment issues
 import { statsRouter } from "./admin/stats.js";
 import { pengubookRouter } from "./admin/pengubook.js";
+import achievementAdminRouter from "./admin/index.js";
+import roleTaxRouter from "./admin/role_tax_management.js";
+import roleRakeRouter from "./admin/role_rake_management.js";
 
 // Import remaining services and utilities
 import { Prisma } from "@prisma/client";
@@ -267,6 +270,66 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
       </thead>
       <tbody></tbody>
     </table>
+  </section>
+
+  <section>
+    <h2>🔒 Withdrawal Security & Monitoring</h2>
+    <div class="row">
+      <button id="loadWithdrawalStats">🔄 Refresh Stats</button>
+      <button id="clearCooldowns">⚡ Clear All Cooldowns</button>
+      <select id="withdrawalTimeframe">
+        <option value="1">Last 1 Hour</option>
+        <option value="6">Last 6 Hours</option>
+        <option value="24" selected>Last 24 Hours</option>
+        <option value="168">Last 7 Days</option>
+      </select>
+      <span id="withdrawalMsg"></span>
+    </div>
+
+    <!-- Withdrawal Protection Status Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 16px 0;">
+      <div class="kpi-card" style="background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="withdrawal-total">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Total Withdrawals</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="withdrawal-blocked">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Blocked Attempts</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="withdrawal-users">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Active Users</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="gas-saved">-</h3>
+        <p style="margin: 0; opacity: 0.9;">ETH Gas Saved</p>
+      </div>
+    </div>
+
+    <!-- Protection Success Rate -->
+    <div style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; margin: 16px 0;">
+      <h4 style="margin: 0 0 12px 0; color: #fff;">🛡️ Protection Effectiveness</h4>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span style="font-size: 2em; color: #10b981; font-weight: bold;" id="success-rate">-</span>
+          <span style="color: #9ca3af; margin-left: 8px;">Success Rate</span>
+        </div>
+        <div style="text-align: right; color: #9ca3af; font-size: 0.9em;">
+          <div id="timeframe-display">Last 24 hours</div>
+          <div id="gas-cost-estimate">Est. ~- ETH in gas costs prevented</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- High-Risk Users Alert Table -->
+    <div style="margin-top: 20px;">
+      <h3 style="margin: 0 0 12px 0; color: #fff;">⚠️ High-Risk Activity Alerts</h3>
+      <div id="high-risk-users" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; min-height: 60px;">
+        <div style="color: #9ca3af; text-align: center; padding: 20px;">
+          Click "Refresh Stats" to load withdrawal monitoring data
+        </div>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -525,6 +588,9 @@ adminRouter.use(systemRouter);
 // adminRouter.use(backupRouter); // Disabled due to environment issues
 adminRouter.use(statsRouter);
 adminRouter.use(pengubookRouter);
+adminRouter.use("/achievements", achievementAdminRouter);
+adminRouter.use("/role-tax", roleTaxRouter);
+adminRouter.use("/role-rake", roleRakeRouter);
 
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */

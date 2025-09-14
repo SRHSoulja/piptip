@@ -1923,6 +1923,152 @@ $("systemStats").onclick = async () => {
   }
 };
 
+// ---------- Withdrawal Security Monitoring ----------
+async function loadWithdrawalStats() {
+  const timeframe = $("withdrawalTimeframe").value;
+  setLoading("loadWithdrawalStats", true);
+  showMessage("withdrawalMsg", "Loading withdrawal security stats...", false);
+
+  try {
+    const response = await API(`/admin/system/withdrawals/stats?hours=${timeframe}`);
+    const data = await response.json();
+
+    if (!data.ok) throw new Error(data.error || "Failed to load withdrawal stats");
+
+    const stats = data.protection;
+
+    // Update KPI cards
+    $("withdrawal-total").textContent = formatNumber(stats.totalWithdrawals);
+    $("withdrawal-blocked").textContent = formatNumber(stats.blockedAttempts);
+    $("withdrawal-users").textContent = formatNumber(stats.uniqueUsers);
+    $("gas-saved").textContent = `${stats.estimatedGasSpentETH.toFixed(3)}`;
+
+    // Update success rate
+    $("success-rate").textContent = `${stats.successRate}%`;
+    $("timeframe-display").textContent = `Last ${stats.timeframeHours} hours`;
+    $("gas-cost-estimate").textContent = `Est. ~${stats.estimatedGasSpentETH.toFixed(3)} ETH in gas costs prevented`;
+
+    // Load high-risk activity
+    await loadHighRiskActivity();
+
+    showMessage("withdrawalMsg", `Withdrawal stats loaded for ${stats.timeframeHours}h timeframe`, false);
+
+  } catch (e) {
+    showMessage("withdrawalMsg", `Failed to load withdrawal stats: ${e.message}`, true);
+  } finally {
+    setLoading("loadWithdrawalStats", false);
+  }
+}
+
+async function loadHighRiskActivity() {
+  try {
+    // Get recent high-activity users who might be hitting limits
+    const response = await API("/admin/users/top");
+    const data = await response.json();
+
+    if (!data.ok) throw new Error("Failed to load user data");
+
+    const highRiskDiv = $("high-risk-users");
+    const users = data.users || [];
+
+    // Filter for users with recent activity that might indicate rapid withdrawals
+    const riskUsers = users.filter(user => {
+      const lastActivity = user.lastActivity ? new Date(user.lastActivity) : null;
+      const hoursAgo = lastActivity ? (Date.now() - lastActivity.getTime()) / (1000 * 60 * 60) : 999;
+      return hoursAgo < 24; // Active in last 24 hours
+    }).slice(0, 10);
+
+    if (riskUsers.length === 0) {
+      highRiskDiv.innerHTML = `
+        <div style="color: #10b981; text-align: center; padding: 20px;">
+          🛡️ No high-risk withdrawal activity detected
+        </div>
+      `;
+    } else {
+      const userRows = riskUsers.map(user => {
+        const lastActivity = user.lastActivity ? new Date(user.lastActivity).toLocaleString() : 'Never';
+        const accountAge = Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (24 * 60 * 60 * 1000));
+
+        let riskLevel = 'LOW';
+        let riskColor = '#10b981';
+
+        if (accountAge < 7) {
+          riskLevel = 'MEDIUM';
+          riskColor = '#f59e0b';
+        }
+        if (accountAge < 1) {
+          riskLevel = 'HIGH';
+          riskColor = '#ef4444';
+        }
+
+        return `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #2a2a2a;">
+            <div>
+              <div style="font-weight: bold; color: #fff;">${user.username}</div>
+              <div style="font-size: 0.9em; color: #9ca3af;">
+                ID: ${user.discordId.slice(0, 12)}... | Age: ${accountAge} days | Last: ${lastActivity}
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <span style="background: ${riskColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">
+                ${riskLevel}
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      highRiskDiv.innerHTML = `
+        <div style="color: #fff; margin-bottom: 12px;">
+          <strong>Recent Activity (Last 24h)</strong>
+        </div>
+        ${userRows}
+      `;
+    }
+
+  } catch (e) {
+    const highRiskDiv = $("high-risk-users");
+    highRiskDiv.innerHTML = `
+      <div style="color: #ef4444; text-align: center; padding: 20px;">
+        ⚠️ Failed to load high-risk activity data
+      </div>
+    `;
+  }
+}
+
+async function clearAllWithdrawalCooldowns() {
+  if (!confirm("⚠️ Clear All Withdrawal Cooldowns?\n\nThis will allow ALL users to bypass progressive cooldowns until they withdraw again.\n\nThis should only be used for emergency support cases.\n\nContinue?")) {
+    return;
+  }
+
+  setLoading("clearCooldowns", true);
+  try {
+    const response = await API("/admin/system/withdrawals/clear-cooldowns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmToken: "CLEAR_ALL_COOLDOWNS" })
+    });
+    const data = await response.json();
+
+    if (!data.ok) throw new Error(data.error || "Failed to clear cooldowns");
+
+    showMessage("withdrawalMsg", "✅ All withdrawal cooldowns cleared. Users can now bypass progressive limits.", false);
+
+    // Refresh stats to reflect changes
+    setTimeout(() => loadWithdrawalStats(), 1000);
+
+  } catch (e) {
+    showMessage("withdrawalMsg", `Failed to clear cooldowns: ${e.message}`, true);
+  } finally {
+    setLoading("clearCooldowns", false);
+  }
+}
+
+// Event handlers for withdrawal monitoring
+$("loadWithdrawalStats").onclick = loadWithdrawalStats;
+$("clearCooldowns").onclick = clearAllWithdrawalCooldowns;
+$("withdrawalTimeframe").onchange = loadWithdrawalStats;
+
 // Initialize on page load
 (() => {
   const saved = localStorage.getItem("pip_admin_secret"); if (saved) $("secret").value = saved;

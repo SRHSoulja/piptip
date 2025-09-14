@@ -79,7 +79,15 @@ model User {
 
   // Streak and achievement relations
   streak       UserStreak? @relation("UserStreaks")
-  achievements Achievement[] @relation("UserAchievements")
+
+  // Dynamic achievement system
+  unlockedAchievements UserAchievement[] @relation("UserAchievements")
+  achievementProgress  UserAchievementProgress[] @relation("UserProgressTracking")
+
+  // Legacy achievements (deprecated)
+  legacyAchievements Achievement[] @relation("LegacyAchievements")
+
+  stats        UserStats? @relation("UserToStats")
 
   @@index([agwAddress])
   @@index([createdAt])
@@ -92,7 +100,12 @@ model Tier {
   description  String?  @db.Text
   priceAmount  Decimal? // legacy/optional
   durationDays Int
-  tipTaxFree   Boolean  @default(false)
+
+  // Flexible benefit system (replaces tipTaxFree boolean)
+  tipTaxFree   Boolean  @default(false) // DEPRECATED - keep for backward compatibility
+  taxReductionBps Int   @default(0)     // NEW: 0-10000 basis points (100% = 10000)
+  rakeReductionBps Int  @default(0)     // NEW: 0-10000 basis points (100% = 10000)
+
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -164,6 +177,14 @@ model Match {
   offerDeadline  DateTime?
   createdAt      DateTime  @default(now())
 
+  // Role analytics tracking
+  guildId              String? // Server where match occurred
+  challengerRoleBenefit String? // Role that gave challenger tax benefits
+  joinerRoleBenefit    String? // Role that gave joiner tax benefits
+  challengerRakeReduction String? // Role that gave challenger rake benefits
+  joinerRakeReduction  String? // Role that gave joiner rake benefits
+  rakeSavedAtomic      Decimal @default(0) // Total rake saved due to role benefits
+
   Challenger User? @relation("Challenger", fields: [challengerId], references: [id])
   Joiner     User? @relation("Joiner", fields: [joinerId], references: [id])
   Token      Token @relation(fields: [tokenId], references: [id])
@@ -193,6 +214,16 @@ model Tip {
   refundedAt   DateTime?
   createdAt    DateTime  @default(now())
 
+  // Role analytics tracking
+  roleBenefitUsed String? // Label of role that provided tax benefit
+  taxSavedAtomic  Decimal @default(0) // Amount saved due to role benefit
+  guildId         String? // Server where tip occurred (for role context)
+
+  // Tax transparency fields (NEW)
+  taxRateAppliedBps Int   @default(0)   // Actual tax rate used (BPS) - preserves historical rates
+  exemptionRateBps  Int   @default(0)   // Percentage reduction applied (BPS) - 0-10000
+  totalDeductedAtomic Decimal @default(0) // Total amount deducted from sender (amount + tax)
+
   From  User?  @relation("TipFrom", fields: [fromUserId], references: [id])
   To    User?  @relation("TipTo", fields: [toUserId], references: [id])
   Token Token @relation(fields: [tokenId], references: [id])
@@ -204,6 +235,10 @@ model Tip {
   @@index([status])
   @@index([fromUserId])
   @@index([toUserId])
+  @@index([fromUserId, status]) // For tip counting queries in achievements
+  @@index([toUserId, status]) // For received tip queries
+  @@index([fromUserId, toUserId, status]) // For unique recipient queries
+  @@index([status, createdAt]) // For completed tips with date sorting
 }
 
 enum GroupTipStatus {
@@ -322,6 +357,8 @@ model AppConfig {
   emergencyMode    Boolean  @default(false)
   withdrawalsPaused Boolean @default(false)
   tippingPaused    Boolean  @default(false)
+  achievementsEnabled Boolean @default(true)
+  streakProtectionEnabled Boolean @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -440,8 +477,108 @@ model UserStreak {
   user User @relation("UserStreaks", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, currentWins])
+  @@index([currentWins, lastGameAt]) // For leaderboard queries
+  @@index([longestWins]) // For longest streak leaderboards
 }
 
+// Dynamic Achievement System Models
+
+model AchievementDefinition {
+  id                Int      @id @default(autoincrement())
+  name              String   // Display name: "First Win Streak"
+  description       String   // "Win 3 matches in a row"
+  category          String   // "streaks", "tips", "deposits", "referrals"
+
+  // Criteria configuration
+  criteriaType      String   // "count", "sum", "streak", "unique", "custom"
+  criteriaData      Json     // Flexible criteria configuration
+  threshold         Decimal  // Target value to achieve
+
+  // Display properties
+  iconEmoji         String   // "🔥", "💰", "🏆"
+  badgeColor        String   // Hex color for badge
+  rarity           String    // "common", "rare", "epic", "legendary"
+
+  // Configuration
+  isEnabled         Boolean  @default(true)
+  isVisible         Boolean  @default(true)  // Show in UI even if not unlocked
+  isRepeatable      Boolean  @default(false) // Can be earned multiple times
+
+  // Time-gating
+  cooldownHours     Int?     // Hours between unlocks (for repeatable)
+  startDate         DateTime? // When achievement becomes available
+  endDate           DateTime? // When achievement expires
+
+  // Ordering and organization
+  sortOrder         Int      @default(0)
+  tier              Int      @default(1) // Difficulty tier (1-5)
+
+  // Metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String?  // Admin who created it
+  version           Int      @default(1) // For tracking changes
+
+  // Relations
+  unlockedAchievements UserAchievement[]
+  progressTracking     UserAchievementProgress[]
+
+  @@index([category, isEnabled])
+  @@index([isEnabled, isVisible, sortOrder])
+  @@index([startDate, endDate])
+}
+
+model UserAchievement {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  definitionId     Int
+
+  // Progress tracking
+  currentProgress  Decimal  @default(0)
+  targetProgress   Decimal  // Snapshot of threshold when unlocked
+
+  // Unlock details
+  unlockedAt       DateTime @default(now())
+  data             Json?    // Extra data about the unlock
+
+  // Time-gating tracking
+  lastUnlockedAt   DateTime? // For repeatable achievements
+  unlockCount      Int      @default(1) // How many times earned
+
+  // Relations
+  user       User @relation("UserAchievements", fields: [userId], references: [id], onDelete: Cascade)
+  definition AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, definitionId]) // One achievement per user (for non-repeatable)
+  @@index([userId, unlockedAt])
+  @@index([definitionId, unlockedAt])
+  @@index([lastUnlockedAt]) // For cooldown checks
+}
+
+model UserAchievementProgress {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  definitionId     Int
+
+  // Progress tracking
+  currentProgress  Decimal  @default(0)
+  lastProgressAt   DateTime @default(now())
+
+  // Efficiency fields
+  lastCheckedAt    DateTime @default(now())
+  progressData     Json?    // Store intermediate calculations
+
+  // Relations
+  user       User @relation("UserProgressTracking", fields: [userId], references: [id], onDelete: Cascade)
+  definition AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, definitionId])
+  @@index([userId, lastProgressAt])
+  @@index([definitionId, currentProgress])
+  @@index([lastCheckedAt]) // For batch processing
+}
+
+// Legacy Achievement model (keeping for migration compatibility)
 model Achievement {
   id          Int      @id @default(autoincrement())
   userId      Int
@@ -450,8 +587,148 @@ model Achievement {
   unlockedAt  DateTime @default(now())
   data        Json?    // Extra achievement data
 
-  user User @relation("UserAchievements", fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation("LegacyAchievements", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, type, level]) // Prevent duplicate achievements
   @@index([userId, type])
+  @@index([type, level]) // For achievement statistics queries
+  @@index([unlockedAt]) // For recent achievements and sorting
+  @@index([userId, unlockedAt]) // For user achievement history
+}
+
+// Aggregate table for user statistics (updated via triggers/background jobs)
+model UserStats {
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @unique
+  totalTipsSent         Int      @default(0)
+  totalTipsReceived     Int      @default(0)
+  totalTipAmountSent    Decimal  @default(0)
+  totalTipAmountReceived Decimal @default(0)
+  uniqueRecipients      Int      @default(0)
+  uniqueSenders         Int      @default(0)
+  totalDeposited        Decimal  @default(0)
+  totalWithdrawn        Decimal  @default(0)
+  matchesWon            Int      @default(0)
+  matchesLost           Int      @default(0)
+  matchesTied           Int      @default(0)
+  achievementCount      Int      @default(0)
+  lastTipAt             DateTime?
+  lastMatchAt           DateTime?
+  lastDepositAt         DateTime?
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  user User @relation("UserToStats", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([totalTipsSent, updatedAt]) // For tip leaderboards
+  @@index([matchesWon, updatedAt]) // For match leaderboards
+  @@index([totalDeposited, updatedAt]) // For deposit leaderboards
+  @@index([achievementCount, updatedAt]) // For achievement leaderboards
+  @@index([updatedAt]) // For finding stale records
+}
+
+// Daily aggregates for leaderboards and analytics
+model DailyStats {
+  id                 Int      @id @default(autoincrement())
+  date               DateTime @unique @db.Date
+  totalTips          Int      @default(0)
+  totalTipVolume     Decimal  @default(0)
+  totalDeposits      Int      @default(0)
+  totalDepositVolume Decimal  @default(0)
+  totalMatches       Int      @default(0)
+  newUsers           Int      @default(0)
+  activeUsers        Int      @default(0)
+  achievementsUnlocked Int    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([date])
+}
+
+// Discord role-based tax exemptions for NFT holders and partners
+model RoleTaxExemption {
+  id            Int      @id @default(autoincrement())
+  roleId        String   // Discord role ID
+  guildId       String   // Discord server ID
+  exemptionRate Decimal  @default(100.0) @db.Decimal(5,2) // 0-100% tax reduction
+  duration      Int?     // Days until expiry (null = permanent)
+  label         String   // "NFT Holder", "VIP", "Partner", etc.
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  expiresAt     DateTime? // Calculated expiry date
+
+  // Admin tracking
+  createdBy     String?  // Admin who created this exemption
+  notes         String?  // Internal notes about partnership
+
+  // Analytics relations
+  dailyAnalytics RoleBenefitAnalytics[] @relation("TaxAnalytics")
+
+  @@unique([roleId, guildId])
+  @@index([guildId, isActive])
+  @@index([expiresAt])
+}
+
+// Discord role-based rake reductions for gaming benefits
+model RoleRakeReduction {
+  id              Int      @id @default(autoincrement())
+  roleId          String   // Discord role ID
+  guildId         String   // Discord server ID
+  rakeReductionBps Int     @default(0) // Basis points (5000 = 50% reduction)
+  label           String   // "NFT Holder", "VIP", "Partner", etc.
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  expiresAt       DateTime? // Calculated expiry date
+
+  // Admin tracking
+  createdBy       String?  // Admin who created this reduction
+  notes           String?  // Internal notes about partnership
+
+  // Analytics relations
+  dailyAnalytics RoleBenefitAnalytics[] @relation("RakeAnalytics")
+
+  @@unique([roleId, guildId]) // One reduction per role per server
+  @@index([guildId, isActive])
+  @@index([expiresAt])
+}
+
+// Daily analytics for role-based benefits (for partnership reports)
+model RoleBenefitAnalytics {
+  id              Int      @id @default(autoincrement())
+  roleId          String   // Discord role ID
+  guildId         String   // Discord server ID
+  date            DateTime @db.Date // Analytics date (daily aggregation)
+
+  // Tip metrics (tax benefits)
+  tipsFromRoleHolders    Int     @default(0) // Tips sent by role holders
+  tipsToRoleHolders      Int     @default(0) // Tips received by role holders
+  totalTipVolumeAtomic   Decimal @default(0) // Volume tipped by role holders
+  totalTaxSavedAtomic    Decimal @default(0) // Total tax savings provided
+  averageTipSizeAtomic   Decimal @default(0) // Average tip size from role holders
+
+  // Gaming metrics (rake benefits)
+  gamesPlayedByRoleHolders Int     @default(0) // Games played by role holders
+  totalWageredAtomic       Decimal @default(0) // Volume wagered by role holders
+  gamesWonByRoleHolders    Int     @default(0) // Games won by role holders
+  totalRakeSavedAtomic     Decimal @default(0) // Total rake savings provided (NEW)
+  averageWagerSizeAtomic   Decimal @default(0) // Average wager size from role holders (NEW)
+
+  // Engagement metrics
+  activeRoleHolders       Int @default(0) // Unique role holders who tipped/gamed today
+  newRoleHoldersEngaged   Int @default(0) // First-time role holders who engaged
+
+  // Retention metrics
+  returningRoleHolders    Int @default(0) // Role holders who engaged yesterday & today
+
+  createdAt DateTime @default(now())
+
+  // Relations (flexible - can be tax OR rake exemption)
+  taxExemption  RoleTaxExemption?  @relation("TaxAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_tax_fkey")
+  rakeReduction RoleRakeReduction? @relation("RakeAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_rake_fkey")
+
+  @@unique([roleId, guildId, date]) // One record per role per day
+  @@index([guildId, date]) // Query by server and time range
+  @@index([date]) // Global analytics by date
 }

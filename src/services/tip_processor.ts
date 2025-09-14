@@ -6,10 +6,13 @@ import { transferToken, debitToken, creditToken } from "./balances.js";
 import { getConfig } from "../config.js";
 import { getActiveAd } from "./ads.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
+import { RoleTaxBenefitService } from "./role_tax_benefits.js";
 import { groupTipEmbed } from "../ui/embeds.js";
 import { groupTipClaimRow } from "../ui/components.js";
 import { scheduleGroupTipExpiry } from "../features/group_tip_expiry.js";
 import { RefundEngine } from "./refund_engine.js";
+import { getDiscordClient } from "./discord_users.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 
 export interface TipData {
   amount: number;
@@ -51,10 +54,28 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
       create: { discordId: data.userId },
     });
 
-    // Calculate fees
+    // Calculate fees with role-based tax benefits
     const cfg = await getConfig();
-    const taxFree = await userHasActiveTaxFreeTier(fromUser.id);
-    const feeBpsNum = taxFree ? 0 : (token.tipFeeBps ?? cfg?.tipFeeBps ?? 100);
+
+    // Check for best available tax benefit (tier, role, or referral)
+    const bestTaxBenefit = await RoleTaxBenefitService.getBestTaxBenefit(
+      fromUser.id,
+      data.guildId || '',
+      data.userId
+    );
+
+    // Apply tax benefit or fallback to existing logic
+    let feeBpsNum = token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+
+    if (bestTaxBenefit) {
+      // Apply percentage reduction (exemptionRate = 0-100% reduction)
+      const taxReduction = bestTaxBenefit.exemptionRate / 100;
+      feeBpsNum = Math.round(feeBpsNum * (1 - taxReduction));
+    } else {
+      // Fallback to existing tier check for backward compatibility
+      const taxFree = await userHasActiveTaxFreeTier(fromUser.id);
+      feeBpsNum = taxFree ? 0 : feeBpsNum;
+    }
     const feeBps = BigInt(feeBpsNum);
     const atomic = toAtomicDirect(data.amount, token.decimals);
     const feeAtomic = (atomic * feeBps) / 10000n;
@@ -101,6 +122,17 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
         note: data.note,
       });
 
+      // Calculate tax savings and transparency data
+      const originalFeeBps = token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+      const originalFee = (atomic * BigInt(originalFeeBps)) / 10000n;
+      const taxSavedAtomic = originalFee - feeAtomic;
+      const totalDeducted = atomic + feeAtomic;
+
+      // Calculate exemption rate applied
+      const exemptionRateBps = bestTaxBenefit?.exemptionRate
+        ? Math.round(bestTaxBenefit.exemptionRate * 100) // Convert 0-100% to BPS
+        : 0;
+
       // Record tip (using current schema)
       const createdTip = await prisma.tip.create({
         data: {
@@ -112,6 +144,14 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
           taxAtomic: feeAtomic.toString(), // Store tax amount for refunds
           note: data.note,
           status: "COMPLETED",
+          // Analytics tracking
+          roleBenefitUsed: bestTaxBenefit?.label || null,
+          taxSavedAtomic: taxSavedAtomic.toString(),
+          guildId: data.guildId,
+          // Tax transparency tracking (NEW)
+          taxRateAppliedBps: Number(feeBps),
+          exemptionRateBps: exemptionRateBps,
+          totalDeductedAtomic: totalDeducted.toString(),
         },
       });
 
@@ -156,10 +196,63 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
         },
       });
 
-      const publicLine =
-        `💸 <@${data.userId}> tipped ${formatAmount(atomic, token)} to <@${data.targetUserId}>` +
-        (feeAtomic > 0n ? ` (fee ${formatAmount(feeAtomic, token)} paid by sender)` : "") +
-        (data.note ? `\\n📝 ${data.note}` : "");
+      // Build transparent tip message with full tax breakdown
+      let publicLine = `💸 <@${data.userId}> tipped ${formatAmount(atomic, token)} to <@${data.targetUserId}>`;
+
+      // Always show the sender's perspective with transparency
+      if (feeAtomic > 0n) {
+        publicLine += ` (+ ${formatAmount(feeAtomic, token)} tax = ${formatAmount(totalDeducted, token)} total deducted)`;
+      } else if (bestTaxBenefit && bestTaxBenefit.exemptionRate > 0) {
+        publicLine += ` (tax-free via **${bestTaxBenefit.label}**)`;
+      }
+
+      // Add ENHANCED role benefit notification with social proof
+      if (bestTaxBenefit && bestTaxBenefit.exemptionRate > 0 && taxSavedAtomic > 0n) {
+        const benefitEmoji = bestTaxBenefit.source.startsWith('tier:') ? '⭐' : '🎭';
+        const benefitMessage = await formatBenefitNotification(
+          bestTaxBenefit,
+          'tax',
+          formatAmount(taxSavedAtomic, token),
+          token.symbol,
+          data.guildId
+        );
+        publicLine += `\n${benefitEmoji} ${benefitMessage}`;
+      }
+
+      // Add note if provided
+      if (data.note) {
+        publicLine += `\n📝 ${data.note}`;
+      }
+
+      // Check for tip achievements (async, don't block response)
+      (async () => {
+        try {
+          const { checkTipAchievements, checkEngagementAchievements } = await import("./streaks.js");
+          const { queueAchievementNotifications } = await import("./notifications.js");
+
+          // Get user's total tip count
+          const tipCount = await prisma.tip.count({
+            where: { fromUserId: fromUser.id, status: 'COMPLETED' }
+          });
+
+          const tipAmount = Number(bigToDecDirect(atomic, token.decimals));
+
+          const [tipAchievements, engagementAchievements] = await Promise.all([
+            checkTipAchievements(fromUser.id, tipCount, tipAmount),
+            checkEngagementAchievements(fromUser.id)
+          ]);
+
+          const allAchievements = [...tipAchievements, ...engagementAchievements];
+          if (allAchievements.length > 0) {
+            queueAchievementNotifications(data.userId, allAchievements, "tip");
+          }
+        } catch (error) {
+          console.error("Error checking tip achievements:", error);
+        }
+      })();
+
+      // Create tier purchase button for FOMO conversion if tier benefits were shown
+      const tierButton = await createTierPurchaseButton(bestTaxBenefit, data.userId);
 
       return {
         success: true,
@@ -167,6 +260,7 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
         details: `Sent ${formatAmount(atomic, token)} to ${targetUser.displayName || targetUser.username}`,
         publicMessage: {
           content: publicLine,
+          components: tierButton ? [tierButton] : undefined,
           allowedMentions: { users: [data.userId, data.targetUserId] },
         }
       };
@@ -264,11 +358,32 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
         await scheduleGroupTipExpiry(client, result.id);
 
         const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
-        
+
+        // Add role benefit notification for group tip creator
+        let successMessage = "Group tip created successfully!";
+        let detailsMessage = `Created ${data.duration}-minute group tip for ${formatAmount(atomic, token)}\nYou were charged ${totalLine}`;
+
+        if (bestTaxBenefit && bestTaxBenefit.exemptionRate > 0) {
+          const originalFee = (atomic * BigInt(token.tipFeeBps ?? cfg?.tipFeeBps ?? 100)) / 10000n;
+          const savedAmount = originalFee - feeAtomic;
+
+          if (savedAmount > 0n) {
+            const benefitEmoji = bestTaxBenefit.source.startsWith('tier:') ? '⭐' : '🎭';
+            const benefitMessage = await formatBenefitNotification(
+              bestTaxBenefit,
+              'tax',
+              formatAmount(savedAmount, token),
+              token.symbol,
+              data.guildId
+            );
+            detailsMessage += `\n${benefitEmoji} ${benefitMessage}`;
+          }
+        }
+
         return {
           success: true,
-          message: "Group tip created successfully!",
-          details: `Created ${data.duration}-minute group tip for ${formatAmount(atomic, token)}\\nYou were charged ${totalLine}`
+          message: successMessage,
+          details: detailsMessage
         };
 
       } catch (error: any) {
@@ -323,5 +438,139 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
       message: "Tip processing failed",
       details: error?.message || String(error)
     };
+  }
+}
+
+/**
+ * Enhanced benefit notification formatter with social proof
+ * Shows which specific role or tier granted the benefit
+ */
+async function formatBenefitNotification(
+  benefit: { source: string; label: string; exemptionRate: number },
+  benefitType: 'tax' | 'rake',
+  savedAmount: string,
+  tokenSymbol: string,
+  guildId: string | null
+): Promise<string> {
+  try {
+    // Parse benefit source to determine type and get real name
+    if (benefit.source.startsWith('role:')) {
+      const roleId = benefit.source.substring(5);
+
+      // Try to get Discord role name for enhanced social proof
+      if (guildId) {
+        try {
+          const discord = getDiscordClient();
+          if (discord) {
+            const guild = await discord.guilds.fetch(guildId);
+            const role = await guild?.roles.fetch(roleId);
+            if (role && role.name) {
+              // Enhanced role notification with actual role name
+              const benefitAction = benefitType === 'tax' ? 'tax-free tipping' : 'reduced house fees';
+              const cleanRoleName = role.name.trim();
+              if (cleanRoleName.length > 0 && cleanRoleName !== roleId) {
+                return `Your **${cleanRoleName}** role granted ${benefitAction}! Saved ${savedAmount} ${tokenSymbol}`;
+              }
+            }
+          }
+        } catch (error) {
+          // Log only meaningful errors, not rate limits or temporary issues
+          if (!String(error).includes('rate limit') && !String(error).includes('timeout')) {
+            console.warn('Discord API unavailable for role name lookup:', String(error));
+          }
+        }
+      }
+
+      // Fallback to label if Discord lookup fails
+      const benefitAction = benefitType === 'tax' ? 'tax exemption' : 'rake reduction';
+      return `Your **${benefit.label}** granted ${benefitAction}! Saved ${savedAmount} ${tokenSymbol}`;
+
+    } else if (benefit.source.startsWith('tier:')) {
+      // Tier notification
+      const benefitAction = benefitType === 'tax' ? 'tax-free tipping' : 'reduced gaming fees';
+      return `Your **${benefit.label}** perks granted ${benefitAction}! Saved ${savedAmount} ${tokenSymbol}`;
+
+    } else {
+      // Generic fallback
+      const benefitAction = benefitType === 'tax' ? 'saved you tax' : 'reduced your fees';
+      return `Your **${benefit.label}** ${benefitAction}! Saved ${savedAmount} ${tokenSymbol}`;
+    }
+  } catch (error) {
+    console.error('Error formatting benefit notification:', error);
+    // Simple fallback
+    return `Your **${benefit.label}** saved you ${savedAmount} ${tokenSymbol}!`;
+  }
+}
+
+/**
+ * Create tier purchase FOMO button when tier benefits are displayed publicly
+ * This creates social proof and conversion funnel for tier sales
+ */
+async function createTierPurchaseButton(
+  benefit: { source: string; label: string; exemptionRate: number } | null,
+  userDiscordId: string
+): Promise<ActionRowBuilder<ButtonBuilder> | null> {
+  try {
+    // Only show button for tier-based benefits (not role-based)
+    if (!benefit || !benefit.source.startsWith('tier:')) {
+      return null;
+    }
+
+    // Check if the user already has an active tier (don't show button to existing members)
+    const user = await prisma.user.findUnique({
+      where: { discordId: userDiscordId },
+      include: {
+        tierMemberships: {
+          where: {
+            status: 'ACTIVE',
+            expiresAt: { gt: new Date() }
+          },
+          include: { tier: true }
+        }
+      }
+    });
+
+    // Don't show button to users who already have active tier memberships
+    if (user && user.tierMemberships.length > 0) {
+      return null;
+    }
+
+    // Get available tiers for purchase button
+    const availableTiers = await prisma.tier.findMany({
+      where: { active: true },
+      include: {
+        prices: {
+          include: { token: true }
+        }
+      },
+      orderBy: { priceAmount: 'asc' }, // Show cheapest tier first
+      take: 1 // Just show one tier option to keep it simple
+    });
+
+    if (availableTiers.length === 0) {
+      return null;
+    }
+
+    const tier = availableTiers[0];
+    const price = tier.prices[0]; // Get first price option
+
+    if (!price) return null;
+
+    // Create FOMO button with attractive messaging
+    const savingsPercent = Math.round((benefit.exemptionRate || 0));
+    const tierButton = new ButtonBuilder()
+      .setCustomId(`pip:tier_purchase:${tier.id}`)
+      .setLabel(`💎 Get ${tier.name} - Save ${savingsPercent}% on fees`)
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("⭐");
+
+    const row = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(tierButton);
+
+    return row;
+
+  } catch (error) {
+    console.error('Error creating tier purchase button:', error);
+    return null;
   }
 }
