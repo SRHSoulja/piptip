@@ -41,5 +41,21 @@ export async function applyDeposit(input) {
         return { ok: true, ignored: "wallet not linked" };
     // Credit balance & record
     await creditToken(user.discordId, tokenRow.id, amt, "DEPOSIT", { txHash: input.tx });
+    // Check for deposit achievements (async, don't block response)
+    (async () => {
+        try {
+            const { checkDepositAchievements } = await import("./streaks.js");
+            const { queueAchievementNotifications } = await import("./notifications.js");
+            // Convert amount to decimal for achievement checking
+            const depositAmount = Number(amt) / Math.pow(10, tokenRow.decimals);
+            const achievements = await checkDepositAchievements(user.id, depositAmount);
+            if (achievements.length > 0) {
+                queueAchievementNotifications(user.discordId, achievements, "deposit");
+            }
+        }
+        catch (error) {
+            console.error("Error checking deposit achievements:", error);
+        }
+    })();
     return { ok: true, credited: true, userId: user.id, token: tokenRow.symbol, amount: amt.toString() };
 }

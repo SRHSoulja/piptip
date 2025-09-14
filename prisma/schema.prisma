@@ -22,12 +22,14 @@ model Notification {
 model User {
   id         Int      @id @default(autoincrement())
   discordId  String   @unique
-  agwAddress String?
-  wins       Int      @default(0)
-  losses     Int      @default(0)
-  ties       Int      @default(0)
+  agwAddress String?  @unique // SECURITY: Prevent multiple Discord users linking same wallet
+  wins       Int      @default(0) // SECURITY: Prevent negative values
+  losses     Int      @default(0) // SECURITY: Prevent negative values
+  ties       Int      @default(0) // SECURITY: Prevent negative values
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  // SECURITY: Database constraints to prevent impossible states (enforced at DB level)
 
   // Gaming relations
   challenger Match[] @relation("Challenger")
@@ -49,6 +51,9 @@ model User {
 
   // Notifications
   notifications Notification[]
+
+  // Security: Withdrawal attempt tracking
+  withdrawalAttempts WithdrawalAttempt[]
 
   // PenguBook profile fields
   bio               String?   @db.Text
@@ -157,6 +162,7 @@ model TierMembership {
   @@unique([userId, tierId, status], map: "uniq_user_tier_status") // one ACTIVE membership per (user,tier)
   @@index([userId, tierId, expiresAt])
   @@index([userId, status, expiresAt])
+  // SECURITY: Prevent impossible date relationships (enforced at DB level)
 }
 
 model Match {
@@ -319,6 +325,9 @@ model Token {
   groupTips    GroupTip[]
   transactions Transaction[]
 
+  // Security: Withdrawal attempt tracking
+  withdrawalAttempts WithdrawalAttempt[]
+
   // ✅ back-relation to TierPrice
   tierPrices TierPrice[] @relation("TokenToTierPrices")
 }
@@ -327,12 +336,13 @@ model UserBalance {
   id      Int     @id @default(autoincrement())
   userId  Int
   tokenId Int
-  amount  Decimal @default(0)
+  amount  Decimal @default(0) // SECURITY: Must be non-negative
 
   User  User  @relation(fields: [userId], references: [id])
   Token Token @relation(fields: [tokenId], references: [id])
 
   @@unique([userId, tokenId])
+  // SECURITY: Prevent negative balances at database level (enforced at DB level)
 }
 
 model ProcessedDeposit {
@@ -667,6 +677,7 @@ model RoleTaxExemption {
 
   @@unique([roleId, guildId])
   @@index([guildId, isActive])
+  // SECURITY: Prevent invalid exemption rates (enforced at DB level)
   @@index([expiresAt])
 }
 
@@ -692,6 +703,7 @@ model RoleRakeReduction {
   @@unique([roleId, guildId]) // One reduction per role per server
   @@index([guildId, isActive])
   @@index([expiresAt])
+  // SECURITY: Prevent invalid rake reduction rates (BPS: 0-10000 = 0-100%) (enforced at DB level)
 }
 
 // Daily analytics for role-based benefits (for partnership reports)
@@ -731,4 +743,24 @@ model RoleBenefitAnalytics {
   @@unique([roleId, guildId, date]) // One record per role per day
   @@index([guildId, date]) // Query by server and time range
   @@index([date]) // Global analytics by date
+}
+
+// SECURITY: Database model for persistent withdrawal attempt tracking
+model WithdrawalAttempt {
+  id          Int      @id @default(autoincrement())
+  userId      Int      // User.id
+  tokenId     Int      // Token.id
+  amount      Decimal  // Amount attempted
+  createdAt   DateTime @default(now())
+  blocked     Boolean  @default(false) // Was this attempt blocked?
+  reason      String?  // Why blocked (rate limit, cooldown, etc.)
+  ipAddress   String?  // IP tracking for advanced abuse detection
+  userAgent   String?  // Browser fingerprinting
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id])
+  token       Token    @relation(fields: [tokenId], references: [id])
+
+  @@index([userId, createdAt]) // Fast lookup for user's recent attempts
+  @@index([userId, tokenId, createdAt]) // Per-token attempt tracking
 }

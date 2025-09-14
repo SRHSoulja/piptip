@@ -3,13 +3,30 @@ import { judge, label } from "../../services/matches.js";
 import { publicJoinRow, cancelRow } from "../../ui/components.js";
 import { matchOfferEmbed, matchResultEmbed } from "../../ui/embeds.js";
 import { decToBigDirect, formatAmount } from "../../services/token.js";
-import { debitTokenTx, creditTokenTx } from "../../services/balances.js";
+import { debitTokenAtomicTx, creditTokenTx } from "../../services/balances.js";
 import { getConfig } from "../../config.js";
 import { getActiveAd } from "../../services/ads.js";
+import { RoleRakeReductionService } from "../../services/role_rake_benefits.js";
+import { getDiscordClient } from "../../services/discord_users.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 // payout helper uses dynamic house fee (bps) from AppConfig
 function rpsPayout(wagerAtomic, houseFeeBps) {
     const pot = 2n * wagerAtomic;
-    const rake = (pot * houseFeeBps) / 10000n;
+    // SECURITY: Prevent precision overflow attacks - minimum wager enforcement
+    if (wagerAtomic < BigInt(1000)) {
+        throw new Error("Wager too small - minimum 0.000001 tokens to prevent fee bypass attacks");
+    }
+    // SECURITY: Calculate base rake
+    let rake = (pot * houseFeeBps) / 10000n;
+    // SECURITY: Apply ceiling division first (round up, favor platform)
+    const remainder = (pot * houseFeeBps) % 10000n;
+    if (remainder > 0n) {
+        rake = rake + 1n; // Round up to next atomic unit
+    }
+    // SECURITY: Force minimum rake only if calculated rake is still 0 (prevent rake bypass)
+    if (houseFeeBps > 0n && rake === 0n) {
+        rake = 1n; // Minimum rake enforcement
+    }
     const payout = pot - rake;
     return { pot, rake, payout };
 }
@@ -65,19 +82,50 @@ export async function handleJoin(i, matchId, move) {
     // Ack fast
     await i.deferReply({ ephemeral: true }).catch(() => { });
     const cfg = await getConfig();
-    const houseFeeBps = BigInt(cfg.houseFeeBps ?? 200);
+    // Get base house fee
+    let houseFeeBps = BigInt(cfg.houseFeeBps ?? 200);
+    let rakeReductionBenefit = null;
     // Track streak updates to process after transaction
     const streakUpdates = [];
     try {
         const settled = await prisma.$transaction(async (tx) => {
+            // ATOMIC LOCK: Check status and lock in single operation to prevent race condition
+            const lockResult = await tx.match.updateMany({
+                where: {
+                    id: matchId,
+                    status: "OFFERED" // Only lock if still offered
+                },
+                data: { status: "LOCKED" }
+            });
+            // If no rows updated, match was already taken or doesn't exist
+            if (lockResult.count === 0) {
+                const existingMatch = await tx.match.findUnique({
+                    where: { id: matchId },
+                    select: { status: true }
+                });
+                if (!existingMatch) {
+                    throw new Error("Match not found");
+                }
+                else if (existingMatch.status === "LOCKED") {
+                    throw new Error("Match is being joined by another player");
+                }
+                else if (existingMatch.status === "SETTLED") {
+                    throw new Error("Match already completed");
+                }
+                else if (existingMatch.status === "EXPIRED") {
+                    throw new Error("Match expired");
+                }
+                else {
+                    throw new Error("Match no longer available");
+                }
+            }
+            // Now safely get the locked match
             const m = await tx.match.findUnique({
                 where: { id: matchId },
                 include: { Challenger: true, Token: true }
             });
             if (!m)
-                throw new Error("Match not found");
-            if (m.status !== "OFFERED")
-                throw new Error("Not available");
+                throw new Error("Match not found after lock");
             if (!m.Challenger) {
                 throw new Error("Match challenger not found");
             }
@@ -88,19 +136,45 @@ export async function handleJoin(i, matchId, move) {
                 await tx.match.update({ where: { id: m.id }, data: { status: "EXPIRED" } });
                 throw new Error("Match expired");
             }
-            // lock to prevent double-joins
-            await tx.match.update({ where: { id: m.id }, data: { status: "LOCKED" } });
             // ensure joiner row
             const joiner = await tx.user.upsert({
                 where: { discordId: i.user.id },
                 update: {},
                 create: { discordId: i.user.id }
             });
+            // Check for role-based rake reductions for both players
+            const challengerRakeReduction = await RoleRakeReductionService.getBestRakeReduction(m.Challenger.id, i.guildId || '', m.Challenger.discordId);
+            const joinerRakeReduction = await RoleRakeReductionService.getBestRakeReduction(joiner.id, i.guildId || '', i.user.id);
+            // Apply best rake reduction from either player
+            const bestRakeReduction = [challengerRakeReduction, joinerRakeReduction]
+                .filter(Boolean)
+                .reduce((best, current) => {
+                if (!best || !current)
+                    return best || current;
+                return current.reductionRate > best.reductionRate ? current : best;
+            }, null);
+            // Apply rake reduction to house fee
+            if (bestRakeReduction) {
+                const originalHouseFeeBps = houseFeeBps;
+                const reductionMultiplier = (100 - bestRakeReduction.reductionRate) / 100;
+                houseFeeBps = BigInt(Math.round(Number(originalHouseFeeBps) * reductionMultiplier));
+                rakeReductionBenefit = bestRakeReduction;
+            }
             const wager = decToBigDirect(m.wagerAtomic, m.Token.decimals);
-            // Debit joiner's balance INSIDE THIS TX (no nested transactions)
-            await debitTokenTx(tx, i.user.id, m.Token.id, wager, "MATCH_WAGER", {
-                guildId: i.guildId ?? null
-            });
+            // SECURITY: Use atomic debit to prevent race conditions with balance checking
+            try {
+                await debitTokenAtomicTx(tx, i.user.id, m.Token.id, wager, "MATCH_WAGER", {
+                    guildId: i.guildId ?? null
+                });
+            }
+            catch (balanceError) {
+                // UNLOCK THE MATCH immediately if user lacks funds
+                await tx.match.update({
+                    where: { id: matchId },
+                    data: { status: "OFFERED" } // Reset to offered so others can join
+                });
+                throw new Error(`Insufficient funds: ${String(balanceError)}`);
+            }
             // resolve outcome
             const outcome = judge(m.challengerMove, move);
             let result = "TIE";
@@ -205,6 +279,9 @@ export async function handleJoin(i, matchId, move) {
                     });
                 }
             }
+            // Calculate rake savings for analytics
+            const originalRake = rpsPayout(wager, BigInt(cfg.houseFeeBps ?? 200)).rake;
+            const rakeSaved = originalRake - rakeBig;
             // finalize match row
             const final = await tx.match.update({
                 where: { id: m.id },
@@ -214,7 +291,12 @@ export async function handleJoin(i, matchId, move) {
                     joinerMove: move,
                     result,
                     rakeAtomic: rakeBig.toString(), // Store atomic units, not converted amounts
-                    winnerUserId
+                    winnerUserId,
+                    // Analytics tracking for role benefits
+                    guildId: i.guildId,
+                    challengerRakeReduction: challengerRakeReduction?.label || null,
+                    joinerRakeReduction: joinerRakeReduction?.label || null,
+                    rakeSavedAtomic: rakeSaved.toString()
                 },
                 include: { Challenger: true, Joiner: true, Token: true }
             });
@@ -280,7 +362,26 @@ export async function handleJoin(i, matchId, move) {
         catch {
             // ignore edit failures
         }
-        await i.editReply({ content: "Match resolved." }).catch(() => { });
+        // Build response with ENHANCED rake benefit notification
+        let responseContent = "Match resolved.";
+        if (rakeReductionBenefit) {
+            const rakeSavedBig = decToBigDirect(settled.rakeSavedAtomic, settled.Token.decimals);
+            if (rakeSavedBig > 0n && settled.result !== "TIE") {
+                const benefit = rakeReductionBenefit;
+                const enhancedMessage = await formatRakeBenefitNotification(benefit, formatAmount(rakeSavedBig, settled.Token), settled.Token.symbol, i.guildId || '');
+                responseContent += `\n🎮 ${enhancedMessage}`;
+                // Add tier purchase button for FOMO conversion if tier-based rake benefit was used
+                const tierButton = await createMatchTierButton(rakeReductionBenefit, i.user.id);
+                if (tierButton) {
+                    await i.editReply({
+                        content: responseContent,
+                        components: [tierButton]
+                    }).catch(() => { });
+                    return; // Exit early since we already edited with components
+                }
+            }
+        }
+        await i.editReply({ content: responseContent }).catch(() => { });
     }
     catch (err) {
         await i.editReply({ content: `Failed to join: ${err?.message || String(err)}` }).catch(() => { });
@@ -335,5 +436,109 @@ export async function handleCancel(i, matchId) {
     }
     catch (err) {
         await i.editReply({ content: `Failed to cancel: ${err?.message || String(err)}` }).catch(() => { });
+    }
+}
+/**
+ * Enhanced rake benefit notification formatter with social proof for gaming
+ * Shows which specific role or tier granted the gaming benefit
+ */
+async function formatRakeBenefitNotification(benefit, savedAmount, tokenSymbol, guildId) {
+    try {
+        // Parse benefit source to determine type and get real name
+        if (benefit.source.startsWith('role:')) {
+            const roleId = benefit.source.substring(5);
+            // Try to get Discord role name for enhanced social proof
+            try {
+                const discord = getDiscordClient();
+                if (discord && guildId) {
+                    const guild = await discord.guilds.fetch(guildId);
+                    const role = await guild?.roles.fetch(roleId);
+                    if (role && role.name) {
+                        // Enhanced gaming notification with actual role name and special gaming language
+                        const cleanRoleName = role.name.trim();
+                        if (cleanRoleName.length > 0 && cleanRoleName !== roleId) {
+                            return `Victory! Your **${cleanRoleName}** role eliminated house fees - kept ${savedAmount} extra ${tokenSymbol}!`;
+                        }
+                    }
+                }
+            }
+            catch (error) {
+                // Suppress common Discord API errors to avoid spam
+                if (!String(error).includes('rate limit') && !String(error).includes('timeout')) {
+                    console.warn('Discord API unavailable for gaming role name lookup:', String(error));
+                }
+            }
+            // Fallback to label if Discord lookup fails
+            return `Victory! Your **${benefit.label}** eliminated house fees - kept ${savedAmount} extra ${tokenSymbol}!`;
+        }
+        else if (benefit.source.startsWith('tier:')) {
+            // Tier notification with premium language
+            return `Victory! Your **${benefit.label}** perks eliminated house fees - kept ${savedAmount} extra ${tokenSymbol}!`;
+        }
+        else {
+            // Generic fallback
+            return `Victory! Your **${benefit.label}** reduced house fees - saved ${savedAmount} ${tokenSymbol}!`;
+        }
+    }
+    catch (error) {
+        console.error('Error formatting rake benefit notification:', error);
+        // Simple fallback
+        return `Victory! Your **${benefit.label}** saved ${savedAmount} ${tokenSymbol} in fees!`;
+    }
+}
+/**
+ * Create tier purchase button for gaming rake benefits (FOMO conversion)
+ */
+async function createMatchTierButton(benefit, userDiscordId) {
+    try {
+        // Only show for tier-based benefits
+        if (!benefit || !benefit.source.startsWith('tier:')) {
+            return null;
+        }
+        // Import prisma here to avoid circular imports
+        const { prisma } = await import("../../services/db.js");
+        // Check if user already has active tier
+        const user = await prisma.user.findUnique({
+            where: { discordId: userDiscordId },
+            include: {
+                tierMemberships: {
+                    where: {
+                        status: 'ACTIVE',
+                        expiresAt: { gt: new Date() }
+                    }
+                }
+            }
+        });
+        // Don't show to existing tier members
+        if (user && user.tierMemberships.length > 0) {
+            return null;
+        }
+        // Get cheapest available tier
+        const availableTier = await prisma.tier.findFirst({
+            where: { active: true },
+            include: {
+                prices: {
+                    include: { token: true }
+                }
+            },
+            orderBy: { priceAmount: 'asc' }
+        });
+        if (!availableTier || !availableTier.prices[0]) {
+            return null;
+        }
+        // Create FOMO gaming tier button
+        const savingsPercent = Math.round(benefit.reductionRate);
+        const tierButton = new ButtonBuilder()
+            .setCustomId(`pip:tier_purchase:${availableTier.id}`)
+            .setLabel(`🏆 Get ${availableTier.name} - Save ${savingsPercent}% on gaming fees`)
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("🎮");
+        const row = new ActionRowBuilder()
+            .addComponents(tierButton);
+        return row;
+    }
+    catch (error) {
+        console.error('Error creating match tier button:', error);
+        return null;
     }
 }

@@ -61,23 +61,21 @@ export class RoleRakeReductionService {
   ): Promise<RoleRakeBenefit | null> {
 
     try {
-      // Check cache first
-      const now = Date.now();
-
-      if (now - lastCacheRefresh > CACHE_DURATION) {
-        await this.refreshRakeCache(guildId);
-      }
+      // SECURITY: Always refresh role data to prevent cache poisoning
+      // Re-verify role membership on EVERY benefit application (no cache trust)
+      await this.refreshRakeCache(guildId);
 
       const guildCache = roleRakeCache.get(guildId);
       if (!guildCache) return null;
 
-      // Get user's roles from Discord
+      // SECURITY: Real-time Discord role verification (no stale data)
       const discord = getDiscordClient();
       if (!discord) return null;
 
-      const guild = await discord.guilds.fetch(guildId);
+      const guild = await discord.guilds.fetch(guildId).catch(() => null);
       if (!guild) return null;
 
+      // SECURITY: Fresh role fetch every time (prevent role evasion)
       const member = await guild.members.fetch(discordUserId).catch(() => null);
       if (!member) return null;
 
@@ -100,7 +98,14 @@ export class RoleRakeReductionService {
         );
 
         if (roleHoldValid && (!bestBenefit || roleBenefit.reductionRate > bestBenefit.reductionRate)) {
-          bestBenefit = roleBenefit;
+          // SECURITY: Double-verify user still has the role before applying benefit
+          const stillHasRole = member.roles.cache.has(roleId);
+          if (stillHasRole) {
+            bestBenefit = roleBenefit;
+            console.log(`✅ Rake benefit verified: User ${discordUserId} role ${roleId} (${roleBenefit.reductionRate}% reduction)`);
+          } else {
+            console.warn(`🚫 Role benefit denied: User ${discordUserId} lost role ${roleId} during verification`);
+          }
         } else if (!roleHoldValid) {
           // Log attempted role evasion for audit
           console.warn(`🚫 Role rake evasion blocked: User ${discordUserId} has role ${roleId} for <10min in guild ${guildId}`);
@@ -177,7 +182,7 @@ export class RoleRakeReductionService {
 
       for (const reduction of activeReductions) {
         guildCache.set(reduction.roleId, {
-          reductionRate: Number(reduction.rakeReductionBps) / 100, // Convert BPS to percentage
+          reductionRate: Number(reduction.rakeReductionBps) / 10000, // Convert BPS to percentage (1% = 100 BPS)
           source: `role:${reduction.roleId}`,
           label: reduction.label
         });
@@ -216,7 +221,7 @@ export class RoleRakeReductionService {
       // Check new flexible system first
       if (tier.rakeReductionBps > 0) {
         return {
-          reductionRate: Number(tier.rakeReductionBps) / 100, // Convert BPS to percentage
+          reductionRate: Number(tier.rakeReductionBps) / 10000, // Convert BPS to percentage (1% = 100 BPS)
           source: `tier:${tier.id}`,
           label: `${tier.name} Member`
         };

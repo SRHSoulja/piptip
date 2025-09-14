@@ -211,13 +211,22 @@ pengubookRouter.get("/user/:discordId", async (req: Request, res: Response) => {
     // Get app config for tax rates
     const config = await getConfig();
 
+    // Get achievements for the target user
+    const { getUserAchievements, getStreakStats, formatAchievementBadge } = await import("../services/streaks.js");
+    const [achievements, streakStats] = await Promise.all([
+      getUserAchievements(targetUser.discordId),
+      getStreakStats(targetUser.discordId)
+    ]);
+
     res.send(generateUserProfileHTML({
       user: currentUser,
       targetUser,
       tokens,
       balances,
       unreadCount,
-      config
+      config,
+      achievements,
+      streakStats
     }));
   } catch (error) {
     console.error("PenguBook user profile error:", error);
@@ -841,6 +850,16 @@ function generateUserProfileHTML(data: any): string {
         .social-link { background: #374151; color: #60a5fa; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 500; }
         .social-link:hover { background: #60a5fa; color: white; }
         .tip-section { background: #1f2937; padding: 1.5rem; border-radius: 0.75rem; margin-top: 2rem; }
+        .achievements-section { background: #1f2937; padding: 1.5rem; border-radius: 0.75rem; margin: 1rem 0; }
+        .achievements-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+        .achievement-badge { background: #374151; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 2px solid #4b5563; transition: all 0.2s; }
+        .achievement-badge:hover { border-color: #60a5fa; transform: translateY(-2px); }
+        .achievement-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .achievement-name { font-weight: bold; color: #d1d5db; margin-bottom: 0.25rem; }
+        .achievement-date { font-size: 0.8rem; color: #9ca3af; }
+        .streak-display { background: #374151; padding: 1rem; border-radius: 0.5rem; text-align: center; margin: 1rem 0; }
+        .streak-current { font-size: 2rem; font-weight: bold; color: #f59e0b; }
+        .streak-best { font-size: 1rem; color: #9ca3af; margin-top: 0.5rem; }
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; color: #d1d5db; }
         .form-group input, .form-group select, .form-group textarea { 
@@ -921,7 +940,63 @@ function generateUserProfileHTML(data: any): string {
             <p style="color: #9ca3af; font-style: italic;">This user hasn't written a bio yet.</p>
         </div>
         `}
-        
+
+        <!-- Achievements Section -->
+        ${data.streakStats && (data.streakStats.currentWins > 0 || data.streakStats.longestWins > 0) ? `
+        <div class="achievements-section">
+            <h3>🔥 Win Streak</h3>
+            <div class="streak-display">
+                <div class="streak-current">${data.streakStats.currentWins}</div>
+                <div style="color: #d1d5db; margin-top: 0.25rem;">Current Streak</div>
+                ${data.streakStats.longestWins > data.streakStats.currentWins ? `
+                <div class="streak-best">Personal Best: ${data.streakStats.longestWins} wins</div>
+                ` : data.streakStats.currentWins > 1 ? `
+                <div class="streak-best">🏆 Personal Best!</div>
+                ` : ''}
+            </div>
+        </div>
+        ` : ''}
+
+        ${data.achievements && data.achievements.length > 0 ? `
+        <div class="achievements-section">
+            <h3>🏆 Achievements (${data.achievements.length})</h3>
+            <div class="achievements-grid">
+                ${data.achievements.slice(0, 8).map((achievement: any) => {
+                  // Simple badge parsing without requiring module
+                  const badgeIcons: { [key: string]: string } = {
+                    'win_streak': '🔥',
+                    'longest_streak': '🏆',
+                    'referral_count': '👥',
+                    'total_tips': '💰',
+                    'big_tipper': '💎',
+                    'deposit_milestone': '🏦',
+                    'veteran_player': '🎖️',
+                    'comeback_kid': '💪',
+                    'social_butterfly': '🦋'
+                  };
+
+                  const icon = badgeIcons[achievement.type] || '🎖️';
+                  const name = achievement.type.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+
+                  return `
+                  <div class="achievement-badge">
+                      <div class="achievement-icon">${icon}</div>
+                      <div class="achievement-name">${name} ${achievement.level}</div>
+                      <div class="achievement-date">Unlocked ${new Date(achievement.unlockedAt).toLocaleDateString()}</div>
+                  </div>
+                  `;
+                }).join('')}
+                ${data.achievements.length > 8 ? `
+                <div class="achievement-badge" style="opacity: 0.6;">
+                    <div class="achievement-icon">➕</div>
+                    <div class="achievement-name">${data.achievements.length - 8} more</div>
+                    <div class="achievement-date">View in Discord</div>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+        ` : ''}
+
         <div class="tip-section">
             <h3>💸 Send a Tip</h3>
             

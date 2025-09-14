@@ -1,0 +1,506 @@
+// src/services/achievement_criteria_engine.ts - Separate complex business logic from database
+
+import { prisma } from './db.js';
+import { startTimer, endTimer } from './performance.js';
+
+// Criteria evaluation interface
+export interface CriteriaEvaluator {
+  type: string;
+  evaluate(userId: number, criteriaData: any, eventData?: any): Promise<number>;
+  getDescription(criteriaData: any): string;
+  validateConfig(criteriaData: any): { valid: boolean; errors: string[] };
+}
+
+// Registry of criteria evaluators
+export class CriteriaRegistry {
+  private static evaluators = new Map<string, CriteriaEvaluator>();
+
+  static register(evaluator: CriteriaEvaluator): void {
+    this.evaluators.set(evaluator.type, evaluator);
+    console.log(`📋 Registered criteria evaluator: ${evaluator.type}`);
+  }
+
+  static get(type: string): CriteriaEvaluator | null {
+    return this.evaluators.get(type) || null;
+  }
+
+  static getAll(): CriteriaEvaluator[] {
+    return Array.from(this.evaluators.values());
+  }
+
+  static getTypes(): string[] {
+    return Array.from(this.evaluators.keys());
+  }
+}
+
+// Count-based evaluator (simple counts)
+class CountEvaluator implements CriteriaEvaluator {
+  type = 'count';
+
+  async evaluate(userId: number, criteriaData: any): Promise<number> {
+    const { field, table, filter = {} } = criteriaData;
+
+    startTimer('count_evaluation');
+
+    try {
+      // Use optimized UserStats table when possible
+      if (this.canUseUserStats(table, field)) {
+        const result = await this.evaluateFromUserStats(userId, field);
+        endTimer('count_evaluation', { method: 'userStats', result });
+        return result;
+      }
+
+      // Fallback to direct table queries (slower but flexible)
+      const result = await this.evaluateFromTable(userId, table, field, filter);
+      endTimer('count_evaluation', { method: 'directQuery', result });
+      return result;
+
+    } catch (error) {
+      endTimer('count_evaluation', { success: false, error: String(error) });
+      throw error;
+    }
+  }
+
+  private canUseUserStats(table: string, field: string): boolean {
+    const optimizedFields: Record<string, string[]> = {
+      'matches': ['won', 'lost', 'tied'],
+      'tips': ['sent', 'received'],
+      'deposits': ['count', 'total']
+    };
+
+    return optimizedFields[table]?.includes(field) || false;
+  }
+
+  private async evaluateFromUserStats(userId: number, field: string): Promise<number> {
+    const stats = await prisma.userStats.findUnique({
+      where: { userId }
+    });
+
+    if (!stats) return 0;
+
+    const fieldMapping: Record<string, keyof typeof stats> = {
+      'won': 'matchesWon',
+      'lost': 'matchesLost',
+      'tied': 'matchesTied',
+      'sent': 'totalTipsSent',
+      'received': 'totalTipsReceived'
+    };
+
+    const mappedField = fieldMapping[field];
+    if (!mappedField) return 0;
+
+    const value = stats[mappedField];
+    return typeof value === 'number' ? value : Number(value) || 0;
+  }
+
+  private async evaluateFromTable(userId: number, table: string, field: string, filter: any): Promise<number> {
+    // This would need to be implemented based on your specific table structures
+    // For now, return 0 to avoid database errors
+    console.warn(`Direct table query not implemented for ${table}.${field}`);
+    return 0;
+  }
+
+  getDescription(criteriaData: any): string {
+    const { field, table } = criteriaData;
+    return `Count of ${field} in ${table}`;
+  }
+
+  validateConfig(criteriaData: any): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!criteriaData.field) errors.push('field is required');
+    if (!criteriaData.table) errors.push('table is required');
+
+    return { valid: errors.length === 0, errors };
+  }
+}
+
+// Sum-based evaluator (aggregate values)
+class SumEvaluator implements CriteriaEvaluator {
+  type = 'sum';
+
+  async evaluate(userId: number, criteriaData: any): Promise<number> {
+    const { field, table, filter = {} } = criteriaData;
+
+    startTimer('sum_evaluation');
+
+    try {
+      let result = 0;
+
+      // Use UserStats for optimized queries
+      if (table === 'tips' && field === 'amount_sent') {
+        const stats = await prisma.userStats.findUnique({
+          where: { userId },
+          select: { totalTipAmountSent: true }
+        });
+        result = Number(stats?.totalTipAmountSent || 0);
+
+      } else if (table === 'tips' && field === 'amount_received') {
+        const stats = await prisma.userStats.findUnique({
+          where: { userId },
+          select: { totalTipAmountReceived: true }
+        });
+        result = Number(stats?.totalTipAmountReceived || 0);
+
+      } else if (table === 'deposits' && field === 'total_amount') {
+        const stats = await prisma.userStats.findUnique({
+          where: { userId },
+          select: { totalDeposited: true }
+        });
+        result = Number(stats?.totalDeposited || 0);
+
+      } else {
+        console.warn(`Sum evaluation not optimized for ${table}.${field}`);
+        result = 0;
+      }
+
+      endTimer('sum_evaluation', { table, field, result });
+      return result;
+
+    } catch (error) {
+      endTimer('sum_evaluation', { success: false, error: String(error) });
+      throw error;
+    }
+  }
+
+  getDescription(criteriaData: any): string {
+    const { field, table } = criteriaData;
+    return `Sum of ${field} in ${table}`;
+  }
+
+  validateConfig(criteriaData: any): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!criteriaData.field) errors.push('field is required');
+    if (!criteriaData.table) errors.push('table is required');
+
+    return { valid: errors.length === 0, errors };
+  }
+}
+
+// Streak-based evaluator
+class StreakEvaluator implements CriteriaEvaluator {
+  type = 'streak';
+
+  async evaluate(userId: number, criteriaData: any): Promise<number> {
+    const { field } = criteriaData;
+
+    startTimer('streak_evaluation');
+
+    try {
+      const streak = await prisma.userStreak.findUnique({
+        where: { userId },
+        select: {
+          currentWins: true,
+          longestWins: true
+        }
+      });
+
+      if (!streak) {
+        endTimer('streak_evaluation', { result: 0 });
+        return 0;
+      }
+
+      let result = 0;
+      switch (field) {
+        case 'current_wins':
+          result = streak.currentWins;
+          break;
+        case 'longest_wins':
+          result = streak.longestWins;
+          break;
+        default:
+          console.warn(`Unknown streak field: ${field}`);
+          result = 0;
+      }
+
+      endTimer('streak_evaluation', { field, result });
+      return result;
+
+    } catch (error) {
+      endTimer('streak_evaluation', { success: false, error: String(error) });
+      throw error;
+    }
+  }
+
+  getDescription(criteriaData: any): string {
+    const { field } = criteriaData;
+    return `Streak: ${field}`;
+  }
+
+  validateConfig(criteriaData: any): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const validFields = ['current_wins', 'longest_wins'];
+
+    if (!criteriaData.field) {
+      errors.push('field is required');
+    } else if (!validFields.includes(criteriaData.field)) {
+      errors.push(`field must be one of: ${validFields.join(', ')}`);
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+}
+
+// Unique count evaluator (count distinct values)
+class UniqueEvaluator implements CriteriaEvaluator {
+  type = 'unique';
+
+  async evaluate(userId: number, criteriaData: any): Promise<number> {
+    const { field } = criteriaData;
+
+    startTimer('unique_evaluation');
+
+    try {
+      let result = 0;
+
+      switch (field) {
+        case 'tip_recipients':
+          const stats = await prisma.userStats.findUnique({
+            where: { userId },
+            select: { uniqueRecipients: true }
+          });
+          result = stats?.uniqueRecipients || 0;
+          break;
+
+        case 'tip_tokens':
+          const uniqueTokens = await prisma.tip.groupBy({
+            by: ['tokenId'],
+            where: {
+              fromUserId: userId,
+              status: 'COMPLETED'
+            }
+          });
+          result = uniqueTokens.length;
+          break;
+
+        default:
+          console.warn(`Unique evaluation not implemented for field: ${field}`);
+          result = 0;
+      }
+
+      endTimer('unique_evaluation', { field, result });
+      return result;
+
+    } catch (error) {
+      endTimer('unique_evaluation', { success: false, error: String(error) });
+      throw error;
+    }
+  }
+
+  getDescription(criteriaData: any): string {
+    const { field } = criteriaData;
+    return `Unique count of ${field}`;
+  }
+
+  validateConfig(criteriaData: any): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const validFields = ['tip_recipients', 'tip_tokens', 'referrals'];
+
+    if (!criteriaData.field) {
+      errors.push('field is required');
+    } else if (!validFields.includes(criteriaData.field)) {
+      errors.push(`field must be one of: ${validFields.join(', ')}`);
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+}
+
+// Custom evaluator for complex business logic
+class CustomEvaluator implements CriteriaEvaluator {
+  type = 'custom';
+
+  async evaluate(userId: number, criteriaData: any, eventData?: any): Promise<number> {
+    const { function: functionName, params = {} } = criteriaData;
+
+    startTimer('custom_evaluation');
+
+    try {
+      let result = 0;
+
+      switch (functionName) {
+        case 'depositsThisWeek':
+          result = await this.calculateDepositsThisWeek(userId, params);
+          break;
+
+        case 'consecutiveDaysTipping':
+          result = await this.calculateConsecutiveDaysTipping(userId, params);
+          break;
+
+        case 'daysSinceJoined':
+          result = await this.calculateDaysSinceJoined(userId, params);
+          break;
+
+        case 'tipsToUniqueUsersThisMonth':
+          result = await this.calculateTipsToUniqueUsersThisMonth(userId, params);
+          break;
+
+        default:
+          console.warn(`Custom function not implemented: ${functionName}`);
+          result = 0;
+      }
+
+      endTimer('custom_evaluation', { function: functionName, result });
+      return result;
+
+    } catch (error) {
+      endTimer('custom_evaluation', { success: false, error: String(error) });
+      throw error;
+    }
+  }
+
+  private async calculateDepositsThisWeek(userId: number, params: any): Promise<number> {
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    // This would need actual deposit tracking
+    // For now, return 0
+    console.warn('depositsThisWeek calculation requires deposit tracking implementation');
+    return 0;
+  }
+
+  private async calculateConsecutiveDaysTipping(userId: number, params: any): Promise<number> {
+    const { days: targetDays } = params;
+
+    // Calculate consecutive days with tips
+    const tips = await prisma.tip.findMany({
+      where: {
+        fromUserId: userId,
+        status: 'COMPLETED'
+      },
+      select: {
+        createdAt: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    if (tips.length === 0) return 0;
+
+    // Group tips by day
+    const tipDays = new Set();
+    for (const tip of tips) {
+      const dayKey = tip.createdAt.toISOString().split('T')[0];
+      tipDays.add(dayKey);
+    }
+
+    // Calculate consecutive days (simplified)
+    const sortedDays = Array.from(tipDays).sort().reverse();
+    let consecutiveDays = 0;
+    let currentDate = new Date();
+
+    for (const dayStr of sortedDays) {
+      const dayDate = new Date(String(dayStr));
+      const daysDiff = Math.floor((currentDate.getTime() - dayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (daysDiff === consecutiveDays) {
+        consecutiveDays++;
+        currentDate = dayDate;
+      } else {
+        break;
+      }
+    }
+
+    return consecutiveDays;
+  }
+
+  private async calculateDaysSinceJoined(userId: number, params: any): Promise<number> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { createdAt: true }
+    });
+
+    if (!user) return 0;
+
+    const daysDiff = Math.floor(
+      (Date.now() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    return daysDiff;
+  }
+
+  private async calculateTipsToUniqueUsersThisMonth(userId: number, params: any): Promise<number> {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const uniqueRecipients = await prisma.tip.groupBy({
+      by: ['toUserId'],
+      where: {
+        fromUserId: userId,
+        createdAt: { gte: monthStart },
+        status: 'COMPLETED'
+      }
+    });
+
+    return uniqueRecipients.length;
+  }
+
+  getDescription(criteriaData: any): string {
+    const { function: functionName, params = {} } = criteriaData;
+    return `Custom: ${functionName}(${JSON.stringify(params)})`;
+  }
+
+  validateConfig(criteriaData: any): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const validFunctions = [
+      'depositsThisWeek',
+      'consecutiveDaysTipping',
+      'daysSinceJoined',
+      'tipsToUniqueUsersThisMonth'
+    ];
+
+    if (!criteriaData.function) {
+      errors.push('function is required');
+    } else if (!validFunctions.includes(criteriaData.function)) {
+      errors.push(`function must be one of: ${validFunctions.join(', ')}`);
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+}
+
+// Initialize the registry with built-in evaluators
+export function initializeCriteriaRegistry(): void {
+  CriteriaRegistry.register(new CountEvaluator());
+  CriteriaRegistry.register(new SumEvaluator());
+  CriteriaRegistry.register(new StreakEvaluator());
+  CriteriaRegistry.register(new UniqueEvaluator());
+  CriteriaRegistry.register(new CustomEvaluator());
+
+  console.log(`🔧 Criteria registry initialized with ${CriteriaRegistry.getAll().length} evaluators`);
+}
+
+// Main evaluation function
+export async function evaluateAchievementCriteria(
+  userId: number,
+  criteriaType: string,
+  criteriaData: any,
+  eventData?: any
+): Promise<number> {
+
+  const evaluator = CriteriaRegistry.get(criteriaType);
+  if (!evaluator) {
+    throw new Error(`Unknown criteria type: ${criteriaType}`);
+  }
+
+  // Validate configuration
+  const validation = evaluator.validateConfig(criteriaData);
+  if (!validation.valid) {
+    throw new Error(`Invalid criteria config: ${validation.errors.join(', ')}`);
+  }
+
+  return await evaluator.evaluate(userId, criteriaData, eventData);
+}
+
+// Utility function to get human-readable description
+export function getCriteriaDescription(criteriaType: string, criteriaData: any): string {
+  const evaluator = CriteriaRegistry.get(criteriaType);
+  if (!evaluator) {
+    return `Unknown criteria: ${criteriaType}`;
+  }
+
+  return evaluator.getDescription(criteriaData);
+}

@@ -26,6 +26,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Init Config**: `npx tsx scripts/init_app_config.ts` - Initialize AppConfig with emergency controls
 - **Auto-Fix Sync**: Set `AUTO_FIX_SYNC=true` environment variable for automatic sync repair
 
+## Achievement System Management
+
+### Dynamic Achievement System
+- **Seed Achievements**: `npx tsx scripts/seed_dynamic_achievements.ts` - Initialize dynamic achievement definitions with responsive gaming mechanics
+- **Schema Validation**: `npx tsx scripts/validate_achievement_schema.ts` - Validate achievement system database requirements
+- **Production Readiness**: `npx tsx scripts/production_readiness_check.ts` - Comprehensive production validation
+
+### Admin Operations
+- **Admin Panel**: Access dynamic achievement management at `/admin/achievements` endpoint
+- **Manual Controls**: Grant, revoke, reset progress, and bulk operations via API
+- **Real-time Monitoring**: WebSocket dashboard for live achievement tracking at `/admin/achievements` namespace
+- **Emergency Controls**: Global enable/disable via AppConfig (`achievementsEnabled`, `streakProtectionEnabled`)
+
 ## Deployment
 
 - **CI/CD**: Automated deployment via GitHub Actions on push to main branch

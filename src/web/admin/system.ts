@@ -2,6 +2,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 import { getSyncMonitor } from "../../services/sync_monitor.js";
+import { withdrawalLimiter } from "../../services/withdrawal_limiter.js";
 
 export const systemRouter = Router();
 
@@ -451,20 +452,68 @@ systemRouter.post("/migrations/apply", async (req: Request, res: Response) => {
 systemRouter.get("/migrations/status", async (req: Request, res: Response) => {
   try {
     const { execSync } = await import("child_process");
-    
+
     const status = execSync('npx prisma migrate status', { encoding: 'utf-8' });
     const upToDate = status.includes('Database schema is up to date');
     const pendingMigrations = status.includes('following migrations have not yet been applied');
-    
+
     res.json({
       ok: true,
       upToDate,
       pendingMigrations,
       statusText: status.trim()
     });
-    
+
   } catch (error: any) {
     console.error("Failed to get migration status:", error);
     res.status(500).json({ ok: false, error: `Migration status failed: ${error.message}` });
+  }
+});
+
+// WITHDRAWAL GAS DRAIN PROTECTION MONITORING
+systemRouter.get("/withdrawals/stats", async (req: Request, res: Response) => {
+  try {
+    const { hours = "24" } = req.query;
+    const timeframeHours = parseInt(hours as string);
+
+    const stats = await withdrawalLimiter.getWithdrawalStats(timeframeHours);
+
+    res.json({
+      ok: true,
+      protection: {
+        active: true,
+        timeframe: `${timeframeHours} hours`,
+        ...stats
+      }
+    });
+  } catch (error: any) {
+    console.error("Failed to get withdrawal stats:", error);
+    res.status(500).json({ ok: false, error: `Failed to get withdrawal stats: ${error.message}` });
+  }
+});
+
+systemRouter.post("/withdrawals/clear-cooldowns", async (req: Request, res: Response) => {
+  try {
+    const { confirmToken } = req.body;
+
+    // Require confirmation for safety
+    if (confirmToken !== "CLEAR_ALL_COOLDOWNS") {
+      return res.status(400).json({
+        ok: false,
+        error: "Confirmation required: { \"confirmToken\": \"CLEAR_ALL_COOLDOWNS\" }"
+      });
+    }
+
+    withdrawalLimiter.clearCooldowns();
+    console.log("🔄 Admin cleared all withdrawal cooldowns");
+
+    res.json({
+      ok: true,
+      message: "All withdrawal cooldowns and rate limiting cleared",
+      warning: "Users can now bypass progressive cooldowns until they withdrawal again"
+    });
+  } catch (error: any) {
+    console.error("Failed to clear withdrawal cooldowns:", error);
+    res.status(500).json({ ok: false, error: `Failed to clear cooldowns: ${error.message}` });
   }
 });

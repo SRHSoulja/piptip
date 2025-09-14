@@ -306,7 +306,7 @@ export async function generateProfileData(userId, discordUser) {
     const { formatAchievementBadge } = await import("./streaks.js");
     const achievements = achievementsRaw.length > 0
         ? achievementsRaw.slice(0, 3)
-            .map(achievement => formatAchievementBadge(achievement))
+            .map((achievement) => formatAchievementBadge(achievement))
             .join("\n")
         : null;
     return {

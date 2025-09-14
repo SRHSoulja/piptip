@@ -170,7 +170,7 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req: Reque
       console.warn("Failed to fetch username for export:", error);
     }
 
-    let csv = "username,user_discord_id,timestamp,activity_type,direction,amount,token,fee,counterpart,guild_id,status,details\n";
+    let csv = "username,user_discord_id,timestamp,activity_type,direction,tip_amount,token,tax_paid,total_deducted,tax_rate_bps,exemption_applied,exemption_rate,tax_saved,counterpart,guild_id,status,details\n";
 
     // Add transactions
     transactions.forEach(tx => {
@@ -208,32 +208,41 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req: Reque
         }
       }
       
-      csv += `"${username}","${user.discordId}","${tx.createdAt.toISOString()}","${activityType}","${direction}","${tx.amount}","${token}","${tx.fee}","${counterpart}","${tx.guildId || ''}","${status}","${details}"\n`;
+      // Non-tip transactions - use basic format without tax breakdown
+      csv += `"${username}","${user.discordId}","${tx.createdAt.toISOString()}","${activityType}","${direction}","${tx.amount}","${token}","${tx.fee}","${tx.amount}","0","","0","0","${counterpart}","${tx.guildId || ''}","${status}","${details}"\n`;
     });
 
-    // Add tips
+    // Add tips with comprehensive tax transparency
     tips.forEach(tip => {
       const direction = tip.fromUserId === user.id ? 'sent' : 'received';
       const counterpart = direction === 'sent' ? `user_${tip.toUserId}` : `user_${tip.fromUserId}`;
-      csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","${tip.feeAtomic}","${counterpart}","","${tip.status}","${tip.note || ''}"\n`;
+
+      // For sent tips, show full tax breakdown; for received tips, show recipient perspective
+      if (direction === 'sent') {
+        csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","${tip.feeAtomic || 0}","${tip.totalDeductedAtomic || Number(tip.amountAtomic) + Number(tip.feeAtomic || 0)}","${tip.taxRateAppliedBps || 0}","${tip.roleBenefitUsed || ''}","${tip.exemptionRateBps || 0}","${tip.taxSavedAtomic || 0}","${counterpart}","${tip.guildId || ''}","${tip.status}","${tip.note || ''}"\n`;
+      } else {
+        // Received tips don't show tax details (recipient gets full amount)
+        csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","0","${tip.amountAtomic}","0","","0","0","${counterpart}","${tip.guildId || ''}","${tip.status}","${tip.note || ''}"\n`;
+      }
     });
 
     // Add group tips created
     groupTips.created.forEach(gt => {
-      csv += `"${username}","${user.discordId}","${gt.createdAt.toISOString()}","group_tip","created","${gt.totalAmount}","${gt.Token?.symbol || 'Unknown'}","${gt.taxAtomic}","group","${gt.guildId || ''}","${gt.status}","Duration: ${gt.duration}h"\n`;
+      const totalWithTax = Number(gt.totalAmount) + Number(gt.taxAtomic || 0);
+      csv += `"${username}","${user.discordId}","${gt.createdAt.toISOString()}","group_tip","created","${gt.totalAmount}","${gt.Token?.symbol || 'Unknown'}","${gt.taxAtomic || 0}","${totalWithTax}","0","","0","0","group","${gt.guildId || ''}","${gt.status}","Duration: ${gt.duration}h"\n`;
     });
 
     // Add group tips claimed
     groupTips.claimed.forEach(claim => {
       const claimTime = claim.claimedAt?.toISOString() || claim.createdAt.toISOString();
-      csv += `"${username}","${user.discordId}","${claimTime}","group_tip","claimed","estimated_share","${claim.GroupTip.Token?.symbol || 'Unknown'}","0","group_${claim.groupTipId}","${claim.GroupTip.guildId || ''}","${claim.status}","Group tip claim"\n`;
+      csv += `"${username}","${user.discordId}","${claimTime}","group_tip","claimed","estimated_share","${claim.GroupTip.Token?.symbol || 'Unknown'}","0","estimated_share","0","","0","0","group_${claim.groupTipId}","${claim.GroupTip.guildId || ''}","${claim.status}","Group tip claim"\n`;
     });
 
     // Add matches
     matches.forEach(match => {
       const role = match.challengerId === user.id ? 'challenger' : 'joiner';
       const result = match.winnerUserId === user.id ? 'won' : (match.winnerUserId ? 'lost' : 'pending');
-      csv += `"${username}","${user.discordId}","${match.createdAt.toISOString()}","match","${role}","${match.wagerAtomic}","${match.Token?.symbol || 'Unknown'}","${match.rakeAtomic}","opponent","","${match.status}","${result}"\n`;
+      csv += `"${username}","${user.discordId}","${match.createdAt.toISOString()}","match","${role}","${match.wagerAtomic}","${match.Token?.symbol || 'Unknown'}","${match.rakeAtomic || 0}","${match.wagerAtomic}","0","","0","0","opponent","","${match.status}","${result}"\n`;
     });
 
     const filename = `user_${discordId}_activity_${new Date().toISOString().split('T')[0]}.csv`;

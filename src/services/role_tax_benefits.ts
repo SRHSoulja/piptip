@@ -61,24 +61,21 @@ export class RoleTaxBenefitService {
   ): Promise<RoleTaxBenefit | null> {
 
     try {
-      // Check cache first
-      const cacheKey = `${guildId}:${discordUserId}`;
-      const now = Date.now();
-
-      if (now - lastCacheRefresh > CACHE_DURATION) {
-        await this.refreshRoleCache(guildId);
-      }
+      // SECURITY: Always refresh role data to prevent cache poisoning
+      // Re-verify role membership on EVERY benefit application (no cache trust)
+      await this.refreshRoleCache(guildId);
 
       const guildCache = roleExemptionCache.get(guildId);
       if (!guildCache) return null;
 
-      // Get user's roles from Discord
+      // SECURITY: Real-time Discord role verification (no stale data)
       const discord = getDiscordClient();
       if (!discord) return null;
 
-      const guild = await discord.guilds.fetch(guildId);
+      const guild = await discord.guilds.fetch(guildId).catch(() => null);
       if (!guild) return null;
 
+      // SECURITY: Fresh role fetch every time (prevent role evasion)
       const member = await guild.members.fetch(discordUserId).catch(() => null);
       if (!member) return null;
 
@@ -102,7 +99,14 @@ export class RoleTaxBenefitService {
         );
 
         if (roleHoldValid && (!bestBenefit || roleBenefit.exemptionRate > bestBenefit.exemptionRate)) {
-          bestBenefit = roleBenefit;
+          // SECURITY: Double-verify user still has the role before applying benefit
+          const stillHasRole = member.roles.cache.has(roleId);
+          if (stillHasRole) {
+            bestBenefit = roleBenefit;
+            console.log(`✅ Tax benefit verified: User ${discordUserId} role ${roleId} (${roleBenefit.exemptionRate}% exemption)`);
+          } else {
+            console.warn(`🚫 Role benefit denied: User ${discordUserId} lost role ${roleId} during verification`);
+          }
         } else if (!roleHoldValid) {
           // Log attempted role evasion for audit
           console.warn(`🚫 Role tax evasion blocked: User ${discordUserId} has role ${roleId} for <10min in guild ${guildId}`);

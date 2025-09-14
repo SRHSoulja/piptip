@@ -15,6 +15,7 @@ import { handlePick, handleJoin, handleCancel } from "./buttons/matches.js";
 import { handlePromptLinkWallet, handleLinkWalletModal, handleLinkWalletSubmit } from "./buttons/wallet.js";
 import { handleShowDepositInstructions, handleDepositToken, handleCancelDeposit } from "./buttons/deposits.js";
 import { handlePenguBookNav, handlePenguBookModes, handleBioToggle, handleTipFromBook, handleViewOwnBio, handlePenguBookCTA, handlePenguBookBioSetup, handlePenguBookProfile, handlePenguBookInbox } from "./buttons/pengubook.js";
+import { handleRefreshAchievements, handleShowLeaderboard, handleViewOwnAchievements } from "./buttons/achievements.js";
 
 /** Router for pip button customIds: pip:<action>:<matchId>:<move?> */
 // Main handler that routes by interaction type using type guards
@@ -143,6 +144,19 @@ async function handleLegacyPipButton(i: ButtonInteraction) {
 
   if (action === "prompt_link_wallet") {
     return handlePromptLinkWallet(i);
+  }
+
+  // Handle achievement buttons
+  if (action === "refresh_achievements") {
+    return handleRefreshAchievements(i);
+  }
+
+  if (action === "show_leaderboard") {
+    return handleShowLeaderboard(i);
+  }
+
+  if (action === "view_own_achievements") {
+    return handleViewOwnAchievements(i);
   }
 
   // Handle deposit token selection

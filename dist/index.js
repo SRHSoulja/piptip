@@ -20,6 +20,8 @@ import pipHelp from "./commands/pip_help.js";
 import pipStats from "./commands/pip_stats.js";
 import pipBio from "./commands/pip_bio.js";
 import pipPenguBook from "./commands/pip_pengubook.js";
+import pipAchievements from "./commands/pip_achievements.js";
+import pipLeaderboard from "./commands/pip_leaderboard.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
 import { isButtonInteraction, isModalSubmitInteraction } from "./discord/guards.js";
@@ -216,6 +218,8 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
             case "pip_stats": return pipStats(i);
             case "pip_bio": return pipBio(i);
             case "pip_pengubook": return pipPenguBook(i);
+            case "pip_achievements": return pipAchievements(i);
+            case "pip_leaderboard": return pipLeaderboard(i);
             default:
                 console.warn("Unknown command:", i.commandName);
         }
@@ -243,6 +247,14 @@ bot.once(Events.ClientReady, async () => {
     console.log(`Bot logged in as ${bot.user?.tag}`);
     // Set global client reference for admin routes
     setDiscordClient(bot);
+    // Initialize achievement notification system
+    try {
+        const { initializeNotificationSystem } = await import("./services/notifications.js");
+        initializeNotificationSystem(bot);
+    }
+    catch (error) {
+        console.error("Failed to initialize notification system:", error);
+    }
     try {
         await restoreGroupTipExpiryTimers(bot);
         console.log("Group tip timers restored");

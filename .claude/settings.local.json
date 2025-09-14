@@ -31,7 +31,11 @@
       "Bash(chmod:*)",
       "Bash(git grep:*)",
       "Bash(npx prisma migrate:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(xargs ls:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(NODE_ENV=test npx prisma migrate reset --force --skip-generate)",
+      "Bash(DATABASE_URL=\"file:./test_security.db\" npx prisma db push --force-reset)"
     ],
     "deny": [],
     "ask": []

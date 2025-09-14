@@ -2,6 +2,7 @@
 import { prisma } from "./db.js";
 import { formatUnits, parseUnits } from "ethers";
 import { incrementNegativeBalanceAttempts } from "./metrics.js";
+import { BalanceConservationService } from "./balance_conservation.js";
 // Legacy compatibility function for existing commands
 export async function debit(discordId, amountAtomic, type = "MATCH_WAGER") {
     // For legacy compatibility, use the first active token (likely PENGU)
@@ -85,22 +86,43 @@ opts = {}) {
         getTokenById(tokenId),
     ]);
     const decimals = Number(token.decimals);
-    const ub = await ensureUserBalance(user.id, tokenId);
-    const bal = toAtomic(ub.amount, decimals);
+    // SECURITY: Use pessimistic locking - check balance AND debit in single atomic operation
     const total = amountAtomic + BigInt(opts.feeAtomic ?? 0n);
-    if (bal < total)
-        throw new Error("Insufficient balance");
-    const newBal = bal - total;
-    // Monitor for negative balance attempts (should never happen after sufficient balance check)
-    if (newBal < 0n) {
-        incrementNegativeBalanceAttempts();
-        throw new Error("Negative balance prevented");
-    }
     await prisma.$transaction(async (db) => {
-        await db.userBalance.update({
-            where: { userId_tokenId: { userId: user.id, tokenId } },
-            data: { amount: toDecStr(newBal, decimals) },
+        // ATOMIC: Get current balance with FOR UPDATE lock
+        const ub = await db.userBalance.findFirst({
+            where: { userId: user.id, tokenId },
+            // Note: Prisma doesn't support SELECT FOR UPDATE, but we use atomic updateMany for same effect
         });
+        if (!ub) {
+            // Create balance if it doesn't exist
+            await db.userBalance.create({
+                data: { userId: user.id, tokenId, amount: "0" }
+            });
+        }
+        const currentBal = ub ? toAtomic(ub.amount, decimals) : 0n;
+        if (currentBal < total) {
+            throw new Error("Insufficient balance");
+        }
+        const newBal = currentBal - total;
+        // Monitor for negative balance attempts (should never happen after sufficient balance check)
+        if (newBal < 0n) {
+            incrementNegativeBalanceAttempts();
+            throw new Error("Negative balance prevented");
+        }
+        // ATOMIC: Update balance with WHERE clause to prevent race condition
+        const updateResult = await db.userBalance.updateMany({
+            where: {
+                userId: user.id,
+                tokenId,
+                amount: { gte: toDecStr(total, decimals) } // Only update if sufficient balance
+            },
+            data: { amount: toDecStr(newBal, decimals) }
+        });
+        // If no rows updated, another transaction consumed the balance
+        if (updateResult.count === 0) {
+            throw new Error("Insufficient balance due to concurrent transaction");
+        }
         await logTxAtomicTx(db, {
             userId: user.id,
             otherUserId: opts.otherUserId ?? null,
@@ -210,6 +232,68 @@ export async function transferToken(fromDiscordId, toDiscordId, tokenId, amountA
 }
 // ---------- TX variants (use these from complex flows like button handlers) ----------
 /** Debit inside an existing TX (no nested $transaction). */
+// SECURITY: Atomic debit function that works within existing transaction (race condition safe)
+export async function debitTokenAtomicTx(tx, // Prisma transaction context
+discordId, tokenId, amountAtomic, type, opts = {}) {
+    if (amountAtomic <= 0n)
+        throw new Error("Amount must be positive");
+    const [user, token] = await Promise.all([
+        ensureUser(discordId),
+        getTokenById(tokenId),
+    ]);
+    const decimals = Number(token.decimals);
+    const total = amountAtomic + BigInt(opts.feeAtomic ?? 0n);
+    // SECURITY: Pre-transaction balance conservation validation
+    const preValidation = await BalanceConservationService.preTransactionValidation(user.id, tokenId, total);
+    if (!preValidation) {
+        throw new Error("Pre-transaction validation failed - insufficient balance or system inconsistency");
+    }
+    // SECURITY: Atomic balance check and update in single operation
+    const currentBalance = await tx.userBalance.findFirst({
+        where: { userId: user.id, tokenId }
+    });
+    if (!currentBalance) {
+        // Create zero balance if doesn't exist
+        await tx.userBalance.create({
+            data: { userId: user.id, tokenId, amount: "0" }
+        });
+    }
+    const currentBal = currentBalance ? toAtomic(currentBalance.amount, decimals) : 0n;
+    if (currentBal < total) {
+        throw new Error("Insufficient balance");
+    }
+    const newBal = currentBal - total;
+    if (newBal < 0n) {
+        incrementNegativeBalanceAttempts();
+        throw new Error("Negative balance prevented");
+    }
+    // ATOMIC: Update with WHERE clause to prevent race condition
+    const updateResult = await tx.userBalance.updateMany({
+        where: {
+            userId: user.id,
+            tokenId,
+            amount: { gte: toDecStr(total, decimals) } // Only update if sufficient balance
+        },
+        data: { amount: toDecStr(newBal, decimals) }
+    });
+    // If no rows updated, concurrent transaction consumed the balance
+    if (updateResult.count === 0) {
+        throw new Error("Insufficient balance due to concurrent transaction");
+    }
+    // Log transaction
+    await logTxAtomicTx(tx, {
+        userId: user.id,
+        otherUserId: opts.otherUserId ?? null,
+        guildId: opts.guildId ?? null,
+        type,
+        tokenId,
+        decimals,
+        amountAtomic,
+        feeAtomic: opts.feeAtomic ?? 0n,
+        txHash: opts.txHash ?? null,
+        note: opts.note ?? null,
+    });
+}
 export async function debitTokenTx(tx, discordId, tokenId, amountAtomic, type, opts = {}) {
     if (amountAtomic <= 0n)
         throw new Error("Amount must be positive");

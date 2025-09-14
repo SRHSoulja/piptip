@@ -95,7 +95,9 @@ export default async function pipWithdraw(i) {
                 flags: MessageFlags.Ephemeral
             });
         }
-        // Create holdings display embed
+        // Get comprehensive withdrawal status for transparency
+        const withdrawalStatus = await getWithdrawalStatusDisplay(user.id, holdings);
+        // Create holdings display embed with withdrawal transparency
         const embed = new EmbedBuilder()
             .setTitle("💸 Withdraw Your Tokens")
             .setDescription([
@@ -107,10 +109,13 @@ export default async function pipWithdraw(i) {
                 return `• **${balance}** ${holding.Token.symbol}`;
             }).join("\n"),
             "",
+            "💰 **Your Withdrawal Status:**",
+            withdrawalStatus,
+            "",
             "🪙 **Select a token below to withdraw:**"
         ].join("\n"))
             .setColor(0x00FF00)
-            .setFooter({ text: "Click a token to continue with withdrawal" })
+            .setFooter({ text: "All limits are to prevent abuse and protect the platform" })
             .setTimestamp();
         // Create token selection buttons
         const tokenButtons = [];
@@ -156,5 +161,113 @@ export default async function pipWithdraw(i) {
             content: `❌ **Error loading withdraw interface**\n${error?.message || String(error)}`,
             flags: MessageFlags.Ephemeral
         }).catch(() => { });
+    }
+}
+/**
+ * Get comprehensive withdrawal status display for user transparency
+ */
+async function getWithdrawalStatusDisplay(userId, holdings) {
+    try {
+        // Get user account age
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { createdAt: true }
+        });
+        if (!user)
+            return "• Status: Unknown user";
+        const accountAgeDays = Math.floor((Date.now() - user.createdAt.getTime()) / (24 * 60 * 60 * 1000));
+        // Determine daily limits based on account age
+        let maxWithdrawalsPerDay;
+        let accountTier;
+        if (accountAgeDays < 1) {
+            maxWithdrawalsPerDay = 1;
+            accountTier = "New (< 1 day)";
+        }
+        else if (accountAgeDays < 7) {
+            maxWithdrawalsPerDay = 2;
+            accountTier = "Recent (< 1 week)";
+        }
+        else if (accountAgeDays < 30) {
+            maxWithdrawalsPerDay = 3;
+            accountTier = "Established (< 1 month)";
+        }
+        else {
+            maxWithdrawalsPerDay = 5;
+            accountTier = "Mature (1+ month)";
+        }
+        // Get recent withdrawals (last 24 hours)
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentWithdrawals = await prisma.transaction.findMany({
+            where: {
+                userId,
+                type: 'WITHDRAW',
+                createdAt: { gte: twentyFourHoursAgo }
+            },
+            include: { Token: true },
+            orderBy: { createdAt: 'desc' }
+        });
+        const withdrawalsUsed = recentWithdrawals.length;
+        const timeUntilReset = 24 - Math.floor((Date.now() - twentyFourHoursAgo.getTime()) / (60 * 60 * 1000));
+        // Get token-specific withdrawal counts
+        const tokenWithdrawals = new Map();
+        recentWithdrawals.forEach(w => {
+            if (w.tokenId) {
+                tokenWithdrawals.set(w.tokenId, (tokenWithdrawals.get(w.tokenId) || 0) + 1);
+            }
+        });
+        // Get minimum withdrawal amounts for each token
+        const tokens = await prisma.token.findMany({
+            where: {
+                id: { in: holdings.map(h => h.Token.id) },
+                active: true
+            },
+            select: { id: true, symbol: true, minWithdraw: true }
+        });
+        const status = [
+            `• Account tier: **${accountTier}** (${accountAgeDays} days old)`,
+            `• Daily limit: **${withdrawalsUsed} of ${maxWithdrawalsPerDay}** withdrawals used (resets in ${timeUntilReset}h)`,
+        ];
+        // Show cooldown information if user has recent withdrawals
+        if (withdrawalsUsed > 0) {
+            const lastWithdrawal = recentWithdrawals[0];
+            const timeSinceLastMs = Date.now() - lastWithdrawal.createdAt.getTime();
+            const timeSinceLastHours = Math.floor(timeSinceLastMs / (60 * 60 * 1000));
+            const timeSinceLastMins = Math.floor((timeSinceLastMs % (60 * 60 * 1000)) / (60 * 1000));
+            // Calculate potential cooldown for next withdrawal
+            let nextCooldownMins = 0;
+            if (withdrawalsUsed >= 2) {
+                nextCooldownMins = (withdrawalsUsed - 1) * 30; // Progressive cooldown
+            }
+            if (nextCooldownMins > 0) {
+                status.push(`• Cooldown: Next withdrawal available in **${nextCooldownMins} minutes** (progressive limit)`);
+            }
+            else {
+                status.push(`• Cooldown: **None** (last withdrawal ${timeSinceLastHours}h ${timeSinceLastMins}m ago)`);
+            }
+        }
+        else {
+            status.push(`• Cooldown: **None** (no recent withdrawals)`);
+        }
+        // Amount-based cooldown tiers
+        status.push(`• Quick withdrawals: **< 10** (instant) | **10-100** (1hr) | **100+** (6hr)`);
+        // Minimum withdrawal amounts
+        const minimums = tokens.map(t => `${t.symbol} (${Number(t.minWithdraw)} min)`).join(', ');
+        if (minimums) {
+            status.push(`• Minimum amounts: ${minimums}`);
+        }
+        // Per-token limits
+        const tokenLimits = tokens.map(token => {
+            const used = tokenWithdrawals.get(token.id) || 0;
+            const remaining = Math.max(0, 3 - used);
+            return `${token.symbol} (${used}/3 today)`;
+        }).join(', ');
+        if (tokenLimits) {
+            status.push(`• Per-token today: ${tokenLimits}`);
+        }
+        return status.join('\n');
+    }
+    catch (error) {
+        console.error('Error getting withdrawal status:', error);
+        return "• Status: Unable to load withdrawal information";
     }
 }

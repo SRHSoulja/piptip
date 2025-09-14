@@ -108,6 +108,33 @@ export function getCommandsJson() {
           .setRequired(false)
           .setMinValue(1)
       ),
+
+    new SlashCommandBuilder()
+      .setName("pip_achievements")
+      .setDescription("🏆 View achievements and badges")
+      .addUserOption(option =>
+        option.setName("user")
+          .setDescription("User to view achievements for (defaults to yourself)")
+          .setRequired(false)
+      ),
+
+    new SlashCommandBuilder()
+      .setName("pip_leaderboard")
+      .setDescription("🏅 View leaderboards and rankings")
+      .addStringOption(option =>
+        option.setName("category")
+          .setDescription("Leaderboard category")
+          .setRequired(false)
+          .addChoices(
+            { name: "🔥 Win Streaks", value: "streaks" },
+            { name: "🏆 Total Wins", value: "wins" },
+            { name: "📊 Win Rate", value: "winrate" },
+            { name: "💸 Tips Sent", value: "tips_sent" },
+            { name: "💝 Tips Received", value: "tips_received" },
+            { name: "👥 Referrals", value: "referrals" },
+            { name: "💰 Wealth", value: "wealth" }
+          )
+      ),
   ];
   return defs.map(d => d.toJSON());
 }
