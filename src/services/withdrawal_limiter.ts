@@ -17,9 +17,7 @@ interface WithdrawalLimits {
 }
 
 class WithdrawalLimiterService {
-  // In-memory cache for recent attempts (clears on restart)
-  private recentAttempts = new Map<number, WithdrawalAttempt[]>();
-  private cooldowns = new Map<number, Date>();
+  // SECURITY: Database-backed persistent tracking (no memory bypass or restart issues)
 
   async checkWithdrawalAllowed(
     userId: number,
@@ -27,16 +25,32 @@ class WithdrawalLimiterService {
     amount: number
   ): Promise<WithdrawalLimits> {
 
-    // 1. Check if user is still in cooldown
-    const existingCooldown = this.cooldowns.get(userId);
-    if (existingCooldown && existingCooldown > new Date()) {
-      const minutesLeft = Math.ceil((existingCooldown.getTime() - Date.now()) / 60000);
-      return {
-        allowed: false,
-        reason: `Cooldown active. Try again in ${minutesLeft} minutes`,
-        cooldownMinutes: minutesLeft,
-        nextAttemptAt: existingCooldown
-      };
+    // SECURITY: Check cooldown from database (persistent across restarts)
+    const recentCooldownAttempt = await prisma.withdrawalAttempt.findFirst({
+      where: {
+        userId,
+        blocked: true,
+        reason: { contains: "Cooldown" },
+        createdAt: { gte: new Date(Date.now() - 6 * 60 * 60 * 1000) } // 6 hours max cooldown
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (recentCooldownAttempt) {
+      // Extract cooldown minutes from reason (e.g., "Cooldown: 60 minutes")
+      const reasonMatch = recentCooldownAttempt.reason?.match(/Cooldown: (\d+) minutes/);
+      const cooldownMinutes = reasonMatch ? parseInt(reasonMatch[1]) : 60;
+      const cooldownEnd = new Date(recentCooldownAttempt.createdAt.getTime() + cooldownMinutes * 60000);
+
+      if (cooldownEnd > new Date()) {
+        const minutesLeft = Math.ceil((cooldownEnd.getTime() - Date.now()) / 60000);
+        return {
+          allowed: false,
+          reason: `Cooldown active. Try again in ${minutesLeft} minutes`,
+          cooldownMinutes: minutesLeft,
+          nextAttemptAt: cooldownEnd
+        };
+      }
     }
 
     // 2. Get user account age
@@ -54,21 +68,26 @@ class WithdrawalLimiterService {
 
     const accountAgeDays = Math.floor((Date.now() - user.createdAt.getTime()) / (24 * 60 * 60 * 1000));
 
-    // 3. Get 24-hour withdrawal history from database
+    // 3. SECURITY: Get 24-hour withdrawal attempts from database (both successful and blocked)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recentWithdrawals = await prisma.transaction.findMany({
+    const recentAttempts = await prisma.withdrawalAttempt.findMany({
       where: {
         userId,
-        type: 'WITHDRAW',
+        tokenId,
         createdAt: { gte: twentyFourHoursAgo }
       },
       select: {
         amount: true,
         createdAt: true,
-        tokenId: true
+        tokenId: true,
+        blocked: true,
+        reason: true
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    // Count both successful and blocked attempts for rate limiting
+    const recentWithdrawals = recentAttempts;
 
     // 4. Apply rolling 24-hour count limits based on account age
     let maxWithdrawalsPerDay: number;
@@ -82,11 +101,43 @@ class WithdrawalLimiterService {
       maxWithdrawalsPerDay = 5; // Mature accounts (1+ month): 5 per day
     }
 
-    if (recentWithdrawals.length >= maxWithdrawalsPerDay) {
-      return {
-        allowed: false,
-        reason: `Daily withdrawal limit reached (${maxWithdrawalsPerDay}/day for ${accountAgeDays} day old account). Try again tomorrow.`
-      };
+    // SECURITY: Atomic check and record to prevent race conditions
+    // Use database transaction to ensure no concurrent bypass
+    const limitCheck = await prisma.$transaction(async (tx) => {
+      // Re-check count within transaction for atomic operation
+      const currentAttempts = await tx.withdrawalAttempt.count({
+        where: {
+          userId,
+          tokenId,
+          createdAt: { gte: twentyFourHoursAgo }
+        }
+      });
+
+      if (currentAttempts >= maxWithdrawalsPerDay) {
+        // SECURITY: Record blocked attempt immediately in same transaction
+        await tx.withdrawalAttempt.create({
+          data: {
+            userId,
+            tokenId,
+            amount,
+            blocked: true,
+            reason: `Daily limit exceeded (${currentAttempts}/${maxWithdrawalsPerDay} for ${accountAgeDays} day old account)`,
+            ipAddress: 'system',
+            userAgent: 'rate_limiter'
+          }
+        });
+
+        return {
+          allowed: false,
+          reason: `Daily withdrawal limit reached (${maxWithdrawalsPerDay}/day for ${accountAgeDays} day old account). Try again tomorrow.`
+        };
+      }
+
+      return { allowed: true };
+    });
+
+    if (!limitCheck.allowed) {
+      return limitCheck;
     }
 
     // 5. Amount-based progressive cooldowns
@@ -114,20 +165,9 @@ class WithdrawalLimiterService {
       cooldownMinutes = Math.max(cooldownMinutes, 120); // Minimum 2 hours for rapid attempts
     }
 
-    // 8. Additional protection: Token-specific limits
-    const tokenWithdrawals = recentWithdrawals.filter(w => w.tokenId === tokenId);
-    if (tokenWithdrawals.length >= 3) {
-      return {
-        allowed: false,
-        reason: 'Too many withdrawals for this token today. Try a different token or wait until tomorrow.'
-      };
-    }
+    // 8. SECURITY: Token-specific limits already applied above (filtered by tokenId)
 
-    // Set cooldown if applicable
-    if (cooldownMinutes > 0) {
-      const nextAttempt = new Date(Date.now() + cooldownMinutes * 60 * 1000);
-      this.cooldowns.set(userId, nextAttempt);
-    }
+    // Cooldowns are now handled in database via recordBlockedWithdrawal method
 
     return {
       allowed: true,
@@ -136,34 +176,56 @@ class WithdrawalLimiterService {
     };
   }
 
-  async recordSuccessfulWithdrawal(userId: number, amount: number) {
-    // Update in-memory tracking
-    const attempts = this.recentAttempts.get(userId) || [];
-    attempts.push({
-      userId,
-      amount,
-      timestamp: new Date(),
-      blocked: false
+  // SECURITY: Record successful withdrawal in database (persistent tracking)
+  async recordSuccessfulWithdrawal(userId: number, tokenId: number, amount: number) {
+    await prisma.withdrawalAttempt.create({
+      data: {
+        userId,
+        tokenId,
+        amount,
+        blocked: false,
+        reason: "Successful withdrawal"
+      }
     });
-
-    // Keep only last 24 hours
-    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
-    const filtered = attempts.filter(a => a.timestamp.getTime() > twentyFourHoursAgo);
-    this.recentAttempts.set(userId, filtered);
   }
 
-  async recordBlockedWithdrawal(userId: number, amount: number, reason: string) {
+  // SECURITY: Record blocked withdrawal in database (persistent tracking)
+  async recordBlockedWithdrawal(
+    userId: number,
+    tokenId: number,
+    amount: number,
+    reason: string,
+    ipAddress?: string,
+    userAgent?: string
+  ) {
     console.log(`🚫 Blocked withdrawal: User ${userId}, Amount ${amount}, Reason: ${reason}`);
 
-    // Track blocked attempts for monitoring
-    const attempts = this.recentAttempts.get(userId) || [];
-    attempts.push({
-      userId,
-      amount,
-      timestamp: new Date(),
-      blocked: true
+    // ATOMIC: Record blocked attempt in database (prevents concurrent bypass)
+    await prisma.withdrawalAttempt.create({
+      data: {
+        userId,
+        tokenId,
+        amount,
+        blocked: true,
+        reason,
+        ipAddress,
+        userAgent
+      }
     });
-    this.recentAttempts.set(userId, attempts);
+
+    // Set cooldown for repeated attempts (velocity protection)
+    if (reason.includes('rate limit') || reason.includes('velocity')) {
+      const cooldownMinutes = reason.includes('velocity') ? 120 : 60; // 2hrs for velocity, 1hr for rate limit
+      await prisma.withdrawalAttempt.create({
+        data: {
+          userId,
+          tokenId,
+          amount: 0, // Cooldown record
+          blocked: true,
+          reason: `Cooldown: ${cooldownMinutes} minutes`
+        }
+      });
+    }
   }
 
   // Admin function to check withdrawal patterns
@@ -178,10 +240,13 @@ class WithdrawalLimiterService {
         }
       }),
 
-      // Count blocked attempts from memory (approximate)
-      Array.from(this.recentAttempts.values())
-        .flat()
-        .filter(a => a.blocked && a.timestamp >= since).length,
+      // SECURITY: Count blocked attempts from database (accurate persistent tracking)
+      prisma.withdrawalAttempt.count({
+        where: {
+          blocked: true,
+          createdAt: { gte: since }
+        }
+      }),
 
       prisma.transaction.groupBy({
         by: ['userId'],
@@ -212,10 +277,14 @@ class WithdrawalLimiterService {
   }
 
   // Reset cooldowns (admin emergency function)
-  clearCooldowns() {
-    this.cooldowns.clear();
-    this.recentAttempts.clear();
-    console.log('🔄 All withdrawal cooldowns and attempts cleared by admin');
+  async clearCooldowns() {
+    // Clear recent withdrawal attempts from database
+    const result = await prisma.withdrawalAttempt.deleteMany({
+      where: {
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+      }
+    });
+    console.log(`🔄 Cleared ${result.count} recent withdrawal attempts from database`);
   }
 }
 

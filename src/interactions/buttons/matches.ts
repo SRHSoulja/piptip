@@ -5,7 +5,7 @@ import { PipMove, judge, label } from "../../services/matches.js";
 import { publicJoinRow, cancelRow } from "../../ui/components.js";
 import { matchOfferEmbed, matchResultEmbed } from "../../ui/embeds.js";
 import { decToBigDirect, formatAmount } from "../../services/token.js";
-import { debitTokenTx, creditTokenTx } from "../../services/balances.js";
+import { debitTokenTx, debitTokenAtomicTx, creditTokenTx } from "../../services/balances.js";
 import { getConfig } from "../../config.js";
 import { getActiveAd } from "../../services/ads.js";
 import { RoleRakeReductionService, type RoleRakeBenefit } from "../../services/role_rake_benefits.js";
@@ -15,7 +15,26 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 // payout helper uses dynamic house fee (bps) from AppConfig
 function rpsPayout(wagerAtomic: bigint, houseFeeBps: bigint) {
   const pot = 2n * wagerAtomic;
-  const rake = (pot * houseFeeBps) / 10000n;
+
+  // SECURITY: Prevent precision overflow attacks - minimum wager enforcement
+  if (wagerAtomic < BigInt(1000)) {
+    throw new Error("Wager too small - minimum 0.000001 tokens to prevent fee bypass attacks");
+  }
+
+  // SECURITY: Calculate base rake
+  let rake = (pot * houseFeeBps) / 10000n;
+
+  // SECURITY: Apply ceiling division first (round up, favor platform)
+  const remainder = (pot * houseFeeBps) % 10000n;
+  if (remainder > 0n) {
+    rake = rake + 1n; // Round up to next atomic unit
+  }
+
+  // SECURITY: Force minimum rake only if calculated rake is still 0 (prevent rake bypass)
+  if (houseFeeBps > 0n && rake === 0n) {
+    rake = 1n; // Minimum rake enforcement
+  }
+
   const payout = pot - rake;
   return { pot, rake, payout };
 }
@@ -177,9 +196,9 @@ export async function handleJoin(i: ButtonInteraction, matchId: number, move: Pi
 
       const wager = decToBigDirect(m.wagerAtomic, m.Token.decimals);
 
-      // CRITICAL: Debit joiner's balance with proper error handling
+      // SECURITY: Use atomic debit to prevent race conditions with balance checking
       try {
-        await debitTokenTx(tx, i.user.id, m.Token.id, wager, "MATCH_WAGER", {
+        await debitTokenAtomicTx(tx, i.user.id, m.Token.id, wager, "MATCH_WAGER", {
           guildId: i.guildId ?? null
         });
       } catch (balanceError) {
@@ -188,7 +207,7 @@ export async function handleJoin(i: ButtonInteraction, matchId: number, move: Pi
           where: { id: matchId },
           data: { status: "OFFERED" } // Reset to offered so others can join
         });
-        throw new Error(`Insufficient funds: ${balanceError}`);
+        throw new Error(`Insufficient funds: ${String(balanceError)}`);
       }
 
       // resolve outcome

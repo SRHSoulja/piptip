@@ -78,7 +78,29 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
     }
     const feeBps = BigInt(feeBpsNum);
     const atomic = toAtomicDirect(data.amount, token.decimals);
-    const feeAtomic = (atomic * feeBps) / 10000n;
+
+    // SECURITY: Prevent precision overflow attacks with minimum amount threshold
+    if (atomic < BigInt(1000)) {
+      return {
+        success: false,
+        message: "Amount too small",
+        details: "Minimum tip amount is 0.000001 tokens to prevent fee bypass attacks."
+      };
+    }
+
+    // SECURITY: Calculate base fee
+    let feeAtomic = (atomic * feeBps) / 10000n;
+
+    // SECURITY: Apply ceiling division first (round up, favor platform)
+    const remainder = (atomic * feeBps) % 10000n;
+    if (remainder > 0n) {
+      feeAtomic = feeAtomic + 1n; // Round up to next atomic unit
+    }
+
+    // SECURITY: Force minimum fee only if calculated fee is still 0 (prevent fee bypass)
+    if (feeBps > 0n && feeAtomic === 0n) {
+      feeAtomic = 1n; // Minimum fee enforcement
+    }
 
     if (data.tipType === "direct") {
       // Handle direct tip
@@ -128,9 +150,9 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
       const taxSavedAtomic = originalFee - feeAtomic;
       const totalDeducted = atomic + feeAtomic;
 
-      // Calculate exemption rate applied
+      // Calculate exemption rate applied (keep as percentage, not BPS)
       const exemptionRateBps = bestTaxBenefit?.exemptionRate
-        ? Math.round(bestTaxBenefit.exemptionRate * 100) // Convert 0-100% to BPS
+        ? Math.round(bestTaxBenefit.exemptionRate) // Store as percentage (0-100)
         : 0;
 
       // Record tip (using current schema)

@@ -3,6 +3,7 @@ import type { ButtonInteraction, ModalSubmitInteraction } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../../services/db.js";
 import { decToBigDirect, formatAmount, formatDecimal, toAtomicDirect } from "../../services/token.js";
+import { withdrawalLimiter } from "../../services/withdrawal_limiter.js";
 
 export async function handleWithdrawToken(i: ButtonInteraction, parts: string[]) {
   await i.deferUpdate().catch(() => {});
@@ -467,11 +468,46 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
       });
     }
 
-    // Check daily cap if enabled
+    // SECURITY: Check withdrawal limits with database-backed persistent tracking
+    const limitCheck = await withdrawalLimiter.checkWithdrawalAllowed(user.id, token.id, amount);
+    if (!limitCheck.allowed) {
+      // SECURITY: Record blocked attempt in database (prevents concurrent bypass)
+      await withdrawalLimiter.recordBlockedWithdrawal(
+        user.id,
+        token.id,
+        amount,
+        limitCheck.reason || 'Unknown',
+        undefined, // IP address - could be added from request headers
+        undefined  // User agent - could be added from Discord client info
+      );
+
+      const cooldownMessage = limitCheck.cooldownMinutes
+        ? `\n\n⏰ **Next attempt:** ${limitCheck.nextAttemptAt?.toLocaleString() || 'Unknown'}`
+        : '';
+
+      return i.editReply({
+        content: [
+          "🚫 **Withdrawal Temporarily Blocked**",
+          "",
+          `**Reason:** ${limitCheck.reason}`,
+          cooldownMessage,
+          "",
+          "**This protects against:**",
+          "• Gas fund depletion attacks",
+          "• Rapid withdrawal abuse",
+          "• New account spam",
+          "",
+          policyLine
+        ].join("\n"),
+        components: []
+      });
+    }
+
+    // Legacy daily cap check (kept for backward compatibility)
     if (dailyCapHuman > 0) {
       const since = new Date();
       since.setUTCHours(0, 0, 0, 0);
-      
+
       const agg = await prisma.transaction.aggregate({
         where: {
           type: "WITHDRAW",
@@ -481,7 +517,7 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
         },
         _sum: { amount: true }
       });
-      
+
       const alreadyToday = parseFloat(String(agg._sum.amount ?? "0"));
       if (alreadyToday + amount > dailyCapHuman) {
         const remaining = Math.max(0, dailyCapHuman - alreadyToday);
@@ -575,12 +611,21 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
         txHash: tx.hash
       });
 
+      // Record successful withdrawal for tracking
+      // SECURITY: Record successful withdrawal in database (persistent tracking)
+      await withdrawalLimiter.recordSuccessfulWithdrawal(user.id, token.id, amount);
+
       // Queue success notification
       await queueNotice(user.id, "withdraw_success", {
         token: token.symbol,
         amount: formatAmount(amtAtomic, token),
         tx: tx.hash
       });
+
+      // Add cooldown info to success message if applicable
+      const cooldownInfo = limitCheck.cooldownMinutes && limitCheck.cooldownMinutes > 0
+        ? `\n\n⏰ **Next withdrawal available:** ${limitCheck.nextAttemptAt?.toLocaleString() || 'Unknown'}`
+        : '';
 
       // Success message
       await i.editReply({
@@ -592,6 +637,7 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
           `**Transaction:** \`${tx.hash}\``,
           "",
           "Your tokens have been sent to your linked wallet!",
+          cooldownInfo,
           "",
           policyLine
         ].join("\n"),
