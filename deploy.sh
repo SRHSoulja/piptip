@@ -1,3 +1,6 @@
+Deploy · SH
+Download
+
 #!/bin/bash
 
 # deploy.sh - Production deployment script for PIPTip
@@ -61,6 +64,11 @@ if ! grep -q '"name": "piptip"' package.json; then
   error_exit "This doesn't appear to be the PIPTip project directory"
 fi
 
+# Verify we're in a git repository
+if [ ! -d ".git" ]; then
+  error_exit "Not in a git repository"
+fi
+
 # Check if PM2 is running the process
 if ! pm2 describe "$PM2_PROCESS_NAME" > /dev/null 2>&1; then
   log "⚠️  PM2 process '$PM2_PROCESS_NAME' not found. This may be the first deployment."
@@ -71,9 +79,29 @@ PREVIOUS_COMMIT=$(git rev-parse HEAD)
 log "📝 Current commit: $PREVIOUS_COMMIT"
 
 if [ "$DRY_RUN" = false ]; then
+  # Check for local changes before destructive operations
+  if [ -n "$(git status --porcelain)" ]; then
+    log "⚠️  WARNING: Local changes detected!"
+    git status --short
+    log "⚠️  These changes will be LOST with hard reset to origin/main"
+    read -p "Continue? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      log "❌ Deployment cancelled by user"
+      exit 1
+    fi
+  fi
+
   # Fetch latest changes
   log "📥 Fetching latest changes from origin/main..."
-  git fetch origin main
+  if ! git fetch origin main; then
+    error_exit "Failed to fetch from origin/main. Check network connection and git remote."
+  fi
+  
+  # Verify origin/main exists
+  if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+    error_exit "origin/main branch not found"
+  fi
   
   # Reset to latest main (hard reset - be careful!)
   log "🔄 Resetting to origin/main..."
@@ -90,21 +118,33 @@ if [ "$CURRENT_COMMIT" = "$PREVIOUS_COMMIT" ]; then
 fi
 
 if [ "$DRY_RUN" = false ]; then
-  # Install dependencies
+  # Clean npm cache to avoid potential issues
+  log "🧹 Cleaning npm cache..."
+  npm cache clean --force
+  
+  # Install dependencies (skip Prisma postinstall to prevent hanging)
   log "📦 Installing production dependencies..."
-  npm ci --omit=dev --silent
+  if ! PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev --silent; then
+    error_exit "npm ci failed. Check package-lock.json and dependencies."
+  fi
   
   # Generate Prisma client
   log "🔧 Generating Prisma client..."
-  npx prisma generate
+  if ! npx prisma generate; then
+    error_exit "Prisma client generation failed"
+  fi
   
   # Run database migrations
   log "🗄️  Running database migrations..."
-  npx prisma migrate deploy
+  if ! npx prisma migrate deploy; then
+    error_exit "Database migration failed"
+  fi
   
   # Build application
   log "🏗️  Building application..."
-  npm run build
+  if ! npm run build; then
+    error_exit "Application build failed"
+  fi
   
   # Update environment variables with current git SHA
   log "🔧 Updating environment variables..."
@@ -128,24 +168,29 @@ if [ "$DRY_RUN" = false ]; then
   
   # Reload PM2 process
   log "🔄 Reloading PM2 process '$PM2_PROCESS_NAME'..."
-  pm2 reload "$PM2_PROCESS_NAME" --update-env
+  if ! pm2 reload "$PM2_PROCESS_NAME" --update-env; then
+    error_exit "PM2 reload failed"
+  fi
   
   # Wait for application to start
   log "⏳ Waiting for application startup..."
   sleep 10
 else
-  log "🧪 DRY RUN: Would install dependencies, migrate DB, build, and reload PM2"
+  log "🧪 DRY RUN: Would clean cache, install dependencies, migrate DB, build, and reload PM2"
 fi
 
 # Health check
 if [ "$SKIP_HEALTH_CHECK" = false ]; then
-  log "🏥 Performing health checks..."
+  log "🏥 Performing health checks on $HEALTH_URL..."
+  
+  HEALTH_PASSED=false
   
   for i in $(seq 1 $MAX_RETRIES); do
     log "Health check attempt $i/$MAX_RETRIES..."
     
     if [ "$DRY_RUN" = true ]; then
       log "🧪 DRY RUN: Would check $HEALTH_URL"
+      HEALTH_PASSED=true
       break
     fi
     
@@ -161,6 +206,7 @@ if [ "$SKIP_HEALTH_CHECK" = false ]; then
         # Validate response structure
         if jq -e '.status == "healthy" and .db.status == "connected"' /tmp/health_response.json > /dev/null; then
           log "✅ Health validation passed!"
+          HEALTH_PASSED=true
           break
         else
           log "❌ Health check response validation failed"
@@ -168,6 +214,7 @@ if [ "$SKIP_HEALTH_CHECK" = false ]; then
         fi
       else
         log "📊 Health response: $(cat /tmp/health_response.json)"
+        HEALTH_PASSED=true
         break
       fi
     else
@@ -181,11 +228,11 @@ if [ "$SKIP_HEALTH_CHECK" = false ]; then
   done
   
   # Check if health checks ultimately failed
-  if [ $i -eq $MAX_RETRIES ] && [ "$DRY_RUN" = false ]; then
+  if [ "$HEALTH_PASSED" = false ] && [ "$DRY_RUN" = false ]; then
     log "🚨 All health checks failed!"
     
     # Automatic rollback
-    log "🔄 Performing automatic rollback..."
+    log "🔄 Performing automatic rollback to $PREVIOUS_COMMIT..."
     git checkout "$PREVIOUS_COMMIT"
     npm ci --omit=dev --silent
     npx prisma generate
@@ -213,3 +260,5 @@ if command -v pm2 > /dev/null && [ "$DRY_RUN" = false ]; then
   log "📊 PM2 Status:"
   pm2 describe "$PM2_PROCESS_NAME" | grep -E "(status|uptime|cpu|memory)"
 fi
+
+log "✨ Deployment complete!"
