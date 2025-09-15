@@ -25,3 +25,8 @@ node_modules_*.tgz
 # Ngrok files
 ngrok
 ngrok-v3-stable-linux-amd64.tgz
+
+# ignore archives
+*.tgz
+*.tar.gz
+*.tar.xz
