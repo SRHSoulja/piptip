@@ -1,6 +1,3 @@
-Deploy · SH
-Download
-
 #!/bin/bash
 
 # deploy.sh - Production deployment script for PIPTip
@@ -124,9 +121,9 @@ if [ "$DRY_RUN" = false ]; then
   
   # Install dependencies (skip Prisma postinstall to prevent hanging)
   log "📦 Installing production dependencies..."
-  if ! PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev --silent; then
-    error_exit "npm ci failed. Check package-lock.json and dependencies."
-  fi
+if ! PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --prefer-offline --no-audit --fund=false --progress=false --omit=dev; then
+  error_exit "npm ci failed. Check package-lock.json and dependencies."
+fi
   
   # Generate Prisma client
   log "🔧 Generating Prisma client..."
@@ -262,3 +259,15 @@ if command -v pm2 > /dev/null && [ "$DRY_RUN" = false ]; then
 fi
 
 log "✨ Deployment complete!"
+
+
+
+
+
+
+
+
+
+
+
+
