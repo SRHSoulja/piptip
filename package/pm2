@@ -1,4 +1,0 @@
-#!/bin/bash
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-export NODE_PATH="$DIR/node_modules-actual:$NODE_PATH"
-exec node "$DIR/pm2-actual/bin/pm2" "$@"
