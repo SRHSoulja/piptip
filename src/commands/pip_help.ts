@@ -88,7 +88,7 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
   const webAccessRow = new ActionRowBuilder<ButtonBuilder>()
     .addComponents(
       new ButtonBuilder()
-        .setURL(`${process.env.WEB_BASE_URL || 'http://localhost:3000'}/pengubook`)
+        .setURL(`${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/pengubook`)
         .setLabel("🌐 Open PenguBook in Browser")
         .setStyle(ButtonStyle.Link)
         .setEmoji("💻"),
