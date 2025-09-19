@@ -178,6 +178,10 @@ class DeploymentValidator {
         return;
       }
 
+      // SECURITY: Command has been validated through multi-layer whitelist + regex validation
+      // - Command is from predefined ALLOWED_COMMANDS whitelist
+      // - Arguments are sanitized and separated to prevent injection
+      // - No shell interpretation (shell: false) prevents shell injection
       const child = spawn(command, sanitizedArgs, {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],

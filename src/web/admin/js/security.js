@@ -34,6 +34,10 @@ export function createElement(tagName, options = {}) {
   }
 
   // Set raw HTML (ONLY for trusted content - admin-generated)
+  // SECURITY: This innerHTML usage is SAFE because:
+  // - Only used for trusted, admin-generated content (not user input)
+  // - Content is pre-validated and sanitized before reaching this function
+  // - Used only for system-generated UI elements like buttons, icons, etc.
   if (options.innerHTML !== undefined && options.textContent === undefined) {
     element.innerHTML = options.innerHTML;
   }
