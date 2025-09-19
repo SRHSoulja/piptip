@@ -635,23 +635,39 @@ adminRouter.post('/auth/mfa/verify', async (req: Request, res: Response) => {
   }
 });
 
-// Simple Bearer token authentication for admin access
-adminRouter.use((req: Request, res: Response, next: NextFunction) => {
-  // Check for Bearer token in Authorization header
+// Simple ping endpoint for admin auth verification  
+adminRouter.get('/ping', (req: Request, res: Response) => {
+  // Check Bearer token authentication
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
     if (token === process.env.ADMIN_SECRET) {
-      // Valid admin token, allow access
+      return res.json({ ok: true, message: 'Authenticated' });
+    }
+  }
+  
+  res.status(401).json({ ok: false, error: 'Invalid admin secret' });
+});
+
+// Simple Bearer token authentication for admin routes
+adminRouter.use((req: Request, res: Response, next: NextFunction) => {
+  // Allow ping route
+  if (req.path === '/ping') {
+    return next();
+  }
+  
+  // Check Bearer token authentication
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    if (token === process.env.ADMIN_SECRET) {
       return next();
     }
   }
   
-  // No valid auth, return 401
   res.status(401).json({ 
     error: 'Admin authentication required',
-    message: 'Please include Authorization: Bearer <ADMIN_SECRET> header',
-    code: 'UNAUTHORIZED'
+    message: 'Please include Authorization: Bearer <ADMIN_SECRET> header'
   });
 });
 
