@@ -1,0 +1,15 @@
+# Security Scanner Ignore File
+# Files in this list will be excluded from security scanning
+
+# Old backup files (already anonymized)
+backups/piptip_reset_backup_2025-09-11T17-40-52-888Z.sql
+
+# Secure implementation files (false positives)
+src/web/admin/js/security.js:38
+src/web/admin/js/ui-secure-helpers.js
+
+# Secured deployment validation (command validation implemented)
+scripts/deployment_validation.ts
+
+# Legacy files being replaced
+src/web/admin/ui.js

@@ -205,13 +205,44 @@ export function createTierTableRow(tier) {
  * @returns {HTMLTableRowElement} - Safe server row
  */
 export function createServerTableRow(server) {
+  const statusClass = server.enabled ? 'online' : 'offline';
+
+  const statusCell = createElement('td');
+  const statusSpan = createElement('span', {
+    className: `status-indicator ${statusClass}`
+  });
+  const enabledCheckbox = createElement('input', {
+    attributes: {
+      type: 'checkbox',
+      'data-field': 'enabled',
+      ...(server.enabled ? { checked: true } : {})
+    }
+  });
+  statusCell.appendChild(statusSpan);
+  statusCell.appendChild(enabledCheckbox);
+
+  const actionCell = createElement('td');
+  const saveBtn = createElement('button', {
+    className: 'saveServer',
+    textContent: 'Save',
+    attributes: { 'data-id': String(server.id) }
+  });
+  const deleteBtn = createElement('button', {
+    className: 'deleteServer',
+    textContent: 'Delete',
+    style: { background: '#ef4444', marginLeft: '4px' },
+    attributes: { 'data-id': String(server.id) }
+  });
+  actionCell.appendChild(saveBtn);
+  actionCell.appendChild(deleteBtn);
+
   const cells = [
     { textContent: String(server.id) },
-    { textContent: escapeHtml(server.name || 'Unknown') },
+    { innerHTML: `<strong>${escapeHtml(server.servername || 'Loading...')}</strong>`, trusted: true },
     { innerHTML: `<code>${escapeHtml(server.guildId)}</code>`, trusted: true },
-    { textContent: new Date(server.approvedAt).toLocaleDateString() },
-    { textContent: escapeHtml(server.approvedBy || 'System') },
-    { type: 'html', content: `<button class="removeServer" data-guild-id="${escapeHtml(server.guildId)}" style="background:#ef4444; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Remove</button>`, trusted: true }
+    { type: 'html', content: `<input value="${escapeHtml(server.note || '')}" data-field="note" placeholder="Description"/>`, trusted: true },
+    { type: 'element', element: statusCell },
+    { type: 'element', element: actionCell }
   ];
 
   return createTableRow(cells);
@@ -239,6 +270,210 @@ export function createTreasuryRow(token) {
     { innerHTML: `<strong>${escapeHtml(token.symbol)}</strong>`, trusted: true },
     { textContent: escapeHtml(token.human || '0') }
   ];
+
+  return createTableRow(cells);
+}
+
+/**
+ * Securely create ads table row
+ * @param {Object} ad - Ad data
+ * @returns {HTMLTableRowElement} - Safe ad row
+ */
+export function createAdTableRow(ad) {
+  const statusClass = ad.active ? 'online' : 'offline';
+
+  const statusCell = createElement('td', { style: { whiteSpace: 'nowrap' } });
+  const statusSpan = createElement('span', {
+    className: `status-indicator ${statusClass}`
+  });
+  const activeCheckbox = createElement('input', {
+    attributes: {
+      type: 'checkbox',
+      'data-field': 'active',
+      ...(ad.active ? { checked: true } : {})
+    }
+  });
+  statusCell.appendChild(statusSpan);
+  statusCell.appendChild(activeCheckbox);
+
+  const actionCell = createElement('td');
+  const saveBtn = createElement('button', {
+    className: 'saveAd',
+    textContent: 'Save'
+  });
+  const deleteBtn = createElement('button', {
+    className: 'deleteAd',
+    textContent: 'Delete',
+    style: { background: '#ef4444' }
+  });
+  actionCell.appendChild(saveBtn);
+  actionCell.appendChild(deleteBtn);
+
+  const cells = [
+    { textContent: String(ad.id) },
+    { type: 'html', content: `<input value="${escapeHtml(ad.text || '')}" data-field="text" maxlength="500" style="width:420px"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(ad.url || '')}" data-field="url" placeholder="https://..." style="width:320px"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(ad.weight))}" data-field="weight" type="number" min="1" max="100" style="width:80px"/>`, trusted: true },
+    { type: 'element', element: statusCell },
+    { type: 'element', element: actionCell }
+  ];
+
+  return createTableRow(cells, { dataset: { id: String(ad.id) } });
+}
+
+/**
+ * Securely create transaction table row
+ * @param {Object} transaction - Transaction data
+ * @returns {HTMLTableRowElement} - Safe transaction row
+ */
+export function createTransactionTableRow(transaction) {
+  const deleteCell = createElement('td');
+  const deleteBtn = createElement('button', {
+    textContent: '🗑️ Delete',
+    style: { background: '#dc2626', fontSize: '11px', padding: '2px 6px' },
+    attributes: { onclick: `deleteTransaction(${transaction.id})` }
+  });
+  deleteCell.appendChild(deleteBtn);
+
+  const cells = [
+    { textContent: String(transaction.id) },
+    { textContent: escapeHtml(transaction.type) },
+    { textContent: escapeHtml(transaction.userId || 'System') },
+    { textContent: formatNumber(transaction.amount) },
+    { textContent: escapeHtml(transaction.tokenId || 'N/A') },
+    { textContent: formatNumber(transaction.fee) },
+    { textContent: new Date(transaction.createdAt).toLocaleString() },
+    { textContent: escapeHtml(transaction.guildId || 'N/A') },
+    { textContent: escapeHtml(transaction.metadata || '') },
+    { type: 'element', element: deleteCell }
+  ];
+
+  return createTableRow(cells);
+}
+
+/**
+ * Securely create group tip table row
+ * @param {Object} groupTip - Group tip data
+ * @returns {HTMLTableRowElement} - Safe group tip row
+ */
+export function createGroupTipTableRow(groupTip) {
+  const expiresAt = new Date(groupTip.expiresAt).toLocaleString();
+  const createdAt = new Date(groupTip.createdAt).toLocaleString();
+
+  const expireCell = createElement('td');
+  const expireBtn = createElement('button', {
+    className: 'expireGroupTip',
+    textContent: 'Expire',
+    style: { background: '#f59e0b', color: 'white', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px' },
+    attributes: { 'data-id': String(groupTip.id) }
+  });
+  expireCell.appendChild(expireBtn);
+
+  const creatorId = groupTip.Creator?.discordId?.slice(0, 8) || groupTip.creatorId || 'Unknown';
+
+  const cells = [
+    { textContent: String(groupTip.id) },
+    { textContent: `${escapeHtml(creatorId)}...` },
+    { textContent: formatNumber(groupTip.totalAmount) },
+    { textContent: escapeHtml(groupTip.Token?.symbol || 'Unknown') },
+    { textContent: escapeHtml(groupTip.status) },
+    { textContent: String(groupTip.claimCount || 0) },
+    { textContent: createdAt },
+    { textContent: expiresAt },
+    { type: 'element', element: expireCell }
+  ];
+
+  return createTableRow(cells);
+}
+
+/**
+ * Securely create token management table row
+ * @param {Object} token - Token data
+ * @returns {HTMLTableRowElement} - Safe token row
+ */
+export function createTokenTableRow(token) {
+  const tr = document.createElement('tr');
+
+  // Create fee input container helper
+  const createFeeInputContainer = (fieldName, currentValue, presetValues) => {
+    const container = createElement('div', { className: 'fee-input-container' });
+
+    const input = createElement('input', {
+      attributes: {
+        value: currentValue ? currentValue.toFixed(2) : '',
+        placeholder: 'default',
+        'data-field': fieldName,
+        type: 'number',
+        step: '0.01',
+        min: '0',
+        max: '10',
+        style: 'width:50px'
+      }
+    });
+
+    const suffix = createElement('span', {
+      className: 'fee-suffix',
+      textContent: '%'
+    });
+
+    const presets = createElement('div', { className: 'fee-presets' });
+    presetValues.forEach(value => {
+      const btn = createElement('button', {
+        attributes: {
+          type: 'button',
+          'data-field': fieldName,
+          'data-value': String(value)
+        },
+        className: 'preset-btn',
+        textContent: `${value}%`
+      });
+      presets.appendChild(btn);
+    });
+
+    const preview = createElement('div', {
+      className: 'fee-preview',
+      attributes: { 'data-field': fieldName + 'Preview' }
+    });
+
+    container.appendChild(input);
+    container.appendChild(suffix);
+    container.appendChild(presets);
+    container.appendChild(preview);
+
+    return container;
+  };
+
+  const cells = [
+    { textContent: String(token.id) },
+    { innerHTML: `<strong>${escapeHtml(token.symbol)}</strong>`, trusted: true },
+    { innerHTML: `<code>${escapeHtml(token.address)}</code>`, trusted: true },
+    { textContent: String(token.decimals) },
+    { type: 'html', content: `<input type="checkbox" ${token.active ? "checked" : ""} data-field="active"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.minDeposit))}" data-field="minDeposit" type="number" step="0.01" style="width:80px"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.minWithdraw))}" data-field="minWithdraw" type="number" step="0.01" style="width:80px"/>`, trusted: true },
+    { type: 'element', element: createFeeInputContainer('tipFeePercent', token.tipFeeBps ? token.tipFeeBps / 100 : null, [0.5, 1, 1.5, 2]) },
+    { type: 'element', element: createFeeInputContainer('houseFeePercent', token.houseFeeBps ? token.houseFeeBps / 100 : null, [1, 2, 2.5, 3]) },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.withdrawMaxPerTx || ''))}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.withdrawDailyCap || ''))}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px"/>`, trusted: true }
+  ];
+
+  // Create action buttons cell
+  const actionCell = createElement('td');
+  const saveBtn = createElement('button', {
+    className: 'saveToken',
+    textContent: 'Save',
+    attributes: { 'data-id': String(token.id) }
+  });
+  const deleteBtn = createElement('button', {
+    className: 'deleteToken',
+    textContent: 'Delete',
+    style: { background: '#ef4444', marginLeft: '4px' },
+    attributes: { 'data-id': String(token.id) }
+  });
+
+  actionCell.appendChild(saveBtn);
+  actionCell.appendChild(deleteBtn);
+  cells.push({ type: 'element', element: actionCell });
 
   return createTableRow(cells);
 }

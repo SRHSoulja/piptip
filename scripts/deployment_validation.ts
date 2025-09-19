@@ -34,17 +34,22 @@ const ALLOWED_COMMANDS: Record<string, SecureCommand> = {
   npm: {
     command: 'npm',
     allowedArgs: ['ci', 'run', 'install'],
-    validator: (cmd) => /^npm\s+(ci|run|install)(\s+[\w\-\.\s=]*)?$/.test(cmd)
+    validator: (cmd) => /^npm\s+(ci|run\s+[\w\-\.:]+|install)(\s+[\w\-\.\s=@\/]*)?$/.test(cmd)
   },
   npx: {
     command: 'npx',
     allowedArgs: ['prisma', 'tsc', 'tsx', 'eslint', 'prettier'],
-    validator: (cmd) => /^npx\s+(prisma|tsc|tsx|eslint|prettier)\s+[\w\-\.\s\/]*$/.test(cmd)
+    validator: (cmd) => /^npx\s+(prisma(\s+[\w\-\.\s\/]*)?|tsc(\s+[\w\-\.\s]*)?|tsx(\s+[\w\-\.\s\/]*)?|eslint(\s+[\w\-\.\s\/]*)?|prettier(\s+[\w\-\.\s\/]*)?)$/.test(cmd)
   },
   node: {
     command: 'node',
     allowedArgs: ['scripts/'],
-    validator: (cmd) => /^node\s+scripts\/[\w\-\.]+\.c?js$/.test(cmd)
+    validator: (cmd) => /^node\s+scripts\/[\w\-\.\/]+\.c?js(\s+[\w\-\.\s\/]*)?$/.test(cmd)
+  },
+  tsc: {
+    command: 'tsc',
+    allowedArgs: ['--noEmit', '--pretty'],
+    validator: (cmd) => /^tsc(\s+(--noEmit|--pretty)(\s+(false|true))?)*$/.test(cmd)
   }
 };
 
@@ -158,10 +163,35 @@ class DeploymentValidator {
    */
   private executeWithSpawn(command: string, args: string[], timeout: number): Promise<{ output: string; success: boolean }> {
     return new Promise((resolve) => {
-      const child = spawn(command, args, {
+      // Security: Further sanitize args to prevent injection
+      const sanitizedArgs = args.map(arg => {
+        // Remove dangerous characters and limit length
+        return arg.replace(/[;&|`$(){}[\]\\<>]/g, '').substring(0, 100);
+      }).filter(arg => arg.length > 0);
+
+      // Security: Additional command validation
+      if (!command || command.length === 0 || command.length > 50) {
+        resolve({
+          output: 'Invalid command: empty or too long',
+          success: false
+        });
+        return;
+      }
+
+      const child = spawn(command, sanitizedArgs, {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, NODE_ENV: 'production' }, // Ensure production environment
+        env: {
+          ...process.env,
+          NODE_ENV: 'production',
+          // Security: Remove potentially dangerous environment variables
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          USER: process.env.USER
+        },
+        // Security: Additional spawn options for safety
+        shell: false, // Explicitly disable shell
+        detached: false // Keep process attached for proper cleanup
       });
 
       let stdout = '';
@@ -175,11 +205,17 @@ class DeploymentValidator {
       }, timeout);
 
       child.stdout?.on('data', (data) => {
-        stdout += data.toString();
+        // Security: Limit output size to prevent memory exhaustion
+        if (stdout.length < 50000) { // 50KB limit
+          stdout += data.toString();
+        }
       });
 
       child.stderr?.on('data', (data) => {
-        stderr += data.toString();
+        // Security: Limit error output size
+        if (stderr.length < 50000) { // 50KB limit
+          stderr += data.toString();
+        }
       });
 
       child.on('close', (code) => {

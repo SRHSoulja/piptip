@@ -2,7 +2,7 @@
 
 // Import security utilities
 import { createElement, createTableRow, escapeHtml, sanitizeInput, setSecureContent, createSecureButton } from './security.js';
-import { createAlertDiv, createRecommendationDiv, createUserTableRow, createTierTableRow, createServerTableRow, createTreasuryRow } from './ui-secure-helpers.js';
+import { createAlertDiv, createRecommendationDiv, createUserTableRow, createTierTableRow, createServerTableRow, createTreasuryRow, createTokenTableRow, createAdTableRow, createTransactionTableRow, createGroupTipTableRow } from './ui-secure-helpers.js';
 
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -274,7 +274,65 @@ async function checkUpgradeNeeded() {
       </div>
     `;
 
-    container.innerHTML = html;
+    // Secure upgrade analysis display
+    setSecureContent(container, '');
+
+    const upgradeDiv = createElement('div', {
+      style: {
+        padding: '20px',
+        borderRadius: '8px',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: 'white',
+        marginBottom: '20px'
+      }
+    });
+
+    const titleDiv = createElement('div', {
+      style: { fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' },
+      textContent: '💡 Recommended Upgrade Path'
+    });
+
+    const currentDiv = createElement('div', {
+      style: { marginBottom: '16px' }
+    });
+    const currentTitle = createElement('div', {
+      style: { fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' },
+      textContent: '📊 Current Resources'
+    });
+    const currentCpu = createElement('div', {
+      textContent: `🔥 ${escapeHtml(String(upgrade.current.cpu))}% CPU`
+    });
+    const currentMemory = createElement('div', {
+      textContent: `💾 ${escapeHtml(String(upgrade.current.memory))}% Memory`
+    });
+    currentDiv.appendChild(currentTitle);
+    currentDiv.appendChild(currentCpu);
+    currentDiv.appendChild(currentMemory);
+
+    const recommendedDiv = createElement('div');
+    const recommendedTitle = createElement('div', {
+      style: { fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' },
+      textContent: '🚀 Recommended Specs'
+    });
+    const recommendedCpu = createElement('div', {
+      textContent: `🔥 ${escapeHtml(upgrade.recommendedSpecs.cpu)}`
+    });
+    const recommendedRam = createElement('div', {
+      textContent: `💾 ${escapeHtml(upgrade.recommendedSpecs.ram)} RAM`
+    });
+    const recommendedCost = createElement('div', {
+      textContent: `💰 ${escapeHtml(upgrade.recommendedSpecs.cost)}`
+    });
+    recommendedDiv.appendChild(recommendedTitle);
+    recommendedDiv.appendChild(recommendedCpu);
+    recommendedDiv.appendChild(recommendedRam);
+    recommendedDiv.appendChild(recommendedCost);
+
+    upgradeDiv.appendChild(titleDiv);
+    upgradeDiv.appendChild(currentDiv);
+    upgradeDiv.appendChild(recommendedDiv);
+
+    container.appendChild(upgradeDiv);
     showMessage("resourceMsg", `✓ Upgrade analysis complete`, false);
 
   } catch (error) {
@@ -296,7 +354,7 @@ async function checkAuthAndLoad() {
 }
 function clearAllTables() {
   ["tokensTbl","serversTbl","feesTbl","treasuryTbl","adsTbl","tiersTbl","usersTbl","transactionsTbl","groupTipsTbl"].forEach(id => {
-    const tbody = document.querySelector(`#${id} tbody`); if (tbody) tbody.innerHTML = "";
+    const tbody = document.querySelector(`#${id} tbody`); if (tbody) setSecureContent(tbody, '');
   });
 }
 $("saveSecret").onclick = () => {
@@ -344,7 +402,7 @@ async function loadTierTokenOptions() {
     const j = await r.json();
     if (!j.ok) return;
     const sel = $("tierToken");
-    sel.innerHTML = "";
+    setSecureContent(sel, '');
     (j.tokens || []).forEach(t => {
       const opt = document.createElement("option");
       opt.value = t.id;
@@ -360,20 +418,10 @@ async function loadTiers() {
     const j = await r.json();
     if (!j.ok) return showMessage("tierMsg","Failed to load tiers",true);
     const tb = $("tiersTbl").querySelector("tbody");
-    tb.innerHTML = "";
+    setSecureContent(tb, '');
     (j.tiers || []).forEach(t => {
-      const tr = document.createElement("tr");
-      tr.dataset.id = t.id;
-      tr.innerHTML = `
-        <td>${t.id}</td>
-        <td><input value="${t.name}" data-field="name" style="width:160px"/></td>
-        <td>${t.token?.symbol || t.tokenId}</td>
-        <td><input value="${t.priceAmount}" data-field="priceAmount" type="number" step="0.00000001" style="width:140px"/></td>
-        <td><input value="${t.durationDays}" data-field="durationDays" type="number" min="1" style="width:90px"/></td>
-        <td><input type="checkbox" ${t.tipTaxFree ? "checked" : ""} data-field="tipTaxFree"/></td>
-        <td><input type="checkbox" ${t.active ? "checked" : ""} data-field="active"/></td>
-        <td><button class="saveTier">Save</button></td>`;
-      tb.appendChild(tr);
+      const tierRow = createTierTableRow(t);
+      tb.appendChild(tierRow);
     });
     tb.querySelectorAll(".saveTier").forEach(btn => btn.onclick = async (ev) => {
       const row = ev.target.closest("tr");
@@ -426,44 +474,10 @@ async function loadTokens() {
   try {
     const r = await API("/admin/tokens"); const j = await r.json();
     if (!j.ok) return showMessage("tokenMsg","Failed to load tokens",true);
-    const tbody = $("tokensTbl").querySelector("tbody"); tbody.innerHTML = "";
+    const tbody = $("tokensTbl").querySelector("tbody"); setSecureContent(tbody, '');
     j.tokens.forEach(t => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${t.id}</td>
-        <td><strong>${t.symbol}</strong></td>
-        <td><code>${t.address}</code></td>
-        <td>${t.decimals}</td>
-        <td><input type="checkbox" ${t.active?"checked":""} data-field="active"/></td>
-        <td><input value="${t.minDeposit}" data-field="minDeposit" type="number" step="0.01" style="width:80px"/></td>
-        <td><input value="${t.minWithdraw}" data-field="minWithdraw" type="number" step="0.01" style="width:80px"/></td>
-        <td><div class="fee-input-container">
-          <input value="${t.tipFeeBps ? (t.tipFeeBps / 100).toFixed(2) : ""}" placeholder="default" data-field="tipFeePercent" type="number" step="0.01" min="0" max="10" style="width:50px"/><span class="fee-suffix">%</span>
-          <div class="fee-presets">
-            <button type="button" class="preset-btn" data-field="tipFeePercent" data-value="0.5">0.5%</button>
-            <button type="button" class="preset-btn" data-field="tipFeePercent" data-value="1">1%</button>
-            <button type="button" class="preset-btn" data-field="tipFeePercent" data-value="1.5">1.5%</button>
-            <button type="button" class="preset-btn" data-field="tipFeePercent" data-value="2">2%</button>
-          </div>
-          <div class="fee-preview" data-field="tipFeePreview"></div>
-        </div></td>
-        <td><div class="fee-input-container">
-          <input value="${t.houseFeeBps ? (t.houseFeeBps / 100).toFixed(2) : ""}" placeholder="default" data-field="houseFeePercent" type="number" step="0.01" min="0" max="10" style="width:50px"/><span class="fee-suffix">%</span>
-          <div class="fee-presets">
-            <button type="button" class="preset-btn" data-field="houseFeePercent" data-value="1">1%</button>
-            <button type="button" class="preset-btn" data-field="houseFeePercent" data-value="2">2%</button>
-            <button type="button" class="preset-btn" data-field="houseFeePercent" data-value="2.5">2.5%</button>
-            <button type="button" class="preset-btn" data-field="houseFeePercent" data-value="3">3%</button>
-          </div>
-          <div class="fee-preview" data-field="houseFeePreview"></div>
-        </div></td>
-        <td><input value="${t.withdrawMaxPerTx ?? ""}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px"/></td>
-        <td><input value="${t.withdrawDailyCap ?? ""}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px"/></td>
-        <td>
-          <button class="saveToken" data-id="${t.id}">Save</button>
-          <button class="deleteToken" data-id="${t.id}" style="background:#ef4444; margin-left:4px;">Delete</button>
-        </td>`;
-      tbody.appendChild(tr);
+      const tokenRow = createTokenTableRow(t);
+      tbody.appendChild(tokenRow);
     });
     tbody.querySelectorAll(".saveToken").forEach(btn => btn.onclick = () => saveToken(btn.dataset.id));
     tbody.querySelectorAll(".deleteToken").forEach(btn => btn.onclick = () => deleteToken(btn.dataset.id));
@@ -554,23 +568,10 @@ async function loadServers() {
   try {
     const r = await API("/admin/servers"); const j = await r.json();
     if (!j.ok) return;
-    const tbody = $("serversTbl").querySelector("tbody"); tbody.innerHTML = "";
+    const tbody = $("serversTbl").querySelector("tbody"); setSecureContent(tbody, '');
     j.servers.forEach(s => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${s.id}</td>
-        <td><strong>${s.servername || "Loading..."}</strong></td>
-        <td><code>${s.guildId}</code></td>
-        <td><input value="${s.note || ""}" data-field="note" placeholder="Description"/></td>
-        <td>
-          <span class="status-indicator ${s.enabled ? 'online' : 'offline'}"></span>
-          <input type="checkbox" ${s.enabled ? "checked" : ""} data-field="enabled"/>
-        </td>
-        <td>
-          <button class="saveServer" data-id="${s.id}">Save</button>
-          <button class="deleteServer" data-id="${s.id}" style="background:#ef4444; margin-left:4px;">Delete</button>
-        </td>`;
-      tbody.appendChild(tr);
+      const serverRow = createServerTableRow(s);
+      tbody.appendChild(serverRow);
     });
     tbody.querySelectorAll(".saveServer").forEach(b => b.onclick = () => saveServer(b.dataset.id));
     tbody.querySelectorAll(".deleteServer").forEach(b => b.onclick = () => deleteServer(b.dataset.id));
@@ -629,15 +630,18 @@ $("addServer").onclick = async () => {
 async function loadTreasury(force=false) {
   try {
     const r = await API(`/admin/treasury${force?'?force=1':''}`); const j = await r.json();
-    const tbody = $("treasuryTbl").querySelector("tbody"); tbody.innerHTML = "";
+    const tbody = $("treasuryTbl").querySelector("tbody"); setSecureContent(tbody, '');
     if (!j.ok) return showMessage("treasuryMsg","Failed to load treasury",true);
     const ethRow = document.createElement("tr");
-    ethRow.innerHTML = `<td><strong>ETH (gas)</strong></td><td>${j.ethHuman}</td>`;
+    const ethCells = [
+      { innerHTML: '<strong>ETH (gas)</strong>', trusted: true },
+      { textContent: escapeHtml(j.ethHuman) }
+    ];
+    const ethRow = createTableRow(ethCells);
     tbody.appendChild(ethRow);
     (j.tokens || []).forEach(t => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td><strong>${t.symbol}</strong></td><td>${t.human}</td>`;
-      tbody.appendChild(tr);
+      const tokenRow = createTreasuryRow(t);
+      tbody.appendChild(tokenRow);
     });
     showMessage("treasuryMsg", `Updated at ${new Date(j.ts).toLocaleTimeString()}`, false);
   } catch { showMessage("treasuryMsg","Failed to load treasury",true); }
@@ -649,23 +653,10 @@ async function loadAds() {
   try {
     const r = await API("/admin/ads"); const j = await r.json();
     if (!j.ok) return showMessage("adsMsg","Failed to load ads",true);
-    const tb = $("adsTbl").querySelector("tbody"); tb.innerHTML = "";
+    const tb = $("adsTbl").querySelector("tbody"); setSecureContent(tb, '');
     (j.ads || []).forEach(ad => {
-      const tr = document.createElement("tr"); tr.dataset.id = ad.id;
-      tr.innerHTML = `
-        <td>${ad.id}</td>
-        <td><input value="${(ad.text || "").replace(/"/g,"&quot;")}" data-field="text" maxlength="500" style="width:420px"/></td>
-        <td><input value="${ad.url || ""}" data-field="url" placeholder="https://..." style="width:320px"/></td>
-        <td><input value="${ad.weight}" data-field="weight" type="number" min="1" max="100" style="width:80px"/></td>
-        <td style="white-space:nowrap">
-          <span class="status-indicator ${ad.active ? 'online' : 'offline'}"></span>
-          <input type="checkbox" ${ad.active ? "checked" : ""} data-field="active"/>
-        </td>
-        <td>
-          <button class="saveAd">Save</button>
-          <button class="deleteAd" style="background:#ef4444">Delete</button>
-        </td>`;
-      tb.appendChild(tr);
+      const adRow = createAdTableRow(ad);
+      tb.appendChild(adRow);
     });
     tb.querySelectorAll(".saveAd").forEach(btn => btn.onclick = async (ev) => {
       const row = ev.target.closest("tr"); await saveAd(row.dataset.id, row, btn);
@@ -737,29 +728,32 @@ async function loadFees() {
     const p = new URLSearchParams(); if (since) p.set("since", since); if (until) p.set("until", until); if (guildId) p.set("guildId", guildId);
     const r = await API(`/admin/fees/by-server?${p.toString()}`); const j = await r.json();
     if (!j.ok) return showMessage("feesMsg","Failed to load fees",true);
-    const tbody = $("feesTbl").querySelector("tbody"); tbody.innerHTML = "";
+    const tbody = $("feesTbl").querySelector("tbody"); setSecureContent(tbody, '');
     let totalTipFees = 0, totalMatchRake = 0;
     j.rows.forEach(row => {
       const tip = parseFloat(row.tipFees), rake = parseFloat(row.matchRake), total = tip + rake;
       totalTipFees += tip; totalMatchRake += rake;
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${row.guildId || "Unknown"}</td>
-        <td><strong>${row.token}</strong></td>
-        <td>${formatNumber(tip)}</td>
-        <td>${formatNumber(rake)}</td>
-        <td><strong>${formatNumber(total)}</strong></td>`;
-      tbody.appendChild(tr);
+      const cells = [
+        { textContent: escapeHtml(row.guildId || 'Unknown') },
+        { innerHTML: `<strong>${escapeHtml(row.token)}</strong>`, trusted: true },
+        { textContent: formatNumber(tip) },
+        { textContent: formatNumber(rake) },
+        { innerHTML: `<strong>${formatNumber(total)}</strong>`, trusted: true }
+      ];
+      const feeRow = createTableRow(cells);
+      tbody.appendChild(feeRow);
     });
     if (j.rows.length > 1) {
-      const tr = document.createElement("tr");
-      tr.style.borderTop = "2px solid #444"; tr.style.fontWeight = "bold";
-      tr.innerHTML = `
-        <td colspan="2"><strong>TOTAL</strong></td>
-        <td><strong>${formatNumber(totalTipFees)}</strong></td>
-        <td><strong>${formatNumber(totalMatchRake)}</strong></td>
-        <td><strong>${formatNumber(totalTipFees + totalMatchRake)}</strong></td>`;
-      tbody.appendChild(tr);
+      const totalCells = [
+        { innerHTML: '<strong>TOTAL</strong>', trusted: true, attributes: { colspan: '2' } },
+        { innerHTML: `<strong>${formatNumber(totalTipFees)}</strong>`, trusted: true },
+        { innerHTML: `<strong>${formatNumber(totalMatchRake)}</strong>`, trusted: true },
+        { innerHTML: `<strong>${formatNumber(totalTipFees + totalMatchRake)}</strong>`, trusted: true }
+      ];
+      const totalRow = createTableRow(totalCells);
+      totalRow.style.borderTop = '2px solid #444';
+      totalRow.style.fontWeight = 'bold';
+      tbody.appendChild(totalRow);
     }
     showMessage("feesMsg", `Loaded ${j.rows.length} entries`, false);
   } catch { showMessage("feesMsg","Failed to load fees",true); }
@@ -895,20 +889,71 @@ async function addTokenToUser(discordId, buttonElement) {
   // Create add form
   const addForm = document.createElement('div');
   addForm.style.cssText = 'display:block; background:#2a2a2a; padding:12px; border-radius:6px; border:1px solid #444; margin-top:8px;';
-  addForm.innerHTML = `
-    <div style="margin-bottom:8px; font-weight:bold; color:#e5e5e5;">Add Token to User</div>
-    <select class="token-select" style="padding:6px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px; width:120px;">
-      <option value="">Select Token...</option>
-      ${activeTokens.map(token => `<option value="${token.id}">${token.symbol}</option>`).join('')}
-    </select>
-    <input class="amount-input" type="number" step="0.01" max="999999999.99" value="0" 
-           style="width:120px; padding:6px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;" placeholder="Amount"/>
-    <input class="reason-input" type="text" placeholder="Reason (optional)" 
-           style="width:150px; padding:6px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;"/>
-    <br style="margin-bottom:8px;"/>
-    <button class="save-token" style="background:#059669; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; margin-right:6px;">💾 Add Token</button>
-    <button class="cancel-token" style="background:#6b7280; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">❌ Cancel</button>
-  `;
+  // Create secure form elements
+  const titleDiv = createElement('div', {
+    style: { marginBottom: '8px', fontWeight: 'bold', color: '#e5e5e5' },
+    textContent: 'Add Token to User'
+  });
+
+  const tokenSelect = createElement('select', {
+    className: 'token-select',
+    style: { padding: '6px', marginRight: '6px', background: '#222', color: '#e5e5e5', border: '1px solid #444', borderRadius: '4px', width: '120px' }
+  });
+  const defaultOption = createElement('option', {
+    attributes: { value: '' },
+    textContent: 'Select Token...'
+  });
+  tokenSelect.appendChild(defaultOption);
+  activeTokens.forEach(token => {
+    const option = createElement('option', {
+      attributes: { value: String(token.id) },
+      textContent: escapeHtml(token.symbol)
+    });
+    tokenSelect.appendChild(option);
+  });
+
+  const amountInput = createElement('input', {
+    className: 'amount-input',
+    attributes: {
+      type: 'number',
+      step: '0.01',
+      max: '999999999.99',
+      value: '0',
+      placeholder: 'Amount'
+    },
+    style: { width: '120px', padding: '6px', marginRight: '6px', background: '#222', color: '#e5e5e5', border: '1px solid #444', borderRadius: '4px' }
+  });
+
+  const reasonInput = createElement('input', {
+    className: 'reason-input',
+    attributes: {
+      type: 'text',
+      placeholder: 'Reason (optional)'
+    },
+    style: { width: '150px', padding: '6px', marginRight: '6px', background: '#222', color: '#e5e5e5', border: '1px solid #444', borderRadius: '4px' }
+  });
+
+  const breakEl = createElement('br', { style: { marginBottom: '8px' } });
+
+  const saveBtn = createElement('button', {
+    className: 'save-token',
+    textContent: '💾 Add Token',
+    style: { background: '#059669', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', marginRight: '6px' }
+  });
+
+  const cancelBtn = createElement('button', {
+    className: 'cancel-token',
+    textContent: '❌ Cancel',
+    style: { background: '#6b7280', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }
+  });
+
+  addForm.appendChild(titleDiv);
+  addForm.appendChild(tokenSelect);
+  addForm.appendChild(amountInput);
+  addForm.appendChild(reasonInput);
+  addForm.appendChild(breakEl);
+  addForm.appendChild(saveBtn);
+  addForm.appendChild(cancelBtn);
   
   // Hide add button and show form
   buttonElement.style.display = 'none';
@@ -992,17 +1037,60 @@ async function editBalance(discordId, tokenSymbol, currentAmount, buttonElement)
   // Create edit form
   const editForm = document.createElement('div');
   editForm.style.cssText = 'display:inline-block; background:#2a2a2a; padding:8px; border-radius:6px; border:1px solid #444;';
-  editForm.innerHTML = `
-    <select class="token-select" style="padding:4px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;">
-      ${activeTokens.map(token => `<option value="${token.id}" ${token.symbol === tokenSymbol ? 'selected' : ''}>${token.symbol}</option>`).join('')}
-    </select>
-    <input class="amount-input" type="number" step="0.01" max="999999999.99" value="${currentAmount}" 
-           style="width:120px; padding:4px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;" placeholder="Amount"/>
-    <input class="reason-input" type="text" placeholder="Reason (optional)" 
-           style="width:150px; padding:4px; margin-right:6px; background:#222; color:#e5e5e5; border:1px solid #444; border-radius:4px;"/>
-    <button class="save-balance" style="background:#059669; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-right:4px;">💾 Save</button>
-    <button class="cancel-balance" style="background:#6b7280; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">❌ Cancel</button>
-  `;
+  // Create secure edit form elements
+  const editTokenSelect = createElement('select', {
+    className: 'token-select',
+    style: { padding: '4px', marginRight: '6px', background: '#222', color: '#e5e5e5', border: '1px solid #444', borderRadius: '4px' }
+  });
+  activeTokens.forEach(token => {
+    const option = createElement('option', {
+      attributes: {
+        value: String(token.id),
+        ...(token.symbol === tokenSymbol ? { selected: true } : {})
+      },
+      textContent: escapeHtml(token.symbol)
+    });
+    editTokenSelect.appendChild(option);
+  });
+
+  const editAmountInput = createElement('input', {
+    className: 'amount-input',
+    attributes: {
+      type: 'number',
+      step: '0.01',
+      max: '999999999.99',
+      value: String(currentAmount),
+      placeholder: 'Amount'
+    },
+    style: { width: '120px', padding: '4px', marginRight: '6px', background: '#222', color: '#e5e5e5', border: '1px solid #444', borderRadius: '4px' }
+  });
+
+  const editReasonInput = createElement('input', {
+    className: 'reason-input',
+    attributes: {
+      type: 'text',
+      placeholder: 'Reason (optional)'
+    },
+    style: { width: '150px', padding: '4px', marginRight: '6px', background: '#222', color: '#e5e5e5', border: '1px solid #444', borderRadius: '4px' }
+  });
+
+  const editSaveBtn = createElement('button', {
+    className: 'save-balance',
+    textContent: '💾 Save',
+    style: { background: '#059669', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px' }
+  });
+
+  const editCancelBtn = createElement('button', {
+    className: 'cancel-balance',
+    textContent: '❌ Cancel',
+    style: { background: '#6b7280', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }
+  });
+
+  editForm.appendChild(editTokenSelect);
+  editForm.appendChild(editAmountInput);
+  editForm.appendChild(editReasonInput);
+  editForm.appendChild(editSaveBtn);
+  editForm.appendChild(editCancelBtn);
   
   // Hide display and show edit form
   displaySpan.style.display = 'none';
@@ -1544,10 +1632,14 @@ function showSearchDropdown(users) {
     $("userSearchContainer").appendChild(dropdown);
   }
   
-  dropdown.innerHTML = "";
+  setSecureContent(dropdown, '');
   
   if (users.length === 0) {
-    dropdown.innerHTML = '<div style="padding: 12px; color: #9ca3af; text-align: center;">No users found</div>';
+    const noUsersDiv = createElement('div', {
+      style: { padding: '12px', color: '#9ca3af', textAlign: 'center' },
+      textContent: 'No users found'
+    });
+    dropdown.appendChild(noUsersDiv);
   } else {
     users.forEach(user => {
       const item = document.createElement("div");
@@ -1557,11 +1649,22 @@ function showSearchDropdown(users) {
         border-bottom: 1px solid #f3f4f6;
         transition: background-color 0.15s;
       `;
-      item.innerHTML = `
-        <div style="font-weight: 500; color: #111827;">${user.username}</div>
-        <div style="font-size: 0.875rem; color: #6b7280;">ID: ${user.discordId}</div>
-        <div style="font-size: 0.875rem; color: #6b7280;">Joined: ${new Date(user.createdAt).toLocaleDateString()}</div>
-      `;
+      const usernameDiv = createElement('div', {
+        style: { fontWeight: '500', color: '#111827' },
+        textContent: escapeHtml(user.username)
+      });
+      const idDiv = createElement('div', {
+        style: { fontSize: '0.875rem', color: '#6b7280' },
+        textContent: `ID: ${escapeHtml(user.discordId)}`
+      });
+      const joinedDiv = createElement('div', {
+        style: { fontSize: '0.875rem', color: '#6b7280' },
+        textContent: `Joined: ${new Date(user.createdAt).toLocaleDateString()}`
+      });
+
+      item.appendChild(usernameDiv);
+      item.appendChild(idDiv);
+      item.appendChild(joinedDiv);
       
       item.onmouseenter = () => item.style.backgroundColor = "#f9fafb";
       item.onmouseleave = () => item.style.backgroundColor = "transparent";
@@ -1664,7 +1767,7 @@ if (clearSearchBtn) {
     const usersTbl = $("usersTbl");
     if (usersTbl) {
       const tbody = usersTbl.querySelector("tbody");
-      if (tbody) tbody.innerHTML = "";
+      if (tbody) setSecureContent(tbody, '');
     }
     showMessage("userMsg", "", false);
   };
@@ -1682,31 +1785,65 @@ async function loadBackupStatus() {
     
     const statusDiv = $("backupStatusData");
     const serviceStatus = j.isRunning ? '🟢 Running' : '🔴 Stopped';
-    statusDiv.innerHTML = `
-      <p><strong>Service Status:</strong> ${serviceStatus}</p>
-      <p><strong>Backup Interval:</strong> ${j.intervalMinutes} minutes</p>
-      <p><strong>Total Backups:</strong> ${j.totalBackups}/${j.maxBackups}</p>
-      <p><strong>Backup Directory:</strong> <code>${j.backupDir || 'Default'}</code></p>
-      ${j.error ? `<p style="color:#ef4444;"><strong>Error:</strong> ${j.error}</p>` : ''}
-    `;
+    setSecureContent(statusDiv, '');
+
+    const statusP = createElement('p', {
+      innerHTML: `<strong>Service Status:</strong> ${serviceStatus}`,
+      trusted: true
+    });
+    const intervalP = createElement('p', {
+      innerHTML: `<strong>Backup Interval:</strong> ${escapeHtml(String(j.intervalMinutes))} minutes`,
+      trusted: true
+    });
+    const totalP = createElement('p', {
+      innerHTML: `<strong>Total Backups:</strong> ${escapeHtml(String(j.totalBackups))}/${escapeHtml(String(j.maxBackups))}`,
+      trusted: true
+    });
+    const dirP = createElement('p', {
+      innerHTML: `<strong>Backup Directory:</strong> <code>${escapeHtml(j.backupDir || 'Default')}</code>`,
+      trusted: true
+    });
+
+    statusDiv.appendChild(statusP);
+    statusDiv.appendChild(intervalP);
+    statusDiv.appendChild(totalP);
+    statusDiv.appendChild(dirP);
+
+    if (j.error) {
+      const errorP = createElement('p', {
+        style: { color: '#ef4444' },
+        innerHTML: `<strong>Error:</strong> ${escapeHtml(j.error)}`,
+        trusted: true
+      });
+      statusDiv.appendChild(errorP);
+    }
     
     // Load recent backups table
     const tbody = $("backupTbl").querySelector("tbody");
-    tbody.innerHTML = "";
+    setSecureContent(tbody, '');
     
     if (j.recentBackups && j.recentBackups.length > 0) {
       j.recentBackups.forEach(backup => {
         const tr = document.createElement("tr");
         const createdDate = new Date(backup.created).toLocaleString();
-        tr.innerHTML = `
-          <td><code>${backup.filename}</code></td>
-          <td>${formatNumber(backup.size)}</td>
-          <td>${createdDate}</td>
-          <td>
-            <button class="downloadBackup" data-filename="${backup.filename}" style="background:#2563eb; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">📥 Download</button>
-          </td>
-        `;
-        tbody.appendChild(tr);
+        const backupCells = [
+          { innerHTML: `<code>${escapeHtml(backup.filename)}</code>`, trusted: true },
+          { textContent: formatNumber(backup.size) },
+          { textContent: createdDate }
+        ];
+
+        const downloadCell = createElement('td');
+        const downloadBtn = createElement('button', {
+          className: 'downloadBackup',
+          textContent: '📥 Download',
+          style: { background: '#2563eb', color: 'white', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer' },
+          attributes: { 'data-filename': escapeHtml(backup.filename) }
+        });
+        downloadCell.appendChild(downloadBtn);
+        backupCells.push({ type: 'element', element: downloadCell });
+
+        const backupRow = createTableRow(backupCells);
+        tbody.appendChild(backupRow);
       });
       
       // Add download handlers
@@ -1714,7 +1851,13 @@ async function loadBackupStatus() {
         btn.onclick = () => downloadBackup(btn.dataset.filename);
       });
     } else {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#9ca3af;">No backups found</td></tr>';
+      const noBackupsRow = createTableRow([{
+        innerHTML: 'No backups found',
+        trusted: true,
+        attributes: { colspan: '4' },
+        style: { textAlign: 'center', color: '#9ca3af' }
+      }]);
+      tbody.appendChild(noBackupsRow);
     }
     
     $("backupStatus").style.display = "block";
@@ -1850,44 +1993,72 @@ function updateHighlights(highlights, globalStats) {
   if (highlights.biggestTip) {
     const amount = formatNumber(parseFloat(highlights.biggestTip.amount) / 1e18); // Assuming 18 decimals
     const date = new Date(highlights.biggestTip.date).toLocaleDateString();
-    biggestTipDiv.innerHTML = `
-      <div style="font-size: 1.2em; font-weight: bold; color: #f59e0b;">
-        ${amount} ${highlights.biggestTip.token}
-      </div>
-      <div style="font-size: 0.9em; color: #9ca3af; margin-top: 4px;">
-        ${date}
-      </div>
-    `;
+    setSecureContent(biggestTipDiv, '');
+
+    const amountDiv = createElement('div', {
+      style: { fontSize: '1.2em', fontWeight: 'bold', color: '#f59e0b' },
+      textContent: `${amount} ${escapeHtml(highlights.biggestTip.token)}`
+    });
+    const dateDiv = createElement('div', {
+      style: { fontSize: '0.9em', color: '#9ca3af', marginTop: '4px' },
+      textContent: date
+    });
+
+    biggestTipDiv.appendChild(amountDiv);
+    biggestTipDiv.appendChild(dateDiv);
   } else {
-    biggestTipDiv.innerHTML = '<div style="color: #9ca3af;">No tips recorded</div>';
+    setSecureContent(biggestTipDiv, '');
+    const noTipsDiv = createElement('div', {
+      style: { color: '#9ca3af' },
+      textContent: 'No tips recorded'
+    });
+    biggestTipDiv.appendChild(noTipsDiv);
   }
   
   // Most active user
   const mostActiveDiv = $("most-active");
   if (highlights.mostActiveUser) {
     const user = highlights.mostActiveUser;
-    mostActiveDiv.innerHTML = `
-      <div style="font-size: 1.1em; font-weight: bold; color: #10b981;">
-        ${user.username || `User ${user.discordId.slice(0, 8)}...`}
-      </div>
-      <div style="font-size: 0.9em; color: #9ca3af; margin-top: 4px;">
-        ${user.tipCount} tips • ${user.gameCount} games
-      </div>
-      <div style="font-size: 0.8em; color: #6b7280; margin-top: 2px;">
-        ${user.totalActivity} total activities
-      </div>
-    `;
+    setSecureContent(mostActiveDiv, '');
+
+    const usernameDiv = createElement('div', {
+      style: { fontSize: '1.1em', fontWeight: 'bold', color: '#10b981' },
+      textContent: escapeHtml(user.username || `User ${user.discordId.slice(0, 8)}...`)
+    });
+    const statsDiv = createElement('div', {
+      style: { fontSize: '0.9em', color: '#9ca3af', marginTop: '4px' },
+      textContent: `${escapeHtml(String(user.tipCount))} tips • ${escapeHtml(String(user.gameCount))} games`
+    });
+    const activityDiv = createElement('div', {
+      style: { fontSize: '0.8em', color: '#6b7280', marginTop: '2px' },
+      textContent: `${escapeHtml(String(user.totalActivity))} total activities`
+    });
+
+    mostActiveDiv.appendChild(usernameDiv);
+    mostActiveDiv.appendChild(statsDiv);
+    mostActiveDiv.appendChild(activityDiv);
   } else {
-    mostActiveDiv.innerHTML = '<div style="color: #9ca3af;">No activity recorded</div>';
+    setSecureContent(mostActiveDiv, '');
+    const noActivityDiv = createElement('div', {
+      style: { color: '#9ca3af' },
+      textContent: 'No activity recorded'
+    });
+    mostActiveDiv.appendChild(noActivityDiv);
   }
 }
 
 function updateServerStats(servers) {
   const tbody = $("serverStatsTbl").querySelector("tbody");
-  tbody.innerHTML = "";
+  setSecureContent(tbody, '');
   
   if (servers.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#9ca3af;">No server data available</td></tr>';
+    const noServersRow = createTableRow([{
+      innerHTML: 'No server data available',
+      trusted: true,
+      attributes: { colspan: '7' },
+      style: { textAlign: 'center', color: '#9ca3af' }
+    }]);
+    tbody.appendChild(noServersRow);
     return;
   }
   
@@ -1899,18 +2070,39 @@ function updateServerStats(servers) {
     
     const totalActivity = server.tipCount + server.gameCount + server.groupTipCount;
     
-    tr.innerHTML = `
-      <td><strong>${server.serverName}</strong><br/><small style="color:#9ca3af;">${server.guildId}</small></td>
-      <td>${formatNumber(server.tipCount)}</td>
-      <td>${formatNumber(server.gameCount)}</td>
-      <td>${formatNumber(server.groupTipCount)}</td>
-      <td>${formatNumber(server.activeUsers)}</td>
-      <td>${lastActivity}</td>
-      <td>
-        <button class="exportGuildFromStats" data-guild-id="${server.guildId}" style="background:#2563eb; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:11px;">📊 Export</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
+    const serverNameCell = createElement('td');
+    const serverName = createElement('strong', {
+      textContent: escapeHtml(server.serverName)
+    });
+    const lineBreak = createElement('br');
+    const guildIdSmall = createElement('small', {
+      style: { color: '#9ca3af' },
+      textContent: escapeHtml(server.guildId)
+    });
+    serverNameCell.appendChild(serverName);
+    serverNameCell.appendChild(lineBreak);
+    serverNameCell.appendChild(guildIdSmall);
+
+    const exportCell = createElement('td');
+    const exportBtn = createElement('button', {
+      className: 'exportGuildFromStats',
+      textContent: '📊 Export',
+      style: { background: '#2563eb', color: 'white', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px' },
+      attributes: { 'data-guild-id': escapeHtml(server.guildId) }
+    });
+    exportCell.appendChild(exportBtn);
+
+    const serverCells = [
+      { type: 'element', element: serverNameCell },
+      { textContent: formatNumber(server.tipCount) },
+      { textContent: formatNumber(server.gameCount) },
+      { textContent: formatNumber(server.groupTipCount) },
+      { textContent: formatNumber(server.activeUsers) },
+      { textContent: lastActivity },
+      { type: 'element', element: exportCell }
+    ];
+    const serverRow = createTableRow(serverCells);
+    tbody.appendChild(serverRow);
   });
   
   // Add export handlers
@@ -1924,10 +2116,16 @@ function updateServerStats(servers) {
 
 function updateTokenStats(tokens) {
   const tbody = $("tokenStatsTbl").querySelector("tbody");
-  tbody.innerHTML = "";
+  setSecureContent(tbody, '');
   
   if (tokens.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#9ca3af;">No token data available</td></tr>';
+    const noTokensRow = createTableRow([{
+      innerHTML: 'No token data available',
+      trusted: true,
+      attributes: { colspan: '5' },
+      style: { textAlign: 'center', color: '#9ca3af' }
+    }]);
+    tbody.appendChild(noTokensRow);
     return;
   }
   
@@ -1947,17 +2145,28 @@ function updateTokenStats(tokens) {
     const totalTipped = formatNumber(totalTippedRaw / divisor);
     const avgTipSize = formatNumber(avgTipSizeRaw / divisor);
     
-    tr.innerHTML = `
-      <td>
-        <strong>${token.symbol}</strong><br/>
-        <small style="color:#9ca3af;">${token.address.slice(0, 10)}...</small>
-      </td>
-      <td>${totalTipped}</td>
-      <td>${formatNumber(token.tipCount)}</td>
-      <td>${avgTipSize}</td>
-      <td>${lastActivity}</td>
-    `;
-    tbody.appendChild(tr);
+    const tokenNameCell = createElement('td');
+    const tokenSymbol = createElement('strong', {
+      textContent: escapeHtml(token.symbol)
+    });
+    const tokenBreak = createElement('br');
+    const tokenAddress = createElement('small', {
+      style: { color: '#9ca3af' },
+      textContent: `${escapeHtml(token.address.slice(0, 10))}...`
+    });
+    tokenNameCell.appendChild(tokenSymbol);
+    tokenNameCell.appendChild(tokenBreak);
+    tokenNameCell.appendChild(tokenAddress);
+
+    const tokenCells = [
+      { type: 'element', element: tokenNameCell },
+      { textContent: totalTipped },
+      { textContent: formatNumber(token.tipCount) },
+      { textContent: avgTipSize },
+      { textContent: lastActivity }
+    ];
+    const tokenRow = createTableRow(tokenCells);
+    tbody.appendChild(tokenRow);
   });
 }
 
@@ -2054,23 +2263,11 @@ async function loadTransactions() {
     if (!j.ok) return showMessage("txMsg", j.error || "Failed to load transactions", true);
 
     const tbody = $("transactionsTbl").querySelector("tbody");
-    tbody.innerHTML = "";
+    setSecureContent(tbody, '');
 
     j.transactions.forEach(tx => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${tx.id}</td>
-        <td>${tx.type}</td>
-        <td>${tx.userId || "System"}</td>
-        <td>${formatNumber(tx.amount)}</td>
-        <td>${tx.tokenId || "N/A"}</td>
-        <td>${formatNumber(tx.fee)}</td>
-        <td>${new Date(tx.createdAt).toLocaleString()}</td>
-        <td>${tx.guildId || "N/A"}</td>
-        <td>${tx.metadata || ""}</td>
-        <td><button onclick="deleteTransaction(${tx.id})" style="background:#dc2626; font-size:11px; padding:2px 6px;">🗑️ Delete</button></td>
-      `;
-      tbody.appendChild(tr);
+      const transactionRow = createTransactionTableRow(tx);
+      tbody.appendChild(transactionRow);
     });
 
     showMessage("txMsg", `Loaded ${j.transactions.length} transactions`, false);
@@ -2145,27 +2342,11 @@ async function loadGroupTips() {
     if (!j.ok) return showMessage("gtMsg", j.error || "Failed to load group tips", true);
 
     const tbody = $("groupTipsTbl").querySelector("tbody");
-    tbody.innerHTML = "";
+    setSecureContent(tbody, '');
 
     j.groupTips.forEach(gt => {
-      const tr = document.createElement("tr");
-      const expiresAt = new Date(gt.expiresAt).toLocaleString();
-      const createdAt = new Date(gt.createdAt).toLocaleString();
-      
-      tr.innerHTML = `
-        <td>${gt.id}</td>
-        <td>${gt.Creator?.discordId?.slice(0, 8) || gt.creatorId || "Unknown"}...</td>
-        <td>${formatNumber(gt.totalAmount)}</td>
-        <td>${gt.Token?.symbol || "Unknown"}</td>
-        <td>${gt.status}</td>
-        <td>${gt.claimCount || 0}</td>
-        <td>${createdAt}</td>
-        <td>${expiresAt}</td>
-        <td>
-          <button class="expireGroupTip" data-id="${gt.id}" style="background:#f59e0b; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:11px;">Expire</button>
-        </td>
-      `;
-      tbody.appendChild(tr);
+      const groupTipRow = createGroupTipTableRow(gt);
+      tbody.appendChild(groupTipRow);
     });
 
     // Add expire handlers
@@ -2444,13 +2625,24 @@ async function loadHighRiskActivity() {
     }).slice(0, 10);
 
     if (riskUsers.length === 0) {
-      highRiskDiv.innerHTML = `
-        <div style="color: #10b981; text-align: center; padding: 20px;">
-          🛡️ No high-risk withdrawal activity detected
-        </div>
-      `;
+      setSecureContent(highRiskDiv, '');
+      const noRiskDiv = createElement('div', {
+        style: { color: '#10b981', textAlign: 'center', padding: '20px' },
+        textContent: '🛡️ No high-risk withdrawal activity detected'
+      });
+      highRiskDiv.appendChild(noRiskDiv);
     } else {
-      const userRows = riskUsers.map(user => {
+      setSecureContent(highRiskDiv, '');
+
+      const titleDiv = createElement('div', {
+        style: { color: '#fff', marginBottom: '12px' },
+        innerHTML: '<strong>Recent Activity (Last 24h)</strong>',
+        trusted: true
+      });
+      highRiskDiv.appendChild(titleDiv);
+
+      // Create user rows securely
+      riskUsers.forEach(user => {
         const lastActivity = user.lastActivity ? new Date(user.lastActivity).toLocaleString() : 'Never';
         const accountAge = Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (24 * 60 * 60 * 1000));
 
@@ -2466,38 +2658,56 @@ async function loadHighRiskActivity() {
           riskColor = '#ef4444';
         }
 
-        return `
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #2a2a2a;">
-            <div>
-              <div style="font-weight: bold; color: #fff;">${user.username}</div>
-              <div style="font-size: 0.9em; color: #9ca3af;">
-                ID: ${user.discordId.slice(0, 12)}... | Age: ${accountAge} days | Last: ${lastActivity}
-              </div>
-            </div>
-            <div style="text-align: right;">
-              <span style="background: ${riskColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">
-                ${riskLevel}
-              </span>
-            </div>
-          </div>
-        `;
-      }).join('');
+        const userRowDiv = createElement('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '12px',
+            borderBottom: '1px solid #2a2a2a'
+          }
+        });
 
-      highRiskDiv.innerHTML = `
-        <div style="color: #fff; margin-bottom: 12px;">
-          <strong>Recent Activity (Last 24h)</strong>
-        </div>
-        ${userRows}
-      `;
+        const leftDiv = createElement('div');
+        const usernameDiv = createElement('div', {
+          style: { fontWeight: 'bold', color: '#fff' },
+          textContent: escapeHtml(user.username)
+        });
+        const detailsDiv = createElement('div', {
+          style: { fontSize: '0.9em', color: '#9ca3af' },
+          textContent: `ID: ${escapeHtml(user.discordId.slice(0, 12))}... | Age: ${accountAge} days | Last: ${escapeHtml(lastActivity)}`
+        });
+        leftDiv.appendChild(usernameDiv);
+        leftDiv.appendChild(detailsDiv);
+
+        const rightDiv = createElement('div', { style: { textAlign: 'right' } });
+        const riskSpan = createElement('span', {
+          style: {
+            background: riskColor,
+            color: 'white',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '0.8em',
+            fontWeight: 'bold'
+          },
+          textContent: riskLevel
+        });
+        rightDiv.appendChild(riskSpan);
+
+        userRowDiv.appendChild(leftDiv);
+        userRowDiv.appendChild(rightDiv);
+        highRiskDiv.appendChild(userRowDiv);
+      });
     }
 
   } catch (e) {
     const highRiskDiv = $("high-risk-users");
-    highRiskDiv.innerHTML = `
-      <div style="color: #ef4444; text-align: center; padding: 20px;">
-        ⚠️ Failed to load high-risk activity data
-      </div>
-    `;
+    setSecureContent(highRiskDiv, '');
+    const errorDiv = createElement('div', {
+      style: { color: '#ef4444', textAlign: 'center', padding: '20px' },
+      textContent: '⚠️ Failed to load high-risk activity data'
+    });
+    highRiskDiv.appendChild(errorDiv);
   }
 }
 
