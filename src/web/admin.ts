@@ -635,15 +635,24 @@ adminRouter.post('/auth/mfa/verify', async (req: Request, res: Response) => {
   }
 });
 
-// Enhanced authentication middleware
-adminRouter.use(async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { adminMiddleware } = await import('../services/admin_auth.js');
-    return adminMiddleware()(req, res, next);
-  } catch (error) {
-    console.error('Admin middleware error:', error);
-    res.status(500).json({ error: 'Authentication system error' });
+// Simple Bearer token authentication for admin access
+adminRouter.use((req: Request, res: Response, next: NextFunction) => {
+  // Check for Bearer token in Authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    if (token === process.env.ADMIN_SECRET) {
+      // Valid admin token, allow access
+      return next();
+    }
   }
+  
+  // No valid auth, return 401
+  res.status(401).json({ 
+    error: 'Admin authentication required',
+    message: 'Please include Authorization: Bearer <ADMIN_SECRET> header',
+    code: 'UNAUTHORIZED'
+  });
 });
 
 /* ------------------------------------------------------------------------ */
