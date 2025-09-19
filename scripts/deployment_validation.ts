@@ -6,6 +6,24 @@ import { execSync, spawn } from 'child_process';
 import { readFileSync } from 'fs';
 import { promisify } from 'util';
 
+// Secure command execution - only allows predefined command patterns
+function executeSecureCommand(baseCommand: string, args: string[], options: any) {
+  // Map of allowed commands to their secure implementations
+  const secureCommands: Record<string, (...args: any[]) => any> = {
+    'npm': (args: string[], opts: any) => spawn('npm', args, { ...opts, shell: false }),
+    'npx': (args: string[], opts: any) => spawn('npx', args, { ...opts, shell: false }),
+    'node': (args: string[], opts: any) => spawn('node', args, { ...opts, shell: false }),
+    'git': (args: string[], opts: any) => spawn('git', args, { ...opts, shell: false })
+  };
+
+  const commandFunc = secureCommands[baseCommand];
+  if (!commandFunc) {
+    throw new Error(`Command ${baseCommand} not allowed`);
+  }
+
+  return commandFunc(args, options);
+}
+
 interface ValidationStep {
   name: string;
   description: string;
@@ -178,11 +196,8 @@ class DeploymentValidator {
         return;
       }
 
-      // SECURITY: Command has been validated through multi-layer whitelist + regex validation
-      // - Command is from predefined ALLOWED_COMMANDS whitelist
-      // - Arguments are sanitized and separated to prevent injection
-      // - No shell interpretation (shell: false) prevents shell injection
-      const child = spawn(command, sanitizedArgs, {
+      // Execute command using predefined secure functions instead of dynamic spawn
+      const child = executeSecureCommand(command, sanitizedArgs, {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {

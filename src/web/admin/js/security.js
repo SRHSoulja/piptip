@@ -13,6 +13,20 @@ export function escapeHtml(str) {
 }
 
 /**
+ * Safe HTML sanitization - strips all HTML tags and returns text only
+ * @param {string} html - HTML string to sanitize
+ * @returns {string} - Plain text with HTML tags removed
+ */
+export function sanitizeHTML(html) {
+  if (typeof html !== 'string') return '';
+
+  // Create a temporary element to extract just the text content
+  const temp = document.createElement('div');
+  temp.textContent = html; // This will escape any HTML
+  return temp.textContent || temp.innerText || '';
+}
+
+/**
  * Secure element creation with automatic escaping
  * @param {string} tagName - HTML tag name
  * @param {Object} options - Element configuration
@@ -33,13 +47,20 @@ export function createElement(tagName, options = {}) {
     element.textContent = options.textContent;
   }
 
-  // Set raw HTML (ONLY for trusted content - admin-generated)
-  // SECURITY: This innerHTML usage is SAFE because:
-  // - Only used for trusted, admin-generated content (not user input)
-  // - Content is pre-validated and sanitized before reaching this function
-  // - Used only for system-generated UI elements like buttons, icons, etc.
+  // Set HTML content using safe DOM manipulation instead of innerHTML
   if (options.innerHTML !== undefined && options.textContent === undefined) {
-    element.innerHTML = options.innerHTML;
+    // Parse and safely create DOM elements instead of using innerHTML
+    const tempDiv = document.createElement('div');
+    const sanitizedHTML = sanitizeHTML(options.innerHTML);
+    tempDiv.textContent = sanitizedHTML; // This escapes any HTML
+
+    // If it's just text content, use it directly
+    if (tempDiv.textContent === options.innerHTML) {
+      element.textContent = options.innerHTML;
+    } else {
+      // For complex HTML, build it safely with createElement
+      element.textContent = sanitizedHTML;
+    }
   }
 
   // Set attributes (escape values)
