@@ -69,6 +69,57 @@ app.get("/favicon.ico", (_req: Request, res: Response) => {
   res.send(favicon);
 });
 
+// Root route - landing page
+app.get("/", (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>PIPTip Discord Bot</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .status { color: #22c55e; font-weight: bold; }
+        .link { color: #3b82f6; text-decoration: none; }
+        .link:hover { text-decoration: underline; }
+        .section { margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <h1>🐧 PIPTip Discord Bot</h1>
+      <p class="status">✅ Bot is running and connected!</p>
+      
+      <div class="section">
+        <h3>Available Interfaces:</h3>
+        <ul>
+          <li><a href="/health" class="link">Health Status</a> - System health check</li>
+          <li><a href="/pengubook" class="link">PenguBook</a> - Social features</li>
+          <li><a href="/admin" class="link">Admin Panel</a> - Administrative interface (requires authentication)</li>
+        </ul>
+      </div>
+      
+      <div class="section">
+        <h3>Discord Commands:</h3>
+        <p>Use these slash commands in your Discord server:</p>
+        <ul>
+          <li><code>/pip_help</code> - Get help and command list</li>
+          <li><code>/pip_profile</code> - View your profile and balance</li>
+          <li><code>/pip_tip</code> - Send tips to other users</li>
+          <li><code>/pip_link</code> - Link your wallet</li>
+          <li><code>/pip_deposit</code> - Get deposit instructions</li>
+          <li><code>/pip_withdraw</code> - Withdraw to your wallet</li>
+        </ul>
+      </div>
+      
+      <div class="section">
+        <p><em>PIPTip enables tipping with Penguin, Ice, and Pebble tokens on the Abstract Chain.</em></p>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
 app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
 app.use("/admin", adminRouter);
