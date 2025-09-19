@@ -2035,9 +2035,13 @@ async function loadDashboard() {
     // Update highlights
     updateHighlights(highlights.highlights, highlights.globalStats);
     
+    // Debug logging
+    console.log("🖥️ Server breakdown data:", dashboard.stats.serverBreakdown);
+    console.log("🪙 Token breakdown data:", dashboard.stats.tokenBreakdown);
+
     // Update server stats table
     updateServerStats(dashboard.stats.serverBreakdown);
-    
+
     // Update token stats table
     updateTokenStats(dashboard.stats.tokenBreakdown);
     
@@ -2135,7 +2139,7 @@ function updateServerStats(servers) {
     
     const serverNameCell = createElement('td');
     const serverName = createElement('strong', {
-      textContent: escapeHtml(server.serverName)
+      textContent: escapeHtml(server.serverName || server.guildId || 'Unknown Server')
     });
     const lineBreak = createElement('br');
     const guildIdSmall = createElement('small', {
@@ -2210,7 +2214,7 @@ function updateTokenStats(tokens) {
     
     const tokenNameCell = createElement('td');
     const tokenSymbol = createElement('strong', {
-      textContent: escapeHtml(token.symbol)
+      textContent: escapeHtml(token.symbol || `Token #${token.tokenId}` || 'Unknown Token')
     });
     const tokenBreak = createElement('br');
     const tokenAddress = createElement('small', {
