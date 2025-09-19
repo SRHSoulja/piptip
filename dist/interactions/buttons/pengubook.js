@@ -24,13 +24,18 @@ export async function handlePenguBookNav(i, mode, page) {
     await i.deferUpdate();
     try {
         const PROFILES_PER_PAGE = 1;
-        // Get total count
-        const totalCount = await prisma.user.count({
-            where: {
-                bio: { not: null },
-                showInPenguBook: true
-            }
-        });
+        // Add timeout wrapper around database calls
+        const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Database query timeout')), 3000));
+        // Get total count with timeout
+        const totalCount = await Promise.race([
+            prisma.user.count({
+                where: {
+                    bio: { not: null },
+                    showInPenguBook: true
+                }
+            }),
+            dbTimeout
+        ]);
         if (totalCount === 0) {
             return i.editReply({
                 content: "📖 **PenguBook is empty!** \nBe the first to create a profile with `/pip_bio set`",
@@ -42,47 +47,45 @@ export async function handlePenguBookNav(i, mode, page) {
         const offset = (page - 1) * PROFILES_PER_PAGE;
         // Fetch profile based on mode
         let profiles = [];
-        switch (mode) {
-            case "recent":
-                profiles = await prisma.user.findMany({
-                    where: { bio: { not: null }, showInPenguBook: true },
-                    select: {
-                        discordId: true, bio: true, xUsername: true, bioViewCount: true,
-                        bioLastUpdated: true, allowTipsFromBook: true,
-                        _count: { select: { tipsSent: true, tipsReceived: true } }
-                    },
-                    orderBy: { bioLastUpdated: "desc" },
-                    skip: offset,
-                    take: PROFILES_PER_PAGE
-                });
-                break;
-            case "popular":
-                profiles = await prisma.user.findMany({
-                    where: { bio: { not: null }, showInPenguBook: true },
-                    select: {
-                        discordId: true, bio: true, xUsername: true, bioViewCount: true,
-                        bioLastUpdated: true, allowTipsFromBook: true,
-                        _count: { select: { tipsSent: true, tipsReceived: true } }
-                    },
-                    orderBy: { bioViewCount: "desc" },
-                    skip: offset,
-                    take: PROFILES_PER_PAGE
-                });
-                break;
-            case "random":
-                const randomOffset = Math.floor(Math.random() * Math.max(1, totalCount - PROFILES_PER_PAGE + 1));
-                profiles = await prisma.user.findMany({
-                    where: { bio: { not: null }, showInPenguBook: true },
-                    select: {
-                        discordId: true, bio: true, xUsername: true, bioViewCount: true,
-                        bioLastUpdated: true, allowTipsFromBook: true,
-                        _count: { select: { tipsSent: true, tipsReceived: true } }
-                    },
-                    skip: randomOffset,
-                    take: PROFILES_PER_PAGE
-                });
-                break;
-        }
+        // Fetch profiles with timeout protection
+        const profileQuery = (() => {
+            const baseQuery = {
+                where: { bio: { not: null }, showInPenguBook: true },
+                select: {
+                    discordId: true, bio: true, xUsername: true, bioViewCount: true,
+                    bioLastUpdated: true, allowTipsFromBook: true,
+                    _count: { select: { tipsSent: true, tipsReceived: true } }
+                },
+                take: PROFILES_PER_PAGE
+            };
+            switch (mode) {
+                case "recent":
+                    return prisma.user.findMany({
+                        ...baseQuery,
+                        orderBy: { bioLastUpdated: "desc" },
+                        skip: offset
+                    });
+                case "popular":
+                    return prisma.user.findMany({
+                        ...baseQuery,
+                        orderBy: { bioViewCount: "desc" },
+                        skip: offset
+                    });
+                case "random":
+                    const randomOffset = Math.floor(Math.random() * Math.max(1, totalCount - PROFILES_PER_PAGE + 1));
+                    return prisma.user.findMany({
+                        ...baseQuery,
+                        skip: randomOffset
+                    });
+                default:
+                    return prisma.user.findMany({
+                        ...baseQuery,
+                        orderBy: { bioLastUpdated: "desc" },
+                        skip: offset
+                    });
+            }
+        })();
+        profiles = await Promise.race([profileQuery, dbTimeout]);
         if (profiles.length === 0) {
             return i.editReply({
                 content: `📖 **No profiles found!** \nTry a different mode.`,
@@ -283,20 +286,25 @@ export async function handleTipFromBook(i, targetDiscordId) {
 }
 // Handle viewing own bio from buttons
 export async function handleViewOwnBio(i) {
+    await i.deferReply({ ephemeral: true });
     try {
-        const user = await prisma.user.findUnique({
-            where: { discordId: i.user.id },
-            select: {
-                bio: true,
-                xUsername: true,
-                bioViewCount: true,
-                bioLastUpdated: true
-            }
-        });
+        // Add timeout protection for database query
+        const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Database query timeout')), 3000));
+        const user = await Promise.race([
+            prisma.user.findUnique({
+                where: { discordId: i.user.id },
+                select: {
+                    bio: true,
+                    xUsername: true,
+                    bioViewCount: true,
+                    bioLastUpdated: true
+                }
+            }),
+            dbTimeout
+        ]);
         if (!user || !user.bio) {
-            return i.reply({
-                content: "📝 You haven't set a bio yet! Use `/pip_bio set` to create your PenguBook profile.",
-                flags: 64
+            return i.editReply({
+                content: "📝 You haven't set a bio yet! Use `/pip_bio set` to create your PenguBook profile."
             });
         }
         const embed = new EmbedBuilder()
@@ -318,13 +326,12 @@ export async function handleViewOwnBio(i) {
             .setCustomId("pip:bio_settings")
             .setLabel("⚙️ Settings")
             .setStyle(ButtonStyle.Secondary));
-        return i.reply({ embeds: [embed], components: [buttons], flags: 64 });
+        return i.editReply({ embeds: [embed], components: [buttons] });
     }
     catch (error) {
         console.error("Error viewing own bio:", error);
-        return i.reply({
-            content: "❌ Failed to load your profile. Please try again.",
-            flags: 64
+        return i.editReply({
+            content: "❌ Failed to load your profile. Please try again."
         });
     }
 }
@@ -352,6 +359,7 @@ export async function handlePenguBookCTA(i) {
 }
 // Handle the modal submission for bio setup
 export async function handlePenguBookBioSetup(i) {
+    await i.deferReply({ ephemeral: true });
     const bio = i.fields.getTextInputValue("bio");
     const xUsername = i.fields.getTextInputValue("x_username") || null;
     // Validate X username format if provided
@@ -359,23 +367,30 @@ export async function handlePenguBookBioSetup(i) {
     if (xUsername) {
         cleanXUsername = xUsername.replace(/^@/, "");
         if (!/^[A-Za-z0-9_]{1,15}$/.test(cleanXUsername)) {
-            return i.reply({
-                content: "❌ Invalid X username format! Use only letters, numbers, and underscores (max 15 chars).",
-                flags: 64
+            return i.editReply({
+                content: "❌ Invalid X username format! Use only letters, numbers, and underscores (max 15 chars)."
             });
         }
     }
     try {
-        const user = await findOrCreateUser(i.user.id);
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                bio,
-                xUsername: cleanXUsername,
-                bioLastUpdated: new Date(),
-                showInPenguBook: true
-            }
-        });
+        // Add timeout protection for database operations
+        const dbTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Database operation timeout')), 3000));
+        const user = await Promise.race([
+            findOrCreateUser(i.user.id),
+            dbTimeout
+        ]);
+        await Promise.race([
+            prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    bio,
+                    xUsername: cleanXUsername,
+                    bioLastUpdated: new Date(),
+                    showInPenguBook: true
+                }
+            }),
+            dbTimeout
+        ]);
         const embed = new EmbedBuilder()
             .setColor(0x00ff88)
             .setTitle("<a:PenguHahaha:1415468831425691770> Welcome to PenguBook!")
@@ -390,13 +405,12 @@ export async function handlePenguBookBioSetup(i) {
             .setCustomId("pip:bio_view_own")
             .setLabel("👀 View My Profile")
             .setStyle(ButtonStyle.Secondary));
-        return i.reply({ embeds: [embed], components: [buttons], flags: 64 });
+        return i.editReply({ embeds: [embed], components: [buttons] });
     }
     catch (error) {
         console.error("Error in PenguBook bio setup:", error);
-        return i.reply({
-            content: "❌ Failed to create your profile. Please try again later.",
-            flags: 64
+        return i.editReply({
+            content: "❌ Failed to create your profile. Please try again later."
         });
     }
 }

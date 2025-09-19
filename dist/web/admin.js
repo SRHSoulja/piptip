@@ -674,21 +674,157 @@ adminRouter.post('/auth/mfa/verify', async (req, res) => {
         res.status(500).json({ success: false, error: 'MFA verification error' });
     }
 });
-// Enhanced authentication middleware
-adminRouter.use(async (req, res, next) => {
+// Simple ping endpoint for admin auth verification  
+adminRouter.get('/ping', (req, res) => {
+    // Check Bearer token authentication
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        if (token === process.env.ADMIN_SECRET) {
+            return res.json({ ok: true, message: 'Authenticated' });
+        }
+    }
+    res.status(401).json({ ok: false, error: 'Invalid admin secret' });
+});
+// Serve admin UI without authentication
+adminRouter.get('/', (req, res) => {
+    res.redirect('/admin/ui');
+});
+adminRouter.get('/ui', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+<title>🎯 PIPtip Admin</title>
+<style>
+  body { background:#111; color:#e5e5e5; font-family:Monaco,Menlo,monospace; margin:20px; padding:0 }
+  h1 { color:#60a5fa; margin:0 0 20px }
+  h2 { margin:16px 0 12px; color:#fff }
+  section { border:1px solid #333; border-radius:12px; padding:16px; margin:16px 0; background:#111 }
+  label { display:inline-block; min-width:220px; font-weight:500 }
+  input, select, button { padding:8px 12px; margin:6px 6px 6px 0; border:1px solid #444; border-radius:6px; background:#222; color:#e5e5e5 }
+  button { background:#2563eb; color:#fff; cursor:pointer; border:none }
+  button:hover { background:#1d4ed8 }
+  button:disabled { background:#374151; cursor:not-allowed; opacity:.6 }
+  table { width:100%; border-collapse:collapse; margin-top:10px }
+  th, td { border-bottom:1px solid #2a2a2a; padding:8px; text-align:left }
+  th { background:#1a1a1a; font-weight:600 }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+  .ok { color:#10b981; font-weight:500 }
+  .err { color:#ef4444; font-weight:500 }
+  code { background:#1a1a1a; padding:2px 6px; border-radius:4px; font-family:Monaco,Menlo,monospace; font-size:.9em }
+  .loading { opacity:.6 }
+  .status-indicator { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px }
+  .status-indicator.online { background:#10b981 }
+  .status-indicator.offline { background:#ef4444 }
+  .fee-input-container { position:relative; min-width:120px }
+  .fee-suffix { margin-left:2px; color:#9ca3af; font-weight:500 }
+  .fee-presets { display:flex; gap:2px; margin-top:4px }
+  .preset-btn { padding:2px 6px; font-size:11px; background:#374151; border:1px solid #4b5563; border-radius:3px; cursor:pointer }
+  .preset-btn:hover { background:#4b5563 }
+  .fee-preview { font-size:10px; color:#9ca3af; margin-top:2px; min-height:12px }
+  .fee-warning { color:#f59e0b }
+  .fee-error { color:#ef4444 }
+  .fee-success { color:#10b981 }
+</style>
+</head>
+<body>
+  <h1>🎯 PIPtip Admin</h1>
+
+  <section>
+    <div class="row">
+      <label>Admin Secret</label>
+      <input id="secret" type="password" placeholder="Paste ADMIN_SECRET"/>
+      <button id="saveSecret">Save & Connect</button>
+      <span id="authStatus"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>📊 Bot Statistics Dashboard</h2>
+    <div class="row">
+      <button id="loadDashboard">🔄 Refresh Dashboard</button>
+      <button id="exportStats">📊 Export Stats CSV</button>
+      <span id="statsMsg"></span>
+    </div>
+    
+    <!-- KPI Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 16px 0;">
+      <div class="kpi-card" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-servers">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Servers</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-users">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Users</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-tips">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Tips Sent</p>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="kpi-games">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Games Played</p>
+      </div>
+    </div>
+
+    <!-- Tables and other content would go here -->
+    <table id="tokensTbl">
+      <thead>
+        <tr><th>Symbol</th><th>Address</th><th>Status</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <script src="/admin/ui.js"></script>
+</body>
+</html>`);
+});
+// Authentication middleware - apply AFTER UI routes
+function requireAuth(req, res, next) {
+    // Check Bearer token authentication
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        if (token === process.env.ADMIN_SECRET) {
+            return next();
+        }
+    }
+    res.status(401).json({
+        error: 'Admin authentication required',
+        message: 'Please include Authorization: Bearer <ADMIN_SECRET> header'
+    });
+}
+// Serve UI JavaScript file
+adminRouter.get('/ui.js', async (req, res) => {
     try {
-        const { adminMiddleware } = await import('../services/admin_auth.js');
-        return adminMiddleware()(req, res, next);
+        const jsPath = join(dirname(fileURLToPath(import.meta.url)), 'admin', 'ui.js');
+        const jsContent = await readFile(jsPath, 'utf-8');
+        res.setHeader('Content-Type', 'application/javascript');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.send(jsContent);
     }
     catch (error) {
-        console.error('Admin middleware error:', error);
-        res.status(500).json({ error: 'Authentication system error' });
+        console.error('Failed to serve admin UI JavaScript:', error);
+        res.status(500).send('// Admin UI JavaScript not found');
     }
 });
 /* ------------------------------------------------------------------------ */
 /*                              Route Modules                               */
 /* ------------------------------------------------------------------------ */
 // Mount route modules
+// Mount API route modules with selective authentication
+// Note: ping endpoint needs to be excluded from auth since it's used for auth verification
+adminRouter.use((req, res, next) => {
+    // Skip auth for specific endpoints
+    if (req.path === '/ping' || req.path === '/ui' || req.path === '/ui.js' || req.path === '/') {
+        return next();
+    }
+    // Apply auth to all other endpoints
+    return requireAuth(req, res, next);
+});
 adminRouter.use(configRouter);
 adminRouter.use(tokensRouter);
 adminRouter.use(serversRouter);

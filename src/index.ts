@@ -425,8 +425,8 @@ async function main() {
     await bot.login(TOKEN);
     console.log("Bot login initiated");
 
-    const server = app.listen(PORT, () => {
-      console.log(`Web server running on port ${PORT}`);
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Web server running on 0.0.0.0:${PORT}`);
     });
 
     const shutdown = async () => {

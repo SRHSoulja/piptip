@@ -75,7 +75,7 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
     </main>
 
     <!-- Loading overlay for better UX -->
-    <div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 20, 25, 0.8); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center;">
+    <div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 20, 25, 0.8); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
         <div class="pg-card" style="text-align: center; min-width: 200px;">
             <div class="pg-loading" style="width: 40px; height: 40px; margin: 0 auto 1rem;"></div>
             <p>Loading...</p>
@@ -93,9 +93,18 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
         window.setGlobalLoading = (isLoading) => {
             const overlay = document.getElementById('loadingOverlay');
             if (overlay) {
-                overlay.style.display = isLoading ? 'flex' : 'none';
+                if (isLoading) {
+                    overlay.style.display = 'flex';
+                } else {
+                    overlay.style.display = 'none';
+                }
             }
         };
+
+        // Ensure loading overlay is hidden by default after page load
+        document.addEventListener('DOMContentLoaded', () => {
+            window.setGlobalLoading(false);
+        });
 
         // Enhanced form handling with loading states
         window.enhancedFormSubmit = async (form, submitHandler) => {
