@@ -43,7 +43,7 @@ import { setDiscordClient } from "./services/discord_users.js";
 // import { backupService } from "./services/backup.js"; // Disabled - using external cron job
 
 const TOKEN = process.env.DISCORD_TOKEN!;
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 5000);
 
 // ---------- Express (REST) ----------
 const app = express();
@@ -328,8 +328,8 @@ async function main() {
     await bot.login(TOKEN);
     console.log("Bot login initiated");
 
-    const server = app.listen(PORT, () => {
-      console.log(`Web server running on port ${PORT}`);
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Web server running on 0.0.0.0:${PORT}`);
     });
 
     const shutdown = async () => {
