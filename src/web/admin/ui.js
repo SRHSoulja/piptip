@@ -632,7 +632,6 @@ async function loadTreasury(force=false) {
     const r = await API(`/admin/treasury${force?'?force=1':''}`); const j = await r.json();
     const tbody = $("treasuryTbl").querySelector("tbody"); setSecureContent(tbody, '');
     if (!j.ok) return showMessage("treasuryMsg","Failed to load treasury",true);
-    const ethRow = document.createElement("tr");
     const ethCells = [
       { innerHTML: '<strong>ETH (gas)</strong>', trusted: true },
       { textContent: escapeHtml(j.ethHuman) }
