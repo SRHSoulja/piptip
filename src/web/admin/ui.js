@@ -3,6 +3,28 @@
 // Security utilities (inline to avoid module issues)
 const escapeHtml = (str) => str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const setSecureContent = (el, content) => { el.textContent = content; };
+const createElement = (tag, options = {}) => {
+  const el = document.createElement(tag);
+  if (options.className) el.className = options.className;
+  if (options.textContent) el.textContent = options.textContent;
+  if (options.innerHTML && options.trusted) el.innerHTML = options.innerHTML;
+  if (options.style) Object.assign(el.style, options.style);
+  if (options.attributes) {
+    Object.entries(options.attributes).forEach(([key, value]) => {
+      el.setAttribute(key, value);
+    });
+  }
+  return el;
+};
+const createSecureButton = (text, onClick) => {
+  const btn = document.createElement('button');
+  btn.textContent = text;
+  btn.onclick = onClick;
+  btn.style.margin = '2px';
+  btn.style.padding = '4px 8px';
+  btn.style.fontSize = '12px';
+  return btn;
+};
 const createTableRow = (cells) => {
   const tr = document.createElement('tr');
   cells.forEach(cell => {
