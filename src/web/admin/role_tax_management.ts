@@ -8,13 +8,7 @@ import { getDiscordClient } from '../../services/discord_users.js';
 
 const router = Router();
 
-// Admin authentication middleware (reuse existing)
-router.use(async (req: any, res: any, next: any) => {
-  if (req.headers.authorization !== `Bearer ${process.env.ADMIN_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-});
+// Authentication is handled by the global admin middleware - no need for duplicate auth here
 
 // GET /admin/role-tax - List all role tax exemptions
 router.get('/', async (req, res) => {
