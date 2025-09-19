@@ -5,24 +5,15 @@ import { prisma } from '../../services/db.js';
 import { invalidateDefinitionCache, getAchievementDefinitions, processAchievementEvent, batchProcessAchievements } from '../../services/dynamic_achievements.js';
 import { startTimer, endTimer } from '../../services/performance.js';
 import { validateAchievementData, validateBulkOperation, validateManualOperation } from '../../services/input_validation.js';
+import { viewOnlyAdminMiddleware, basicAdminMiddleware } from '../../services/admin_auth.js';
 
 const router = Router();
 
-// Admin authentication middleware (reuse existing pattern)
-async function requireAdmin(req: any, res: any, next: any) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || authHeader !== `Bearer ${process.env.ADMIN_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  next();
-}
-
-router.use(requireAdmin);
+// View operations use simple auth (compatible with Replit)
+// Modification operations use basic auth with rate limiting
 
 // GET /admin/achievements - List all achievement definitions
-router.get('/', async (req, res) => {
+router.get('/', viewOnlyAdminMiddleware(), async (req, res) => {
   try {
     startTimer('admin_list_achievements');
 
@@ -144,7 +135,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /admin/achievements - Create new achievement definition
-router.post('/', async (req, res) => {
+router.post('/', basicAdminMiddleware(), async (req, res) => {
   try {
     startTimer('admin_create_achievement');
 

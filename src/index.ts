@@ -43,7 +43,8 @@ import { setDiscordClient } from "./services/discord_users.js";
 // import { backupService } from "./services/backup.js"; // Disabled - using external cron job
 
 const TOKEN = process.env.DISCORD_TOKEN!;
-const PORT = Number(process.env.PORT || 3000);
+// Replit compatibility: Use port 5000 if in Replit environment
+const PORT = Number(process.env.PORT || (process.env.REPLIT_DB_URL ? 5000 : 3000));
 
 // ---------- Express (REST) ----------
 const app = express();
@@ -74,6 +75,102 @@ app.use("/internal", internalRouter);
 app.use("/admin", adminRouter);
 app.use("/auth", authRouter);
 app.use("/pengubook", pengubookModularRouter);
+
+// Replit-friendly landing page
+app.get("/", (req: Request, res: Response) => {
+  const isReplit = !!(process.env.REPL_ID || process.env.REPL_SLUG || process.env.REPLIT_DB_URL);
+  const botStatus = bot.user ? 'Online' : 'Starting...';
+
+  res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIPTip Bot ${isReplit ? '- Replit Production' : '- Server'}</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0; padding: 40px 20px; min-height: 100vh; color: white;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .container {
+      background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+      border-radius: 20px; padding: 40px; max-width: 600px; text-align: center;
+      border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    }
+    h1 { margin: 0 0 20px; font-size: 3em; font-weight: 300; }
+    .status {
+      display: inline-flex; align-items: center; padding: 12px 24px;
+      background: ${botStatus === 'Online' ? '#10b981' : '#f59e0b'};
+      border-radius: 25px; margin: 20px 0; font-weight: 600;
+    }
+    .status::before {
+      content: '${botStatus === 'Online' ? '🟢' : '🟡'}'; margin-right: 8px;
+    }
+    .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 30px; }
+    .link {
+      background: rgba(255,255,255,0.15); padding: 20px; border-radius: 12px;
+      text-decoration: none; color: white; border: 1px solid rgba(255,255,255,0.2);
+      transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center;
+    }
+    .link:hover {
+      background: rgba(255,255,255,0.25); transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    .link-title { font-size: 1.2em; font-weight: 600; margin-bottom: 8px; }
+    .link-desc { font-size: 0.9em; opacity: 0.8; }
+    .tech-stack {
+      margin-top: 40px; font-size: 0.9em; opacity: 0.8;
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 16px;
+    }
+    .tech-badge {
+      background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    ${isReplit ? '.replit-badge { background: #ff7f00; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600; margin-bottom: 20px; }' : ''}
+  </style>
+</head>
+<body>
+  <div class="container">
+    ${isReplit ? '<div class="replit-badge">🚀 Running on Replit</div>' : ''}
+    <h1>🐧 PIPTip</h1>
+    <p>Multi-token Discord tipping bot for Abstract Chain</p>
+
+    <div class="status">Bot Status: ${botStatus}</div>
+
+    <div class="links">
+      <a href="/admin/ui" class="link">
+        <div class="link-title">🛠️ Admin Panel</div>
+        <div class="link-desc">Manage tokens, users, and settings</div>
+      </a>
+      <a href="/pengubook" class="link">
+        <div class="link-title">📖 PenguBook</div>
+        <div class="link-desc">Social profiles and discovery</div>
+      </a>
+      <a href="/health" class="link">
+        <div class="link-title">💚 Health Check</div>
+        <div class="link-desc">System status and diagnostics</div>
+      </a>
+    </div>
+
+    <div class="tech-stack">
+      <span class="tech-badge">Discord.js</span>
+      <span class="tech-badge">TypeScript</span>
+      <span class="tech-badge">Express</span>
+      <span class="tech-badge">Prisma</span>
+      <span class="tech-badge">Abstract Chain</span>
+      ${isReplit ? '<span class="tech-badge">Replit Ready</span>' : ''}
+    </div>
+  </div>
+
+  <script>
+    // Auto-refresh every 30 seconds to show bot status updates
+    setTimeout(() => location.reload(), 30000);
+  </script>
+</body>
+</html>`);
+});
 
 // Static CSS route for PenguBook enhanced styles
 app.get("/static/pengubook.css", (_req: Request, res: Response) => {

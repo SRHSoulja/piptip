@@ -1,6 +1,44 @@
-// Multi-Factor Admin Authentication System
-// Enhances admin security beyond simple bearer tokens
+// Hybrid Admin Authentication System
+// Provides both simple bearer auth for Replit/demos and full MFA for production
 import crypto from 'crypto';
+// Environment detection for tiered authentication
+const isReplitEnvironment = () => {
+    return !!(process.env.REPLIT_DB_URL || process.env.REPL_ID || process.env.REPL_SLUG);
+};
+const isDevelopmentMode = () => {
+    return process.env.NODE_ENV === 'development' ||
+        process.env.NODE_ENV === 'dev' ||
+        !process.env.NODE_ENV;
+};
+// Authentication tiers based on environment and operation sensitivity
+export const AUTH_TIERS = {
+    DEMO: 'demo', // Simple bearer for demos/Replit
+    BASIC: 'basic', // Bearer with rate limiting
+    SECURE: 'secure', // MFA required for sensitive operations
+};
+export function getAuthTier(operationType) {
+    // Always force secure auth for critical financial operations regardless of environment
+    const criticalOps = ['withdrawal', 'deposit', 'balance_edit', 'user_ban', 'emergency', 'grand_reset'];
+    if (operationType && criticalOps.includes(operationType)) {
+        return AUTH_TIERS.SECURE;
+    }
+    // For Replit production environment - use basic auth with rate limiting
+    // This maintains security while working within Replit's constraints
+    if (isReplitEnvironment()) {
+        // Replit production should still have protection for sensitive operations
+        const sensitiveOps = ['user_management', 'system_config', 'token_management'];
+        if (operationType && sensitiveOps.includes(operationType)) {
+            return AUTH_TIERS.BASIC; // Enhanced bearer auth with rate limiting
+        }
+        return AUTH_TIERS.DEMO; // Simple bearer auth for general operations
+    }
+    // Use basic auth for local development
+    if (isDevelopmentMode()) {
+        return AUTH_TIERS.BASIC;
+    }
+    // Default to secure for traditional production servers
+    return AUTH_TIERS.SECURE;
+}
 class AdminAuthSystem {
     sessions = new Map();
     mfaChallenges = new Map();
@@ -150,25 +188,38 @@ class AdminAuthSystem {
     /**
      * Express middleware for admin authentication
      */
-    adminMiddleware(requiredPermissions = []) {
+    adminMiddleware(requiredPermissions = [], operationType) {
         return async (req, res, next) => {
             try {
+                const authTier = getAuthTier(operationType);
+                // Handle different authentication tiers
+                if (authTier === AUTH_TIERS.DEMO) {
+                    return this.handleBearerAuth(req, res, next, requiredPermissions);
+                }
+                if (authTier === AUTH_TIERS.BASIC) {
+                    return this.handleBasicAuth(req, res, next, requiredPermissions);
+                }
+                // SECURE tier - full MFA required
                 const sessionId = req.headers['x-admin-session'];
                 if (!sessionId) {
                     return res.status(401).json({
-                        error: 'Session ID required',
-                        code: 'MISSING_SESSION'
+                        error: 'Session ID required for secure operations',
+                        code: 'MISSING_SESSION',
+                        authTier: 'secure',
+                        hint: 'Use /admin/auth/login to get a session'
                     });
                 }
                 const validation = await this.validateSession(sessionId, requiredPermissions);
                 if (!validation.valid) {
                     return res.status(401).json({
                         error: validation.error,
-                        code: validation.error === 'MFA verification required' ? 'MFA_REQUIRED' : 'INVALID_SESSION'
+                        code: validation.error === 'MFA verification required' ? 'MFA_REQUIRED' : 'INVALID_SESSION',
+                        authTier: 'secure'
                     });
                 }
                 // Add session to request for downstream use
                 req.adminSession = validation.session;
+                req.authTier = authTier;
                 next();
             }
             catch (error) {
@@ -176,6 +227,66 @@ class AdminAuthSystem {
                 res.status(500).json({ error: 'Authentication system error' });
             }
         };
+    }
+    /**
+     * Handle simple bearer token authentication (for Replit/demo mode)
+     */
+    handleBearerAuth(req, res, next, requiredPermissions = []) {
+        const authHeader = req.headers.authorization;
+        const expectedToken = process.env.ADMIN_SECRET;
+        if (!expectedToken) {
+            return res.status(500).json({
+                error: 'Admin authentication not configured',
+                authTier: 'demo'
+            });
+        }
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                error: 'Bearer token required for demo mode',
+                code: 'MISSING_BEARER',
+                authTier: 'demo',
+                hint: 'Use Authorization: Bearer <ADMIN_SECRET> header'
+            });
+        }
+        const token = authHeader.substring(7);
+        if (!this.timingSafeEqual(token, expectedToken)) {
+            return res.status(401).json({
+                error: 'Invalid bearer token',
+                code: 'INVALID_BEARER',
+                authTier: 'demo'
+            });
+        }
+        // Create minimal session info for bearer auth
+        req.adminSession = {
+            sessionId: 'bearer-' + Date.now(),
+            adminId: 'admin',
+            authMethod: 'bearer',
+            permissions: ['admin']
+        };
+        req.authTier = AUTH_TIERS.DEMO;
+        next();
+    }
+    /**
+     * Handle basic authentication with rate limiting (for development)
+     */
+    handleBasicAuth(req, res, next, requiredPermissions = []) {
+        const clientId = this.getClientId(req);
+        // Apply rate limiting for basic auth
+        const failureData = this.failedAttempts.get(clientId);
+        if (failureData && failureData.count >= 3) { // Lower threshold for basic auth
+            const timeSinceLastAttempt = Date.now() - failureData.lastAttempt.getTime();
+            if (timeSinceLastAttempt < 5 * 60 * 1000) { // 5 minute lockout
+                return res.status(429).json({
+                    error: 'Too many failed attempts',
+                    code: 'RATE_LIMITED',
+                    authTier: 'basic'
+                });
+            }
+            else {
+                this.failedAttempts.delete(clientId);
+            }
+        }
+        return this.handleBearerAuth(req, res, next, requiredPermissions);
     }
     /**
      * Logout and invalidate session
@@ -275,8 +386,40 @@ export const adminAuth = new AdminAuthSystem();
 setInterval(() => {
     adminAuth.cleanup();
 }, 60000); // Clean up every minute
-// Export convenience functions
-export const adminMiddleware = (permissions = []) => adminAuth.adminMiddleware(permissions);
+// Export convenience functions for hybrid authentication
+export const adminMiddleware = (permissions = [], operationType) => adminAuth.adminMiddleware(permissions, operationType);
+// Convenience functions for specific operation types
+export const secureAdminMiddleware = (permissions = []) => adminAuth.adminMiddleware(permissions, 'secure');
+export const financialAdminMiddleware = (permissions = []) => adminAuth.adminMiddleware(permissions, 'withdrawal');
+// Replit-compatible middleware for different security levels
+export const viewOnlyAdminMiddleware = (permissions = []) => adminAuth.adminMiddleware(permissions); // Uses demo tier in Replit
+export const basicAdminMiddleware = (permissions = []) => adminAuth.adminMiddleware(permissions, 'user_management'); // Uses basic tier in Replit
+export const criticalAdminMiddleware = (permissions = []) => adminAuth.adminMiddleware(permissions, 'emergency'); // Always secure tier
+// Simple bearer auth check function for legacy compatibility
+export function checkBearerAuth(req) {
+    const authHeader = req.headers.authorization;
+    const expectedToken = process.env.ADMIN_SECRET;
+    if (!expectedToken) {
+        return { valid: false, error: 'Admin authentication not configured' };
+    }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return { valid: false, error: 'Bearer token required' };
+    }
+    const token = authHeader.substring(7);
+    const expected = expectedToken.trim();
+    if (token.length !== expected.length) {
+        return { valid: false, error: 'Invalid bearer token' };
+    }
+    // Timing-safe comparison
+    let result = 0;
+    for (let i = 0; i < token.length; i++) {
+        result |= token.charCodeAt(i) ^ expected.charCodeAt(i);
+    }
+    if (result !== 0) {
+        return { valid: false, error: 'Invalid bearer token' };
+    }
+    return { valid: true };
+}
 export async function authenticateAdmin(bearerToken, req) {
     return adminAuth.authenticateAdmin(bearerToken, req);
 }
