@@ -643,6 +643,10 @@ async function loadTreasury(force=false) {
       tbody.appendChild(tokenRow);
     });
     showMessage("treasuryMsg", `Updated at ${new Date(j.ts).toLocaleTimeString()}`, false);
+
+    // Switch to refresh mode after first load
+    $("loadTreasury").style.display = "none";
+    $("reloadTreasury").style.display = "inline-block";
   } catch { showMessage("treasuryMsg","Failed to load treasury",true); }
 }
 $("reloadTreasury").onclick = () => loadTreasury(true);
@@ -2390,7 +2394,7 @@ async function loadAllData() {
       loadTiers(),
       loadTokens(),
       loadServers(),
-      loadTreasury(),
+      // loadTreasury(), // Load on-demand to reduce RPC calls
       loadAds(),
       loadTransactions(),
       loadGroupTips(),

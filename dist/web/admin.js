@@ -286,8 +286,9 @@ adminRouter.get("/ui", (_req, res) => {
   <section>
     <h2>💰 Treasury Balances</h2>
     <div class="row">
-      <button id="reloadTreasury">Refresh Balances</button>
-      <span id="treasuryMsg"></span>
+      <button id="loadTreasury" onclick="loadTreasury()">Load Treasury Balances</button>
+      <button id="reloadTreasury" style="display:none">Refresh Balances</button>
+      <span id="treasuryMsg">Click "Load Treasury Balances" to view current balances</span>
     </div>
     <table id="treasuryTbl">
       <thead>
