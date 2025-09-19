@@ -31,6 +31,25 @@ const adminRateLimit = rateLimit({
 // Apply rate limiting to all routes
 router.use(adminRateLimit);
 
+// Simple admin authentication for development/demo (bypass complex MFA)
+router.use((req: any, res: any, next: any) => {
+  // Check for Bearer token in Authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    if (token === process.env.ADMIN_SECRET) {
+      // Valid admin token, allow access
+      return next();
+    }
+  }
+  
+  // No valid auth, return 401
+  res.status(401).json({ 
+    error: 'Admin authentication required',
+    message: 'Please include Authorization: Bearer <ADMIN_SECRET> header'
+  });
+});
+
 // Mount sub-routers
 router.use('/achievements', achievementsRouter);
 router.use('/achievements', previewRouter);
