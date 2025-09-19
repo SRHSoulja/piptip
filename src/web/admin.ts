@@ -783,22 +783,32 @@ adminRouter.get('/ui.js', async (req: Request, res: Response) => {
 /* ------------------------------------------------------------------------ */
 
 // Mount route modules
-// Apply authentication to all API routes
-adminRouter.use('/config', requireAuth, configRouter);
-adminRouter.use('/tokens', requireAuth, tokensRouter);
-adminRouter.use('/servers', requireAuth, serversRouter);
-adminRouter.use('/ads', requireAuth, adsRouter);
-adminRouter.use('/tiers', requireAuth, tiersRouter);
-adminRouter.use('/users', requireAuth, usersRouter);
-adminRouter.use('/transactions', requireAuth, transactionsRouter);
-adminRouter.use('/groupTips', requireAuth, groupTipsRouter);
-adminRouter.use('/system', requireAuth, systemRouter);
-// adminRouter.use('/backup', requireAuth, backupRouter); // Disabled due to environment issues
-adminRouter.use('/stats', requireAuth, statsRouter);
-adminRouter.use('/pengubook', requireAuth, pengubookRouter);
-adminRouter.use("/achievements", requireAuth, achievementAdminRouter);
-adminRouter.use("/role-tax", requireAuth, roleTaxRouter);
-adminRouter.use("/role-rake", requireAuth, roleRakeRouter);
+// Mount API route modules with selective authentication
+// Note: ping endpoint needs to be excluded from auth since it's used for auth verification
+adminRouter.use((req: Request, res: Response, next: NextFunction) => {
+  // Skip auth for specific endpoints
+  if (req.path === '/ping' || req.path === '/ui' || req.path === '/ui.js' || req.path === '/') {
+    return next();
+  }
+  // Apply auth to all other endpoints
+  return requireAuth(req, res, next);
+});
+
+adminRouter.use(configRouter);
+adminRouter.use(tokensRouter);
+adminRouter.use(serversRouter);
+adminRouter.use(adsRouter);
+adminRouter.use(tiersRouter);
+adminRouter.use(usersRouter);
+adminRouter.use(transactionsRouter);
+adminRouter.use(groupTipsRouter);
+adminRouter.use(systemRouter);
+// adminRouter.use(backupRouter); // Disabled due to environment issues
+adminRouter.use(statsRouter);
+adminRouter.use(pengubookRouter);
+adminRouter.use(achievementAdminRouter);
+adminRouter.use(roleTaxRouter);
+adminRouter.use(roleRakeRouter);
 
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */
