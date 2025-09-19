@@ -43,6 +43,43 @@ const __dirname = dirname(__filename);
 const getAdminSecret = () => (process.env.ADMIN_SECRET ?? "").trim();
 
 /* ------------------------------------------------------------------------ */
+/*                       Security Headers Middleware                        */
+/* ------------------------------------------------------------------------ */
+const setSecurityHeaders = (req: Request, res: Response, next: NextFunction) => {
+  // Content Security Policy - Strict for admin interface
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'", // Allowing inline for admin-generated content only
+    "style-src 'self' 'unsafe-inline'", // Allowing inline styles for admin interface
+    "font-src 'self'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests"
+  ].join("; "));
+
+  // Additional security headers
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=()");
+
+  // HSTS for HTTPS environments
+  if (req.secure || req.get('X-Forwarded-Proto') === 'https') {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
+
+  next();
+};
+
+// Apply security headers to all admin routes
+adminRouter.use(setSecurityHeaders);
+
+/* ------------------------------------------------------------------------ */
 /*                           Admin UI (HTML shell)                          */
 /* ------------------------------------------------------------------------ */
 adminRouter.get("/ui", (_req: Request, res: Response) => {
@@ -52,6 +89,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
 <meta charset="utf-8"/>
 <title>PIPtip Admin</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="referrer" content="strict-origin-when-cross-origin"/>
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet"/>
 <style>
   :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial }
   body { margin:24px; background:#0a0a0a; color:#e5e5e5 }
@@ -806,7 +845,7 @@ adminRouter.get('/ui', (req: Request, res: Response) => {
     </table>
   </section>
 
-  <script src="/admin/ui.js"></script>
+  <script src="/admin/ui.js" type="module"></script>
 </body>
 </html>`);
 });
@@ -828,19 +867,30 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   });
 }
 
-// Serve UI JavaScript file
-adminRouter.get('/ui.js', async (req: Request, res: Response) => {
+// Serve JavaScript files securely
+const serveJavaScript = (filename: string) => async (req: Request, res: Response) => {
   try {
-    const jsPath = join(dirname(fileURLToPath(import.meta.url)), 'admin', 'ui.js');
+    const jsPath = join(dirname(fileURLToPath(import.meta.url)), 'admin', 'js', filename);
     const jsContent = await readFile(jsPath, 'utf-8');
-    res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.send(jsContent);
   } catch (error) {
-    console.error('Failed to serve admin UI JavaScript:', error);
-    res.status(500).send('// Admin UI JavaScript not found');
+    console.error(`Failed to serve ${filename}:`, error);
+    res.status(500).send(`// ${filename} not found`);
   }
-});
+};
+
+// Serve admin JavaScript modules
+adminRouter.get('/ui.js', serveJavaScript('ui.js'));
+adminRouter.get('/security.js', serveJavaScript('security.js'));
+adminRouter.get('/validation.js', serveJavaScript('validation.js'));
+adminRouter.get('/ui-secure-helpers.js', serveJavaScript('ui-secure-helpers.js'));
+adminRouter.get('/tokens.js', serveJavaScript('tokens.js'));
+adminRouter.get('/core.js', serveJavaScript('core.js'));
+adminRouter.get('/fees.js', serveJavaScript('fees.js'));
 
 /* ------------------------------------------------------------------------ */
 /*                              Route Modules                               */
@@ -850,8 +900,14 @@ adminRouter.get('/ui.js', async (req: Request, res: Response) => {
 // Mount API route modules with selective authentication
 // Note: ping endpoint needs to be excluded from auth since it's used for auth verification
 adminRouter.use((req: Request, res: Response, next: NextFunction) => {
-  // Skip auth for specific endpoints
-  if (req.path === '/ping' || req.path === '/ui' || req.path === '/ui.js' || req.path === '/') {
+  // Skip auth for specific endpoints and JavaScript modules
+  const publicPaths = [
+    '/ping', '/ui', '/ui.js', '/',
+    '/security.js', '/validation.js', '/ui-secure-helpers.js',
+    '/tokens.js', '/core.js', '/fees.js'
+  ];
+
+  if (publicPaths.includes(req.path)) {
     return next();
   }
   // Apply auth to all other endpoints

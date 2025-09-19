@@ -1,5 +1,9 @@
 // src/web/admin/ui_complete.js - Complete Admin frontend JavaScript
 
+// Import security utilities
+import { createElement, createTableRow, escapeHtml, sanitizeInput, setSecureContent, createSecureButton } from './security.js';
+import { createAlertDiv, createRecommendationDiv, createUserTableRow, createTierTableRow, createServerTableRow, createTreasuryRow } from './ui-secure-helpers.js';
+
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);
 const API = async (path, opts = {}) => {
@@ -57,40 +61,28 @@ async function loadResourceMetrics() {
     $("uptime-display").textContent = uptimeHours > 0 ? `${uptimeHours}h ${uptimeMinutes}m` : `${uptimeMinutes}m`;
     $("uptime-details").textContent = `${data.current.system.platform} ${data.current.system.nodeVersion}`;
 
-    // Show alerts if any
+    // Show alerts if any - SECURE VERSION
     if (data.alerts && data.alerts.length > 0) {
       const alertsContainer = $("alerts-container");
       const alertsSection = $("resource-alerts");
 
-      alertsContainer.innerHTML = data.alerts.map(alert => {
-        const bgColor = alert.level === 'critical' ? '#dc2626' : alert.level === 'warning' ? '#f59e0b' : '#3b82f6';
-        const icon = alert.level === 'critical' ? '🔥' : alert.level === 'warning' ? '⚠️' : 'ℹ️';
-
-        return `
-          <div style="background: ${bgColor}; padding: 12px; border-radius: 8px; margin: 8px 0; color: white;">
-            <div style="font-weight: bold;">${icon} ${alert.message}</div>
-            <div style="font-size: 0.9em; opacity: 0.9; margin-top: 4px;">
-              ${alert.metric}: ${alert.value}${alert.metric === 'memory' || alert.metric === 'cpu' ? '%' : 'ms'}
-              (threshold: ${alert.threshold}${alert.metric === 'memory' || alert.metric === 'cpu' ? '%' : 'ms'})
-            </div>
-            ${alert.recommendation ? `<div style="font-size: 0.9em; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3);">💡 ${alert.recommendation}</div>` : ''}
-          </div>
-        `;
-      }).join('');
+      // Clear container and add secure alert elements
+      setSecureContent(alertsContainer, data.alerts.map(alert => createAlertDiv(alert)));
 
       alertsSection.style.display = 'block';
     } else {
       $("resource-alerts").style.display = 'none';
     }
 
-    // Update recommendations
+    // Update recommendations - SECURE VERSION
     const recommendationsContainer = $("recommendations-container");
     if (data.recommendations && data.recommendations.length > 0) {
-      recommendationsContainer.innerHTML = data.recommendations.map(rec => `
-        <div style="padding: 8px 0; color: #e5e5e5;">• ${rec}</div>
-      `).join('');
+      setSecureContent(recommendationsContainer, data.recommendations.map(rec => createRecommendationDiv(rec)));
     } else {
-      recommendationsContainer.innerHTML = '<div style="color: #9ca3af; text-align: center; padding: 20px;">No specific recommendations at this time</div>';
+      setSecureContent(recommendationsContainer, createElement('div', {
+        style: { color: '#9ca3af', textAlign: 'center', padding: '20px' },
+        textContent: 'No specific recommendations at this time'
+      }));
     }
 
     showMessage("resourceMsg", `✓ Updated at ${new Date().toLocaleTimeString()}`, false);
@@ -144,46 +136,94 @@ async function loadResourceHistory() {
     const historyContainer = $("resource-history");
 
     if (history.length === 0) {
-      historyContainer.innerHTML = '<div style="color: #9ca3af; text-align: center; padding: 40px;">No history data available yet</div>';
+      setSecureContent(historyContainer, createElement('div', {
+        style: { color: '#9ca3af', textAlign: 'center', padding: '40px' },
+        textContent: 'No history data available yet'
+      }));
       return;
     }
 
-    // Create simple text-based chart
-    let chartHTML = '<div style="font-family: monospace; font-size: 12px; line-height: 1.4;">';
-    chartHTML += '<div style="display: grid; grid-template-columns: 60px 1fr; gap: 12px; margin-bottom: 16px;">';
-    chartHTML += '<div style="font-weight: bold; color: #3b82f6;">Memory</div>';
-    chartHTML += '<div style="font-weight: bold; color: #10b981;">CPU</div>';
-    chartHTML += '</div>';
+    // Create secure resource history chart (data comes from trusted admin backend)
+    const chartContainer = createElement('div', {
+      style: { fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.4' }
+    });
+
+    const headerGrid = createElement('div', {
+      style: { display: 'grid', gridTemplateColumns: '60px 1fr', gap: '12px', marginBottom: '16px' }
+    });
+
+    const memoryHeader = createElement('div', {
+      style: { fontWeight: 'bold', color: '#3b82f6' },
+      textContent: 'Memory'
+    });
+
+    const cpuHeader = createElement('div', {
+      style: { fontWeight: 'bold', color: '#10b981' },
+      textContent: 'CPU'
+    });
+
+    headerGrid.appendChild(memoryHeader);
+    headerGrid.appendChild(cpuHeader);
+    chartContainer.appendChild(headerGrid);
 
     // Show last 12 data points (1 hour with 5min intervals)
     const recent = history.slice(-12);
     recent.forEach((point, i) => {
-      const time = new Date(point.timestamp).toLocaleTimeString().slice(0, 5);
-      const memBar = '█'.repeat(Math.floor(point.memory / 5)) + '░'.repeat(20 - Math.floor(point.memory / 5));
-      const cpuBar = '█'.repeat(Math.floor(point.cpu / 5)) + '░'.repeat(20 - Math.floor(point.cpu / 5));
+      // Validate and sanitize numeric data (admin backend data should be clean, but safety first)
+      const safeMemory = Math.max(0, Math.min(100, Number(point.memory) || 0));
+      const safeCpu = Math.max(0, Math.min(100, Number(point.cpu) || 0));
+      const safeAlertCount = Math.max(0, Number(point.alertCount) || 0);
 
-      chartHTML += `
-        <div style="display: grid; grid-template-columns: 60px 200px 50px 200px 50px 60px; gap: 8px; padding: 2px 0; align-items: center;">
-          <div style="color: #9ca3af;">${time}</div>
-          <div style="color: #3b82f6; font-family: monospace;">${memBar}</div>
-          <div style="color: #3b82f6;">${point.memory.toFixed(1)}%</div>
-          <div style="color: #10b981; font-family: monospace;">${cpuBar}</div>
-          <div style="color: #10b981;">${point.cpu.toFixed(1)}%</div>
-          <div style="color: ${point.alertCount > 0 ? '#ef4444' : '#9ca3af'};">${point.alertCount > 0 ? `${point.alertCount} alerts` : 'OK'}</div>
-        </div>
-      `;
+      const time = new Date(point.timestamp).toLocaleTimeString().slice(0, 5);
+      const memBar = '█'.repeat(Math.floor(safeMemory / 5)) + '░'.repeat(20 - Math.floor(safeMemory / 5));
+      const cpuBar = '█'.repeat(Math.floor(safeCpu / 5)) + '░'.repeat(20 - Math.floor(safeCpu / 5));
+
+      const rowDiv = createElement('div', {
+        style: {
+          display: 'grid',
+          gridTemplateColumns: '60px 200px 50px 200px 50px 60px',
+          gap: '8px',
+          padding: '2px 0',
+          alignItems: 'center'
+        }
+      });
+
+      const timeDiv = createElement('div', { style: { color: '#9ca3af' }, textContent: time });
+      const memBarDiv = createElement('div', { style: { color: '#3b82f6', fontFamily: 'monospace' }, textContent: memBar });
+      const memPctDiv = createElement('div', { style: { color: '#3b82f6' }, textContent: `${safeMemory.toFixed(1)}%` });
+      const cpuBarDiv = createElement('div', { style: { color: '#10b981', fontFamily: 'monospace' }, textContent: cpuBar });
+      const cpuPctDiv = createElement('div', { style: { color: '#10b981' }, textContent: `${safeCpu.toFixed(1)}%` });
+      const statusDiv = createElement('div', {
+        style: { color: safeAlertCount > 0 ? '#ef4444' : '#9ca3af' },
+        textContent: safeAlertCount > 0 ? `${safeAlertCount} alerts` : 'OK'
+      });
+
+      rowDiv.appendChild(timeDiv);
+      rowDiv.appendChild(memBarDiv);
+      rowDiv.appendChild(memPctDiv);
+      rowDiv.appendChild(cpuBarDiv);
+      rowDiv.appendChild(cpuPctDiv);
+      rowDiv.appendChild(statusDiv);
+
+      chartContainer.appendChild(rowDiv);
     });
 
-    chartHTML += '</div>';
-    chartHTML += '<div style="font-size: 10px; color: #9ca3af; margin-top: 12px; text-align: center;">Each █ represents 5% usage</div>';
+    const legendDiv = createElement('div', {
+      style: { fontSize: '10px', color: '#9ca3af', marginTop: '12px', textAlign: 'center' },
+      textContent: 'Each █ represents 5% usage'
+    });
 
-    historyContainer.innerHTML = chartHTML;
+    chartContainer.appendChild(legendDiv);
+    setSecureContent(historyContainer, chartContainer);
     showMessage("resourceMsg", `✓ Loaded ${recent.length} data points`, false);
 
   } catch (error) {
     console.error("Resource history error:", error);
-    showMessage("resourceMsg", `✗ ${error.message}`, true);
-    $("resource-history").innerHTML = '<div style="color: #ef4444; text-align: center; padding: 40px;">Failed to load history</div>';
+    showMessage("resourceMsg", `✗ ${escapeHtml(error.message)}`, true);
+    setSecureContent($("resource-history"), createElement('div', {
+      style: { color: '#ef4444', textAlign: 'center', padding: '40px' },
+      textContent: 'Failed to load history'
+    }));
   } finally {
     setLoading("loadResourceHistory", false);
   }
@@ -1037,62 +1077,26 @@ function displayUsers(users) {
     console.error("❌ Could not find users table tbody element");
     return;
   }
-  
-  tbody.innerHTML = "";
-  
+
+  // Clear existing content securely
+  setSecureContent(tbody, []);
+
   if (!users || users.length === 0) {
     console.log("ℹ️ No users to display");
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#9ca3af;">No users found</td></tr>';
+    const noUsersRow = createTableRow([
+      { attributes: { colspan: '10' }, style: { textAlign: 'center', color: '#9ca3af' }, textContent: 'No users found' }
+    ]);
+    tbody.appendChild(noUsersRow);
     return;
   }
-  
+
   console.log(`🎯 Displaying ${users.length} users`);
   users.forEach((user, index) => {
     console.log(`👤 Processing user ${index + 1}:`, user);
-    const tr = document.createElement("tr");
-    
-    let balancesHtml = "";
-    if (user.balances && user.balances.length > 0) {
-      balancesHtml = user.balances.map(b => `
-        <div class="balance-item" style="margin-bottom:4px;">
-          <span class="balance-display">${formatNumber(b.amount)} ${b.tokenSymbol}</span>
-          <button class="edit-balance-btn" data-discord-id="${user.discordId}" data-token-symbol="${b.tokenSymbol}" data-current-amount="${b.amount}" 
-                  style="background:#f59e0b; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; margin-left:8px; font-size:11px;">✏️</button>
-        </div>
-      `).join("");
-    } else {
-      balancesHtml = "<span style='color:#9ca3af;'>None</span>";
-    }
-    
-    // Add "Add Token" button for all users
-    balancesHtml += `
-      <div class="add-token-container" style="margin-top:8px; padding-top:8px; border-top:1px solid #374151;">
-        <button class="add-token-btn" data-discord-id="${user.discordId}" 
-                style="background:#059669; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">
-          ➕ Add Token
-        </button>
-      </div>
-    `;
-    
-    const memberships = user.membershipDetails?.map(m => `${m.tierName} (${m.status})`).join(", ") || "None";
-    
-    tr.innerHTML = `
-      <td><strong>${user.username || "Unknown"}</strong></td>
-      <td><code>${user.discordId}</code></td>
-      <td><code>${user.agwAddress || "Not linked"}</code></td>
-      <td>${new Date(user.createdAt).toLocaleDateString()}</td>
-      <td>${user.lastActivity ? new Date(user.lastActivity).toLocaleDateString() : "Never"}</td>
-      <td>${formatNumber(user.totalTipsSent || 0)}</td>
-      <td>${formatNumber(user.totalTipsReceived || 0)}</td>
-      <td>${memberships}</td>
-      <td>${balancesHtml}</td>
-      <td>
-        <button class="exportUser" data-discord-id="${user.discordId}" style="background:#2563eb; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-right:4px;">📊 Export CSV</button><br/>
-        <button class="deleteUser" data-discord-id="${user.discordId}" style="background:#f59e0b; color:white; border:none; padding:3px 6px; border-radius:4px; cursor:pointer; margin-right:4px; margin-top:4px;">Delete (Anonymize)</button>
-        <button class="hardDeleteUser" data-discord-id="${user.discordId}" style="background:#dc2626; color:white; border:none; padding:3px 6px; border-radius:4px; cursor:pointer; margin-top:4px;">Hard Delete</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
+
+    // Create secure user row with proper data escaping
+    const userRow = createSecureUserRow(user);
+    tbody.appendChild(userRow);
   });
   
   // Add export functionality
@@ -1119,24 +1123,268 @@ function displayUsers(users) {
   });
 }
 
+/**
+ * Create a secure user table row with proper data escaping
+ * @param {Object} user - User data
+ * @returns {HTMLTableRowElement} - Secure user row
+ */
+function createSecureUserRow(user) {
+  const tr = document.createElement('tr');
+
+  // Username cell with escaping
+  const usernameCell = createElement('td');
+  const usernameStrong = createElement('strong', {
+    textContent: escapeHtml(user.username || "Unknown")
+  });
+  usernameCell.appendChild(usernameStrong);
+
+  // Discord ID cell
+  const discordIdCell = createElement('td');
+  const discordIdCode = createElement('code', {
+    textContent: escapeHtml(user.discordId || "")
+  });
+  discordIdCell.appendChild(discordIdCode);
+
+  // AGW Address cell
+  const addressCell = createElement('td');
+  const addressCode = createElement('code', {
+    textContent: escapeHtml(user.agwAddress || "Not linked")
+  });
+  addressCell.appendChild(addressCode);
+
+  // Date cells
+  const createdCell = createElement('td', {
+    textContent: new Date(user.createdAt).toLocaleDateString()
+  });
+
+  const lastActivityCell = createElement('td', {
+    textContent: user.lastActivity ? new Date(user.lastActivity).toLocaleDateString() : "Never"
+  });
+
+  // Tip amount cells
+  const tipsSentCell = createElement('td', {
+    textContent: formatNumber(user.totalTipsSent || 0)
+  });
+
+  const tipsReceivedCell = createElement('td', {
+    textContent: formatNumber(user.totalTipsReceived || 0)
+  });
+
+  // Memberships cell
+  const memberships = user.membershipDetails?.map(m =>
+    `${escapeHtml(m.tierName)} (${escapeHtml(m.status)})`
+  ).join(", ") || "None";
+  const membershipsCell = createElement('td', {
+    textContent: memberships
+  });
+
+  // Balances cell - secure creation
+  const balancesCell = createSecureBalancesCell(user);
+
+  // Actions cell - secure creation
+  const actionsCell = createSecureActionsCell(user.discordId);
+
+  // Append all cells
+  tr.appendChild(usernameCell);
+  tr.appendChild(discordIdCell);
+  tr.appendChild(addressCell);
+  tr.appendChild(createdCell);
+  tr.appendChild(lastActivityCell);
+  tr.appendChild(tipsSentCell);
+  tr.appendChild(tipsReceivedCell);
+  tr.appendChild(membershipsCell);
+  tr.appendChild(balancesCell);
+  tr.appendChild(actionsCell);
+
+  return tr;
+}
+
+/**
+ * Create secure balances cell for user
+ * @param {Object} user - User data
+ * @returns {HTMLTableCellElement} - Secure balances cell
+ */
+function createSecureBalancesCell(user) {
+  const balancesCell = createElement('td');
+
+  if (user.balances && user.balances.length > 0) {
+    user.balances.forEach(balance => {
+      if (balance.amount > 0) {
+        const balanceDiv = createElement('div', {
+          className: 'balance-item',
+          style: { marginBottom: '4px' }
+        });
+
+        const balanceSpan = createElement('span', {
+          className: 'balance-display',
+          textContent: `${formatNumber(balance.amount)} ${escapeHtml(balance.tokenSymbol)}`
+        });
+
+        const editBtn = createSecureButton('✏️', () => {
+          editBalance(user.discordId, balance.tokenSymbol, balance.amount, editBtn);
+        }, {
+          className: 'edit-balance-btn',
+          attributes: {
+            'data-discord-id': escapeHtml(user.discordId),
+            'data-token-symbol': escapeHtml(balance.tokenSymbol),
+            'data-current-amount': escapeHtml(String(balance.amount))
+          },
+          style: {
+            background: '#f59e0b',
+            color: 'white',
+            border: 'none',
+            padding: '2px 6px',
+            borderRadius: '3px',
+            cursor: 'pointer',
+            marginLeft: '8px',
+            fontSize: '11px'
+          }
+        });
+
+        balanceDiv.appendChild(balanceSpan);
+        balanceDiv.appendChild(editBtn);
+        balancesCell.appendChild(balanceDiv);
+      }
+    });
+  } else {
+    const noneSpan = createElement('span', {
+      style: { color: '#9ca3af' },
+      textContent: 'None'
+    });
+    balancesCell.appendChild(noneSpan);
+  }
+
+  // Add token button
+  const addTokenContainer = createElement('div', {
+    className: 'add-token-container',
+    style: {
+      marginTop: '8px',
+      paddingTop: '8px',
+      borderTop: '1px solid #374151'
+    }
+  });
+
+  const addTokenBtn = createSecureButton('➕ Add Token', () => {
+    addTokenToUser(user.discordId, addTokenBtn);
+  }, {
+    className: 'add-token-btn',
+    attributes: {
+      'data-discord-id': escapeHtml(user.discordId)
+    },
+    style: {
+      background: '#059669',
+      color: 'white',
+      border: 'none',
+      padding: '4px 8px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '11px'
+    }
+  });
+
+  addTokenContainer.appendChild(addTokenBtn);
+  balancesCell.appendChild(addTokenContainer);
+
+  return balancesCell;
+}
+
+/**
+ * Create secure actions cell for user
+ * @param {string} discordId - User's Discord ID
+ * @returns {HTMLTableCellElement} - Secure actions cell
+ */
+function createSecureActionsCell(discordId) {
+  const actionsCell = createElement('td');
+
+  const exportBtn = createSecureButton('📊 Export CSV', () => {
+    exportUserData(discordId);
+  }, {
+    className: 'exportUser',
+    attributes: {
+      'data-discord-id': escapeHtml(discordId)
+    },
+    style: {
+      background: '#2563eb',
+      color: 'white',
+      border: 'none',
+      padding: '4px 8px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      marginRight: '4px'
+    }
+  });
+
+  const br = document.createElement('br');
+
+  const deleteBtn = createSecureButton('Delete (Anonymize)', () => {
+    deleteUser(discordId, false);
+  }, {
+    className: 'deleteUser',
+    attributes: {
+      'data-discord-id': escapeHtml(discordId)
+    },
+    style: {
+      background: '#f59e0b',
+      color: 'white',
+      border: 'none',
+      padding: '3px 6px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      marginRight: '4px',
+      marginTop: '4px'
+    }
+  });
+
+  const hardDeleteBtn = createSecureButton('Hard Delete', () => {
+    deleteUser(discordId, true);
+  }, {
+    className: 'hardDeleteUser',
+    attributes: {
+      'data-discord-id': escapeHtml(discordId)
+    },
+    style: {
+      background: '#dc2626',
+      color: 'white',
+      border: 'none',
+      padding: '3px 6px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      marginTop: '4px'
+    }
+  });
+
+  actionsCell.appendChild(exportBtn);
+  actionsCell.appendChild(br);
+  actionsCell.appendChild(deleteBtn);
+  actionsCell.appendChild(hardDeleteBtn);
+
+  return actionsCell;
+}
+
 async function deleteUser(discordId, hardDelete = false) {
-  const btn = document.querySelector(`[data-discord-id="${discordId}"]${hardDelete ? '.hardDeleteUser' : '.deleteUser'}`);
+  // Validate and escape discordId for query selector
+  const safeDiscordId = escapeHtml(discordId);
+  const btn = document.querySelector(`[data-discord-id="${safeDiscordId}"]${hardDelete ? '.hardDeleteUser' : '.deleteUser'}`);
   const row = btn.closest("tr");
   const username = row.querySelector("td:first-child strong").textContent;
-  
+
+  // Escape user data for display
+  const safeUsername = escapeHtml(username || 'Unknown');
+  const safeDiscordIdDisplay = escapeHtml(discordId);
+
   // Different confirmation messages for different deletion types
   let confirmMessage, promptMessage, deleteType;
-  
+
   if (hardDelete) {
     deleteType = "HARD DELETE";
-    confirmMessage = `🚨 HARD DELETE USER: ${username}\n\nDiscord ID: ${discordId}\n\nThis will PERMANENTLY REMOVE:\n• User account and profile\n• All token balances\n• ALL transaction history\n• Tier memberships\n• All tips sent/received (others' tip counts will decrease!)\n• Group tip participation\n• Match history\n\n⚠️ THIS AFFECTS OTHER USERS' STATISTICS!\n⚠️ THIS ACTION CANNOT BE UNDONE!\n\nOnly use for cleaning up test data!`;
-    promptMessage = `To permanently HARD DELETE user "${username}" and remove all transaction history, type HARD DELETE in ALL CAPS:`;
+    confirmMessage = `🚨 HARD DELETE USER: ${safeUsername}\n\nDiscord ID: ${safeDiscordIdDisplay}\n\nThis will PERMANENTLY REMOVE:\n• User account and profile\n• All token balances\n• ALL transaction history\n• Tier memberships\n• All tips sent/received (others' tip counts will decrease!)\n• Group tip participation\n• Match history\n\n⚠️ THIS AFFECTS OTHER USERS' STATISTICS!\n⚠️ THIS ACTION CANNOT BE UNDONE!\n\nOnly use for cleaning up test data!`;
+    promptMessage = `To permanently HARD DELETE user "${safeUsername}" and remove all transaction history, type HARD DELETE in ALL CAPS:`;
   } else {
     deleteType = "SOFT DELETE";
-    confirmMessage = `⚠️ DELETE USER: ${username}\n\nDiscord ID: ${discordId}\n\nThis will:\n• Delete user account and profile\n• Delete token balances\n• Anonymize transaction history (preserves others' statistics)\n• Delete tier memberships\n• Anonymize tips (preserves tip counts for other users)\n• Anonymize group tip and match participation\n\n✅ Other users' statistics remain intact\n\nThis action CANNOT be undone!`;
-    promptMessage = `To delete user "${username}" and anonymize their data, type DELETE in ALL CAPS:`;
+    confirmMessage = `⚠️ DELETE USER: ${safeUsername}\n\nDiscord ID: ${safeDiscordIdDisplay}\n\nThis will:\n• Delete user account and profile\n• Delete token balances\n• Anonymize transaction history (preserves others' statistics)\n• Delete tier memberships\n• Anonymize tips (preserves tip counts for other users)\n• Anonymize group tip and match participation\n\n✅ Other users' statistics remain intact\n\nThis action CANNOT be undone!`;
+    promptMessage = `To delete user "${safeUsername}" and anonymize their data, type DELETE in ALL CAPS:`;
   }
-  
+
   // First confirmation
   if (!confirm(confirmMessage)) {
     return;

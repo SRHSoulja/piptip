@@ -1,3 +1,8 @@
+-- ANONYMIZED BACKUP FILE
+-- Original Discord IDs have been hashed for privacy protection
+-- Generated: 2025-09-19T10:26:17.656Z
+-- Anonymized entries: 2
+
 -- PIPTip Database Backup
 -- Generated: 2025-09-11T22:57:10.144Z
 -- Database: postgres
@@ -10,16 +15,16 @@
 
 -- USERS
 -- Total records: 5
-INSERT INTO users (id, discordId, agwAddress, wins, losses, ties, createdAt, updatedAt) VALUES (5, '403807194308673537', NULL, 0, 0, 0, '2025-09-11T18:32:56.012Z', '2025-09-11T18:32:56.012Z');
-INSERT INTO users (id, discordId, agwAddress, wins, losses, ties, createdAt, updatedAt) VALUES (6, '843340896518406154', NULL, 0, 0, 0, '2025-09-11T18:58:20.089Z', '2025-09-11T18:58:20.089Z');
+INSERT INTO users (id, discordId, agwAddress, wins, losses, ties, createdAt, updatedAt) VALUES (5, 'ANON_6cc43811397ff6b1', NULL, 0, 0, 0, '2025-09-11T18:32:56.012Z', '2025-09-11T18:32:56.012Z');
+INSERT INTO users (id, discordId, agwAddress, wins, losses, ties, createdAt, updatedAt) VALUES (6, 'ANON_0d9b3f5879cf1f6f', NULL, 0, 0, 0, '2025-09-11T18:58:20.089Z', '2025-09-11T18:58:20.089Z');
 INSERT INTO users (id, discordId, agwAddress, wins, losses, ties, createdAt, updatedAt) VALUES (768, 'refund_user_1757629141148_0', NULL, 0, 0, 0, '2025-09-11T22:19:01.149Z', '2025-09-11T22:19:01.149Z');
 INSERT INTO users (id, discordId, agwAddress, wins, losses, ties, createdAt, updatedAt) VALUES (769, 'refund_user_1757629141320_1', NULL, 0, 0, 0, '2025-09-11T22:19:01.322Z', '2025-09-11T22:19:01.322Z');
 INSERT INTO users (id, discordId, agwAddress, wins, losses, ties, createdAt, updatedAt) VALUES (535, 'perf-handler-user-99999', NULL, 0, 0, 0, '2025-09-11T22:13:22.074Z', '2025-09-11T22:13:22.074Z');
 
 -- TOKENS
 -- Total records: 2
-INSERT INTO tokens (id, address, symbol, decimals, active, minDeposit, minWithdraw, tipFeeBps, houseFeeBps, withdrawMaxPerTx, withdrawDailyCap, createdAt, updatedAt) VALUES (2, '0x3Bb6d7504d5c4B251799E5959f8336eAe6129Db1', 'JOCK', 18, true, 50, 50, 100, 200, 0, 0, '2025-09-09T19:22:45.000Z', '2025-09-11T17:44:21.972Z');
-INSERT INTO tokens (id, address, symbol, decimals, active, minDeposit, minWithdraw, tipFeeBps, houseFeeBps, withdrawMaxPerTx, withdrawDailyCap, createdAt, updatedAt) VALUES (1, '0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62', 'PENGU', 18, true, 50, 50, 100, 200, 200, 0, '2025-09-09T15:43:53.000Z', '2025-09-11T17:44:25.182Z');
+INSERT INTO tokens (id, address, symbol, decimals, active, minDeposit, minWithdraw, tipFeeBps, houseFeeBps, withdrawMaxPerTx, withdrawDailyCap, createdAt, updatedAt) VALUES (2, '0xANONe7a89befdd', 'JOCK', 18, true, 50, 50, 100, 200, 0, 0, '2025-09-09T19:22:45.000Z', '2025-09-11T17:44:21.972Z');
+INSERT INTO tokens (id, address, symbol, decimals, active, minDeposit, minWithdraw, tipFeeBps, houseFeeBps, withdrawMaxPerTx, withdrawDailyCap, createdAt, updatedAt) VALUES (1, '0xANONcfffb25cb6', 'PENGU', 18, true, 50, 50, 100, 200, 200, 0, '2025-09-09T15:43:53.000Z', '2025-09-11T17:44:25.182Z');
 
 -- USER_BALANCES
 -- Total records: 2

@@ -2,8 +2,9 @@
 
 // scripts/deployment_validation.ts - Comprehensive deployment readiness validation
 
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { readFileSync } from 'fs';
+import { promisify } from 'util';
 
 interface ValidationStep {
   name: string;
@@ -21,57 +22,248 @@ interface ValidationResult {
   duration: number;
 }
 
+// Security: Whitelisted commands and their allowed patterns
+interface SecureCommand {
+  command: string;
+  allowedArgs?: string[];
+  validator?: (fullCommand: string) => boolean;
+}
+
+// Secure command execution patterns
+const ALLOWED_COMMANDS: Record<string, SecureCommand> = {
+  npm: {
+    command: 'npm',
+    allowedArgs: ['ci', 'run', 'install'],
+    validator: (cmd) => /^npm\s+(ci|run|install)(\s+[\w\-\.\s=]*)?$/.test(cmd)
+  },
+  npx: {
+    command: 'npx',
+    allowedArgs: ['prisma', 'tsc', 'tsx', 'eslint', 'prettier'],
+    validator: (cmd) => /^npx\s+(prisma|tsc|tsx|eslint|prettier)\s+[\w\-\.\s\/]*$/.test(cmd)
+  },
+  node: {
+    command: 'node',
+    allowedArgs: ['scripts/'],
+    validator: (cmd) => /^node\s+scripts\/[\w\-\.]+\.c?js$/.test(cmd)
+  }
+};
+
+// Security logging for command execution
+function logSecurityEvent(event: string, command: string, success: boolean, details?: string) {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    event,
+    command: command.replace(/\s+/g, ' ').trim(),
+    success,
+    details,
+    process: 'deployment_validation'
+  };
+
+  // Log to console for now - in production, this should go to security log
+  console.log(`[SECURITY] ${JSON.stringify(logEntry)}`);
+}
+
 class DeploymentValidator {
   private results: ValidationResult[] = [];
 
+  /**
+   * Security: Validates and sanitizes commands before execution
+   * Prevents command injection by using strict whitelisting
+   */
+  private validateCommand(command: string): { valid: boolean; sanitized?: string; error?: string } {
+    // Basic sanitization - remove dangerous characters and normalize whitespace
+    const sanitized = command.replace(/[;&|`$(){}[\]\\]/g, '').replace(/\s+/g, ' ').trim();
+
+    // Reject empty or suspiciously long commands
+    if (!sanitized || sanitized.length > 200) {
+      return { valid: false, error: 'Command empty or too long' };
+    }
+
+    // Extract base command
+    const parts = sanitized.split(' ');
+    const baseCommand = parts[0];
+
+    // Check if base command is whitelisted
+    const allowedCmd = ALLOWED_COMMANDS[baseCommand];
+    if (!allowedCmd) {
+      return { valid: false, error: `Command '${baseCommand}' not in whitelist` };
+    }
+
+    // Validate command pattern using regex
+    if (allowedCmd.validator && !allowedCmd.validator(sanitized)) {
+      return { valid: false, error: `Command '${sanitized}' failed pattern validation` };
+    }
+
+    // Additional validation for specific command arguments
+    if (allowedCmd.allowedArgs) {
+      const hasValidArg = allowedCmd.allowedArgs.some(arg =>
+        sanitized.includes(arg) || parts.slice(1).some(p => p.startsWith(arg))
+      );
+      if (!hasValidArg) {
+        return { valid: false, error: `Command arguments not in allowed list` };
+      }
+    }
+
+    return { valid: true, sanitized };
+  }
+
+  /**
+   * Security: Executes commands using secure patterns with validation
+   * Uses spawn instead of execSync for better security control
+   */
   private async runCommand(command: string, timeout = 30000): Promise<{ output: string; success: boolean }> {
     const startTime = Date.now();
-    
-    try {
-      const output = execSync(command, {
-        encoding: 'utf8',
-        timeout,
-        cwd: process.cwd(),
-        stdio: 'pipe'
-      });
-      
+
+    // Security validation
+    const validation = this.validateCommand(command);
+    if (!validation.valid) {
+      const error = `Command validation failed: ${validation.error}`;
+      logSecurityEvent('COMMAND_REJECTED', command, false, validation.error);
       return {
-        output: output.trim(),
-        success: true
+        output: error,
+        success: false
       };
+    }
+
+    const sanitizedCommand = validation.sanitized!;
+    logSecurityEvent('COMMAND_VALIDATED', sanitizedCommand, true);
+
+    try {
+      // Split command into parts for secure execution
+      const parts = sanitizedCommand.split(' ');
+      const cmd = parts[0];
+      const args = parts.slice(1);
+
+      // Use spawn for more secure execution (no shell interpretation)
+      const result = await this.executeWithSpawn(cmd, args, timeout);
+
+      logSecurityEvent('COMMAND_EXECUTED', sanitizedCommand, result.success,
+        result.success ? 'SUCCESS' : 'FAILED');
+
+      return result;
     } catch (error: any) {
+      const errorMsg = error.message || String(error);
+      logSecurityEvent('COMMAND_ERROR', sanitizedCommand, false, errorMsg);
+
       return {
-        output: error.stdout?.trim() || error.stderr?.trim() || error.message || String(error),
+        output: errorMsg,
         success: false
       };
     }
   }
 
+  /**
+   * Security: Uses spawn instead of execSync to avoid shell injection
+   */
+  private executeWithSpawn(command: string, args: string[], timeout: number): Promise<{ output: string; success: boolean }> {
+    return new Promise((resolve) => {
+      const child = spawn(command, args, {
+        cwd: process.cwd(),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, NODE_ENV: 'production' }, // Ensure production environment
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+        setTimeout(() => child.kill('SIGKILL'), 5000); // Force kill after 5s
+      }, timeout);
+
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+
+        if (timedOut) {
+          resolve({
+            output: `Command timed out after ${timeout}ms`,
+            success: false
+          });
+          return;
+        }
+
+        const success = code === 0;
+        const output = success ? stdout.trim() : (stderr.trim() || stdout.trim());
+
+        resolve({
+          output,
+          success
+        });
+      });
+
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        resolve({
+          output: `Spawn error: ${error.message}`,
+          success: false
+        });
+      });
+    });
+  }
+
   private async validateStep(step: ValidationStep): Promise<ValidationResult> {
     console.log(`\n🔍 ${step.name}`);
     console.log(`   ${step.description}`);
-    
+
     const startTime = Date.now();
-    const result = await this.runCommand(step.command, step.timeout);
-    const endTime = Date.now();
-    
-    const validationResult: ValidationResult = {
-      step: step.name,
-      passed: result.success,
-      output: result.output,
-      duration: endTime - startTime
-    };
 
-    if (result.success) {
-      console.log(`   ✅ PASS (${validationResult.duration}ms)`);
-    } else {
-      console.log(`   ${step.required ? '❌ FAIL' : '⚠️  WARNING'} (${validationResult.duration}ms)`);
-      if (result.output) {
-        console.log(`   Output: ${result.output.split('\n')[0]}${result.output.split('\n').length > 1 ? '...' : ''}`);
+    // Security: Log validation step start
+    logSecurityEvent('VALIDATION_STEP_START', step.command, true, step.name);
+
+    try {
+      const result = await this.runCommand(step.command, step.timeout);
+      const endTime = Date.now();
+
+      const validationResult: ValidationResult = {
+        step: step.name,
+        passed: result.success,
+        output: result.output,
+        duration: endTime - startTime
+      };
+
+      // Security: Log validation step completion
+      logSecurityEvent('VALIDATION_STEP_COMPLETE', step.command, result.success,
+        `${step.name}: ${result.success ? 'PASS' : 'FAIL'}`);
+
+      if (result.success) {
+        console.log(`   ✅ PASS (${validationResult.duration}ms)`);
+      } else {
+        console.log(`   ${step.required ? '❌ FAIL' : '⚠️  WARNING'} (${validationResult.duration}ms)`);
+        if (result.output) {
+          // Security: Sanitize output before logging to prevent log injection
+          const sanitizedOutput = result.output.replace(/[\r\n\t]/g, ' ').substring(0, 200);
+          console.log(`   Output: ${sanitizedOutput.split('\n')[0]}${result.output.split('\n').length > 1 ? '...' : ''}`);
+        }
       }
-    }
 
-    return validationResult;
+      return validationResult;
+    } catch (error: any) {
+      const endTime = Date.now();
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      // Security: Log unexpected validation errors
+      logSecurityEvent('VALIDATION_STEP_ERROR', step.command, false,
+        `${step.name}: Unexpected error - ${errorMsg}`);
+
+      return {
+        step: step.name,
+        passed: false,
+        output: `Validation framework error: ${errorMsg}`,
+        error: errorMsg,
+        duration: endTime - startTime
+      };
+    }
   }
 
   private getValidationSteps(): ValidationStep[] {
@@ -169,7 +361,12 @@ class DeploymentValidator {
     console.log('🚀 PIPTip Deployment Validation');
     console.log('=' .repeat(70));
     console.log('Comprehensive production readiness verification');
+    console.log('🔒 Security: All commands validated via whitelist');
     console.log('=' .repeat(70));
+
+    // Security: Log validation session start
+    logSecurityEvent('VALIDATION_SESSION_START', 'deployment_validation', true,
+      'Starting comprehensive deployment validation with secure command execution');
 
     const steps = this.getValidationSteps();
     let requiredPassed = 0;
@@ -204,8 +401,13 @@ class DeploymentValidator {
     // Generate summary report
     this.generateSummaryReport(requiredPassed, requiredTotal, totalPassed, steps.length);
 
+    // Security: Log validation session completion
+    const success = requiredPassed === requiredTotal;
+    logSecurityEvent('VALIDATION_SESSION_COMPLETE', 'deployment_validation', success,
+      `Required: ${requiredPassed}/${requiredTotal}, Total: ${totalPassed}/${steps.length}`);
+
     // Return success status
-    return requiredPassed === requiredTotal;
+    return success;
   }
 
   private generateSummaryReport(requiredPassed: number, requiredTotal: number, totalPassed: number, totalSteps: number) {
@@ -274,6 +476,11 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Execute main function if this script is run directly
+// Check if script is being executed directly vs imported
+const isMainScript = process.argv[1]?.endsWith('deployment_validation.ts') ||
+                     process.argv[1]?.endsWith('deployment_validation.js');
+
+if (isMainScript) {
   main().catch(console.error);
 }
