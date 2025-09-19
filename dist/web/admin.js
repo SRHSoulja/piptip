@@ -855,6 +855,7 @@ adminRouter.get('/ui-secure-helpers.js', serveJavaScript('ui-secure-helpers.js')
 adminRouter.get('/tokens.js', serveJavaScript('tokens.js'));
 adminRouter.get('/core.js', serveJavaScript('core.js'));
 adminRouter.get('/fees.js', serveJavaScript('fees.js'));
+adminRouter.get('/dashboard.js', serveJavaScript('dashboard.js'));
 /* ------------------------------------------------------------------------ */
 /*                              Route Modules                               */
 /* ------------------------------------------------------------------------ */
@@ -866,7 +867,7 @@ adminRouter.use((req, res, next) => {
     const publicPaths = [
         '/ping', '/ui', '/ui.js', '/',
         '/security.js', '/validation.js', '/ui-secure-helpers.js',
-        '/tokens.js', '/core.js', '/fees.js'
+        '/tokens.js', '/core.js', '/fees.js', '/dashboard.js'
     ];
     if (publicPaths.includes(req.path)) {
         return next();
