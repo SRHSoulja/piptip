@@ -29,9 +29,19 @@ const createTableRow = (cells) => {
   const tr = document.createElement('tr');
   cells.forEach(cell => {
     const td = document.createElement('td');
-    if (cell.innerHTML && cell.trusted) td.innerHTML = cell.innerHTML;
-    else if (cell.textContent) td.textContent = cell.textContent;
-    tr.appendChild(td);
+    if (cell.type === 'element' && cell.element) {
+      // Handle pre-created elements
+      tr.appendChild(cell.element);
+    } else if (cell.innerHTML && cell.trusted) {
+      td.innerHTML = cell.innerHTML;
+      tr.appendChild(td);
+    } else if (cell.textContent) {
+      td.textContent = cell.textContent;
+      tr.appendChild(td);
+    } else {
+      // Fallback for empty cells
+      tr.appendChild(td);
+    }
   });
   return tr;
 };
