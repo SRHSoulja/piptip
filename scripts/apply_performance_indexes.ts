@@ -260,4 +260,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch(console.error);
 }
 
+// Add a simple check function for deployment
+export async function checkIndexesCanBeApplied(): Promise<boolean> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return true;
+  } catch (error) {
+    console.log('📋 Database indexes will be applied when connection is available');
+    return false;
+  }
+}
+
 export { main as applyPerformanceIndexes };
