@@ -1,8 +1,46 @@
 // src/web/admin/ui_complete.js - Complete Admin frontend JavaScript
 
-// Import security utilities
-import { createElement, createTableRow, escapeHtml, sanitizeInput, setSecureContent, createSecureButton } from './security.js';
-import { createAlertDiv, createRecommendationDiv, createUserTableRow, createTierTableRow, createServerTableRow, createTreasuryRow, createTokenTableRow, createAdTableRow, createTransactionTableRow, createGroupTipTableRow } from './ui-secure-helpers.js';
+// Security utilities (inline to avoid module issues)
+const escapeHtml = (str) => str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const setSecureContent = (el, content) => { el.textContent = content; };
+const createTableRow = (cells) => {
+  const tr = document.createElement('tr');
+  cells.forEach(cell => {
+    const td = document.createElement('td');
+    if (cell.innerHTML && cell.trusted) td.innerHTML = cell.innerHTML;
+    else if (cell.textContent) td.textContent = cell.textContent;
+    tr.appendChild(td);
+  });
+  return tr;
+};
+
+// Token table row creation
+const createTokenTableRow = (token) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${token.id}</td>
+    <td><strong>${escapeHtml(token.symbol)}</strong></td>
+    <td><code>${escapeHtml(token.address)}</code></td>
+    <td>${token.decimals}</td>
+    <td><input type="checkbox" ${token.active ? 'checked' : ''} data-field="active"/></td>
+    <td><input value="${token.minDeposit}" data-field="minDeposit" type="number" step="0.01" style="width:80px"/></td>
+    <td><input value="${token.minWithdraw}" data-field="minWithdraw" type="number" step="0.01" style="width:80px"/></td>
+    <td><input value="${token.tipFeeBps || ''}" placeholder="default" data-field="tipFeeBps" type="number" step="1" style="width:60px"/></td>
+    <td><input value="${token.houseFeeBps || ''}" placeholder="default" data-field="houseFeeBps" type="number" step="1" style="width:60px"/></td>
+    <td><input value="${token.withdrawMaxPerTx || ''}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px"/></td>
+    <td><input value="${token.withdrawDailyCap || ''}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px"/></td>
+    <td>
+      <button class="saveToken" data-id="${token.id}">Save</button>
+      <button class="deleteToken" data-id="${token.id}">Delete</button>
+    </td>
+  `;
+  return tr;
+};
+
+const createTreasuryRow = (token) => createTableRow([
+  { innerHTML: `<strong>${escapeHtml(token.symbol)}</strong>`, trusted: true },
+  { textContent: token.human }
+]);
 
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);

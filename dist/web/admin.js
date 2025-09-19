@@ -616,7 +616,7 @@ adminRouter.get("/ui", (_req, res) => {
     </div>
   </section>
 
-  <script src="/admin/ui.js" type="module"></script>
+  <script src="/admin/ui.js"></script>
 </body>
 </html>`);
 });
@@ -813,7 +813,7 @@ adminRouter.get('/ui', (req, res) => {
     </table>
   </section>
 
-  <script src="/admin/ui.js" type="module"></script>
+  <script src="/admin/ui.js"></script>
 </body>
 </html>`);
 });
