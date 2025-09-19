@@ -69,6 +69,22 @@ const createTokenTableRow = (token) => {
   return tr;
 };
 
+const createServerTableRow = (server) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${server.id}</td>
+    <td><strong>${escapeHtml(server.serverName || server.guildId || 'Unknown Server')}</strong></td>
+    <td><code>${escapeHtml(server.guildId)}</code></td>
+    <td><input value="${escapeHtml(server.note || '')}" data-field="note" type="text" style="width:200px"/></td>
+    <td><input type="checkbox" ${server.enabled ? 'checked' : ''} data-field="enabled"/></td>
+    <td>
+      <button class="saveServer" data-id="${server.id}">Save</button>
+      <button class="deleteServer" data-id="${server.id}">Delete</button>
+    </td>
+  `;
+  return tr;
+};
+
 const createTreasuryRow = (token) => createTableRow([
   { innerHTML: `<strong>${escapeHtml(token.symbol)}</strong>`, trusted: true },
   { textContent: token.human }

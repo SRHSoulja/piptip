@@ -768,7 +768,7 @@ const serveJavaScript = (filename) => async (req, res) => {
     }
 };
 // Serve admin JavaScript modules
-adminRouter.get('/ui.js', serveJavaScript('ui.js'));
+// adminRouter.get('/ui.js', serveJavaScript('ui.js')); // Commented out - duplicate route already exists above
 adminRouter.get('/security.js', serveJavaScript('security.js'));
 adminRouter.get('/validation.js', serveJavaScript('validation.js'));
 adminRouter.get('/ui-secure-helpers.js', serveJavaScript('ui-secure-helpers.js'));
