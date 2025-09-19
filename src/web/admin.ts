@@ -22,6 +22,8 @@ import { pengubookRouter } from "./admin/pengubook.js";
 import achievementAdminRouter from "./admin/index.js";
 import roleTaxRouter from "./admin/role_tax_management.js";
 import roleRakeRouter from "./admin/role_rake_management.js";
+import { resourcesRouter } from "./admin/resources.js";
+import { goodKnightWebhooksRouter } from "./admin/good_knight_webhooks.js";
 
 // Import remaining services and utilities
 import { Prisma } from "@prisma/client";
@@ -454,6 +456,68 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   </section>
 
   <section>
+    <h2>📊 Resource Monitor</h2>
+    <p>Real-time monitoring for 0.5 vCPU / 2 GiB Replit Reserved VM</p>
+    <div class="row">
+      <button id="refreshResources">🔄 Refresh Metrics</button>
+      <button id="loadResourceHistory">📈 Load History</button>
+      <button id="checkUpgrade">🚀 Check Upgrade Need</button>
+      <span id="resourceMsg"></span>
+    </div>
+
+    <!-- Resource Status Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin: 16px 0;">
+      <div class="kpi-card" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="memory-usage">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Memory Usage</p>
+        <small id="memory-details" style="opacity: 0.7;">- / -</small>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="cpu-usage">-</h3>
+        <p style="margin: 0; opacity: 0.9;">CPU Usage</p>
+        <small id="cpu-details" style="opacity: 0.7;">0.5 vCPU</small>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="event-loop-delay">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Event Loop Delay</p>
+        <small id="event-loop-details" style="opacity: 0.7;">Performance metric</small>
+      </div>
+      <div class="kpi-card" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 20px; border-radius: 12px; text-align: center; color: white;">
+        <h3 style="margin: 0 0 8px 0; font-size: 2.5em; font-weight: bold;" id="uptime-display">-</h3>
+        <p style="margin: 0; opacity: 0.9;">Uptime</p>
+        <small id="uptime-details" style="opacity: 0.7;">System stability</small>
+      </div>
+    </div>
+
+    <!-- Alerts Section -->
+    <div id="resource-alerts" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; margin: 16px 0; display: none;">
+      <h4 style="margin: 0 0 12px 0; color: #fff;">🚨 Resource Alerts</h4>
+      <div id="alerts-container"></div>
+    </div>
+
+    <!-- Upgrade Recommendations -->
+    <div id="upgrade-recommendations" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; margin: 16px 0;">
+      <h4 style="margin: 0 0 12px 0; color: #fff;">💡 Recommendations</h4>
+      <div id="recommendations-container">
+        <div style="color: #9ca3af; text-align: center; padding: 20px;">
+          Click "Refresh Metrics" to load resource analysis
+        </div>
+      </div>
+    </div>
+
+    <!-- Resource History Chart Placeholder -->
+    <div style="margin-top: 20px;">
+      <h3 style="margin: 0 0 12px 0; color: #fff;">📈 Resource History (Last Hour)</h3>
+      <div id="resource-history" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+        <div style="color: #9ca3af; text-align: center;">
+          <div>📊</div>
+          <div>Click "Load History" to view resource trends</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>⚡ System Health</h2>
     <div class="row">
       <button id="systemStatus">Check System Status</button>
@@ -666,6 +730,8 @@ adminRouter.use(pengubookRouter);
 adminRouter.use("/achievements", achievementAdminRouter);
 adminRouter.use("/role-tax", roleTaxRouter);
 adminRouter.use("/role-rake", roleRakeRouter);
+adminRouter.use("/resources", resourcesRouter);
+adminRouter.use("/good-knight", goodKnightWebhooksRouter);
 
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */

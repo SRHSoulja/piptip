@@ -156,13 +156,12 @@ function checkSlowQueryAlert(): void {
   }
 }
 
-// Discord webhook alerting
+// Discord webhook alerting via Good Knight authorization
+import { sendGoodKnightAlert } from './good_knight_webhooks.js';
+
 async function sendAlert(alertType: string, message: string, context: Record<string, any> = {}): Promise<void> {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) {
-    console.warn('Discord webhook URL not configured, skipping alert');
-    return;
-  }
+  // Use Good Knight authorized webhook system
+  console.log(`🛡️ Sending alert via Good Knight: ${alertType}`);
   
   // Check cooldown to prevent spam
   const now = Date.now();
@@ -179,53 +178,35 @@ async function sendAlert(alertType: string, message: string, context: Record<str
   }
   
   lastAlertTimes[alertType] = now;
-  
-  // Get version info
+
+  // Get version info for context
   const version = process.env.GIT_SHA || process.env.npm_package_version || 'unknown';
   const environment = process.env.NODE_ENV || 'development';
-  
-  // Construct Discord message
-  const embed = {
-    title: `🚨 PIPTip Alert: ${alertType}`,
-    description: message,
-    color: alertType === 'negative_balance' ? 0xff0000 : 0xffaa00, // Red for negative balance, orange for others
-    fields: [
-      { name: 'Environment', value: environment, inline: true },
-      { name: 'Version', value: version, inline: true },
-      { name: 'Timestamp', value: new Date().toISOString(), inline: true },
-      ...Object.entries(context).map(([key, value]) => ({
-        name: key,
-        value: String(value),
-        inline: true
-      }))
-    ],
-    footer: {
-      text: 'PIPTip Monitoring'
-    }
+
+  // Prepare enhanced context for Good Knight webhook
+  const enhancedContext = {
+    ...context,
+    version,
+    environment,
+    timestamp: new Date().toISOString(),
+    priority: alertType === 'negative_balance' ? 'critical' : 'high'
   };
-  
+
   try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        embeds: [embed]
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Discord webhook failed: ${response.status} ${response.statusText}`);
+    // Send via Good Knight authorized webhook system
+    const success = await sendGoodKnightAlert('alert', `🚨 ${alertType}`, message, enhancedContext);
+
+    if (success) {
+      console.log(JSON.stringify({
+        type: 'good_knight_alert_sent',
+        timestamp: new Date().toISOString(),
+        alert_type: alertType,
+        message: 'Alert sent via Good Knight authorization'
+      }));
+    } else {
+      throw new Error('Good Knight webhook authorization failed or not configured');
     }
-    
-    console.log(JSON.stringify({
-      type: 'alert_sent',
-      timestamp: new Date().toISOString(),
-      alert_type: alertType,
-      message: 'Discord alert sent successfully'
-    }));
-    
+
   } catch (error) {
     console.error(JSON.stringify({
       type: 'alert_error',

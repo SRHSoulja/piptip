@@ -28,6 +28,223 @@ const setDefaultDates = () => {
   $("feesUntil").value = today.toISOString().split('T')[0];
 };
 
+// ---------- Resource monitoring ----------
+async function loadResourceMetrics() {
+  try {
+    setLoading("refreshResources", true);
+    showMessage("resourceMsg", "Loading resource metrics...");
+
+    const response = await API("/admin/resources");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const result = await response.json();
+    if (!result.success) throw new Error(result.error);
+
+    const data = result.data;
+
+    // Update metric cards
+    $("memory-usage").textContent = `${data.current.memory.percentage}%`;
+    $("memory-details").textContent = `${data.current.memory.used} / ${data.current.memory.total}`;
+
+    $("cpu-usage").textContent = `${data.current.cpu.usage}%`;
+    $("cpu-details").textContent = `${data.current.cpu.cores} cores, Load: ${data.current.cpu.loadAverage[0].toFixed(2)}`;
+
+    $("event-loop-delay").textContent = `${data.current.performance.eventLoopDelay}ms`;
+    $("event-loop-details").textContent = data.current.performance.eventLoopDelay > 100 ? "High latency" : "Normal";
+
+    const uptimeHours = Math.floor(data.current.system.uptime / 3600);
+    const uptimeMinutes = Math.floor((data.current.system.uptime % 3600) / 60);
+    $("uptime-display").textContent = uptimeHours > 0 ? `${uptimeHours}h ${uptimeMinutes}m` : `${uptimeMinutes}m`;
+    $("uptime-details").textContent = `${data.current.system.platform} ${data.current.system.nodeVersion}`;
+
+    // Show alerts if any
+    if (data.alerts && data.alerts.length > 0) {
+      const alertsContainer = $("alerts-container");
+      const alertsSection = $("resource-alerts");
+
+      alertsContainer.innerHTML = data.alerts.map(alert => {
+        const bgColor = alert.level === 'critical' ? '#dc2626' : alert.level === 'warning' ? '#f59e0b' : '#3b82f6';
+        const icon = alert.level === 'critical' ? '🔥' : alert.level === 'warning' ? '⚠️' : 'ℹ️';
+
+        return `
+          <div style="background: ${bgColor}; padding: 12px; border-radius: 8px; margin: 8px 0; color: white;">
+            <div style="font-weight: bold;">${icon} ${alert.message}</div>
+            <div style="font-size: 0.9em; opacity: 0.9; margin-top: 4px;">
+              ${alert.metric}: ${alert.value}${alert.metric === 'memory' || alert.metric === 'cpu' ? '%' : 'ms'}
+              (threshold: ${alert.threshold}${alert.metric === 'memory' || alert.metric === 'cpu' ? '%' : 'ms'})
+            </div>
+            ${alert.recommendation ? `<div style="font-size: 0.9em; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3);">💡 ${alert.recommendation}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      alertsSection.style.display = 'block';
+    } else {
+      $("resource-alerts").style.display = 'none';
+    }
+
+    // Update recommendations
+    const recommendationsContainer = $("recommendations-container");
+    if (data.recommendations && data.recommendations.length > 0) {
+      recommendationsContainer.innerHTML = data.recommendations.map(rec => `
+        <div style="padding: 8px 0; color: #e5e5e5;">• ${rec}</div>
+      `).join('');
+    } else {
+      recommendationsContainer.innerHTML = '<div style="color: #9ca3af; text-align: center; padding: 20px;">No specific recommendations at this time</div>';
+    }
+
+    showMessage("resourceMsg", `✓ Updated at ${new Date().toLocaleTimeString()}`, false);
+
+    // Update card colors based on usage
+    updateMetricCardColors(data.current.memory.percentage, data.current.cpu.usage);
+
+  } catch (error) {
+    console.error("Resource metrics error:", error);
+    showMessage("resourceMsg", `✗ ${error.message}`, true);
+  } finally {
+    setLoading("refreshResources", false);
+  }
+}
+
+function updateMetricCardColors(memoryPercent, cpuPercent) {
+  const memoryCard = $("memory-usage").parentElement;
+  const cpuCard = $("cpu-usage").parentElement;
+
+  // Memory card colors
+  if (memoryPercent > 85) {
+    memoryCard.style.background = 'linear-gradient(135deg, #dc2626, #991b1b)'; // Red
+  } else if (memoryPercent > 75) {
+    memoryCard.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)'; // Yellow
+  } else {
+    memoryCard.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)'; // Blue
+  }
+
+  // CPU card colors
+  if (cpuPercent > 80) {
+    cpuCard.style.background = 'linear-gradient(135deg, #dc2626, #991b1b)'; // Red
+  } else if (cpuPercent > 60) {
+    cpuCard.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)'; // Yellow
+  } else {
+    cpuCard.style.background = 'linear-gradient(135deg, #10b981, #059669)'; // Green
+  }
+}
+
+async function loadResourceHistory() {
+  try {
+    setLoading("loadResourceHistory", true);
+    showMessage("resourceMsg", "Loading resource history...");
+
+    const response = await API("/admin/resources/history?minutes=60");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const result = await response.json();
+    if (!result.success) throw new Error(result.error);
+
+    const history = result.data.history;
+    const historyContainer = $("resource-history");
+
+    if (history.length === 0) {
+      historyContainer.innerHTML = '<div style="color: #9ca3af; text-align: center; padding: 40px;">No history data available yet</div>';
+      return;
+    }
+
+    // Create simple text-based chart
+    let chartHTML = '<div style="font-family: monospace; font-size: 12px; line-height: 1.4;">';
+    chartHTML += '<div style="display: grid; grid-template-columns: 60px 1fr; gap: 12px; margin-bottom: 16px;">';
+    chartHTML += '<div style="font-weight: bold; color: #3b82f6;">Memory</div>';
+    chartHTML += '<div style="font-weight: bold; color: #10b981;">CPU</div>';
+    chartHTML += '</div>';
+
+    // Show last 12 data points (1 hour with 5min intervals)
+    const recent = history.slice(-12);
+    recent.forEach((point, i) => {
+      const time = new Date(point.timestamp).toLocaleTimeString().slice(0, 5);
+      const memBar = '█'.repeat(Math.floor(point.memory / 5)) + '░'.repeat(20 - Math.floor(point.memory / 5));
+      const cpuBar = '█'.repeat(Math.floor(point.cpu / 5)) + '░'.repeat(20 - Math.floor(point.cpu / 5));
+
+      chartHTML += `
+        <div style="display: grid; grid-template-columns: 60px 200px 50px 200px 50px 60px; gap: 8px; padding: 2px 0; align-items: center;">
+          <div style="color: #9ca3af;">${time}</div>
+          <div style="color: #3b82f6; font-family: monospace;">${memBar}</div>
+          <div style="color: #3b82f6;">${point.memory.toFixed(1)}%</div>
+          <div style="color: #10b981; font-family: monospace;">${cpuBar}</div>
+          <div style="color: #10b981;">${point.cpu.toFixed(1)}%</div>
+          <div style="color: ${point.alertCount > 0 ? '#ef4444' : '#9ca3af'};">${point.alertCount > 0 ? `${point.alertCount} alerts` : 'OK'}</div>
+        </div>
+      `;
+    });
+
+    chartHTML += '</div>';
+    chartHTML += '<div style="font-size: 10px; color: #9ca3af; margin-top: 12px; text-align: center;">Each █ represents 5% usage</div>';
+
+    historyContainer.innerHTML = chartHTML;
+    showMessage("resourceMsg", `✓ Loaded ${recent.length} data points`, false);
+
+  } catch (error) {
+    console.error("Resource history error:", error);
+    showMessage("resourceMsg", `✗ ${error.message}`, true);
+    $("resource-history").innerHTML = '<div style="color: #ef4444; text-align: center; padding: 40px;">Failed to load history</div>';
+  } finally {
+    setLoading("loadResourceHistory", false);
+  }
+}
+
+async function checkUpgradeNeeded() {
+  try {
+    setLoading("checkUpgrade", true);
+    showMessage("resourceMsg", "Analyzing upgrade requirements...");
+
+    const response = await API("/admin/resources/upgrade-check");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const result = await response.json();
+    if (!result.success) throw new Error(result.error);
+
+    const upgrade = result.data;
+    const container = $("recommendations-container");
+
+    let html = `
+      <div style="border-left: 4px solid ${upgrade.immediate ? '#dc2626' : upgrade.recommended ? '#f59e0b' : '#10b981'}; padding-left: 16px; margin-bottom: 20px;">
+        <h5 style="margin: 0 0 8px; color: ${upgrade.immediate ? '#dc2626' : upgrade.recommended ? '#f59e0b' : '#10b981'};">
+          ${upgrade.immediate ? '🔥 IMMEDIATE UPGRADE REQUIRED' : upgrade.recommended ? '⚠️ UPGRADE RECOMMENDED' : '✅ CURRENT RESOURCES SUFFICIENT'}
+        </h5>
+        <div style="color: #e5e5e5; margin-bottom: 12px;">
+          ${upgrade.reasoning.join(' • ')}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div style="background: #2d2d2d; padding: 16px; border-radius: 8px; border: 1px solid #444;">
+          <h6 style="margin: 0 0 8px; color: #9ca3af;">Current Configuration</h6>
+          <div style="color: #e5e5e5;">
+            <div>💻 ${upgrade.currentSpecs.vcpu} vCPU</div>
+            <div>💾 ${upgrade.currentSpecs.ram} RAM</div>
+            <div>💰 ${upgrade.currentSpecs.cost}</div>
+          </div>
+        </div>
+
+        <div style="background: #2d2d2d; padding: 16px; border-radius: 8px; border: 1px solid ${upgrade.recommended ? '#f59e0b' : '#444'};">
+          <h6 style="margin: 0 0 8px; color: ${upgrade.recommended ? '#f59e0b' : '#9ca3af'};">Recommended Configuration</h6>
+          <div style="color: #e5e5e5;">
+            <div>💻 ${upgrade.recommendedSpecs.vcpu} vCPU</div>
+            <div>💾 ${upgrade.recommendedSpecs.ram} RAM</div>
+            <div>💰 ${upgrade.recommendedSpecs.cost}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+    showMessage("resourceMsg", `✓ Upgrade analysis complete`, false);
+
+  } catch (error) {
+    console.error("Upgrade check error:", error);
+    showMessage("resourceMsg", `✗ ${error.message}`, true);
+  } finally {
+    setLoading("checkUpgrade", false);
+  }
+}
+
 // ---------- Auth flow ----------
 async function checkAuthAndLoad() {
   try {
@@ -2068,6 +2285,11 @@ async function clearAllWithdrawalCooldowns() {
 $("loadWithdrawalStats").onclick = loadWithdrawalStats;
 $("clearCooldowns").onclick = clearAllWithdrawalCooldowns;
 $("withdrawalTimeframe").onchange = loadWithdrawalStats;
+
+// Event handlers for resource monitoring
+$("refreshResources").onclick = loadResourceMetrics;
+$("loadResourceHistory").onclick = loadResourceHistory;
+$("checkUpgrade").onclick = checkUpgradeNeeded;
 
 // Initialize on page load
 (() => {
