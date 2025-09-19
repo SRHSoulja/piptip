@@ -22,8 +22,8 @@ export function profileEmbed(data) {
         if (avatarUrl)
             embed.setThumbnail(avatarUrl);
     }
-    // Basic info section
-    embed.addFields({ name: "💳 Wallet", value: data.agwAddress ?? "Not linked", inline: false }, { name: "💰 Balance", value: balanceDisplay, inline: true }, { name: "🎮 Game Record", value: `${data.wins}W ${data.losses}L ${data.ties}T`, inline: true });
+    // Mobile-optimized basic info section (shorter field names)
+    embed.addFields({ name: "💰 Balance", value: balanceDisplay, inline: true }, { name: "🎮 W•L•T", value: `${data.wins}•${data.losses}•${data.ties}`, inline: true }, { name: "💳 Wallet", value: data.agwAddress ? `\`${data.agwAddress.slice(0, 10)}...\`` : "Not linked", inline: true });
     // Account info
     if (data.createdAt) {
         const accountAge = `<t:${Math.floor(data.createdAt.getTime() / 1000)}:R>`;
@@ -38,20 +38,20 @@ export function profileEmbed(data) {
             inline: false
         });
     }
-    // Tipping statistics
+    // Mobile-optimized tipping statistics (more compact)
     if (data.tippingStats) {
         const { sentText, receivedText, sentCount, receivedCount } = data.tippingStats;
         embed.addFields({
-            name: "💸 Tips Sent",
-            value: sentText,
+            name: "💸 Sent",
+            value: `${sentText}\n(${sentCount} tips)`,
             inline: true
         }, {
-            name: "💝 Tips Received",
-            value: receivedText,
+            name: "💝 Received",
+            value: `${receivedText}\n(${receivedCount} tips)`,
             inline: true
         }, {
-            name: "📊 Total Activity",
-            value: `${sentCount + receivedCount} total tips\n${sentCount} sent • ${receivedCount} received`,
+            name: "📊 Total",
+            value: `${sentCount + receivedCount} tips`,
             inline: true
         });
     }
@@ -87,15 +87,15 @@ export function profileEmbed(data) {
             inline: true
         });
     }
-    // Show unread message count if user has any
+    // Mobile-optimized message notifications
     if (data.unreadMessageCount && data.unreadMessageCount > 0) {
         const messageText = data.unreadMessageCount === 1
-            ? "📨 You have **1** unread PenguBook message!"
-            : `📨 You have **${data.unreadMessageCount}** unread PenguBook messages!`;
+            ? "📨 **1** new message"
+            : `📨 **${data.unreadMessageCount}** new messages`;
         embed.addFields({
-            name: "💬 PenguBook Notifications",
-            value: messageText + "\n*Click the 📨 Inbox button to view*",
-            inline: false
+            name: "💬 Inbox",
+            value: messageText,
+            inline: true
         });
     }
     return embed;

@@ -1,6 +1,6 @@
 // src/commands/pip_help.ts - Bot usage guide and help
 import type { ChatInputCommandInteraction } from "discord.js";
-import { EmbedBuilder } from "discord.js";
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 
 export default async function pipHelp(i: ChatInputCommandInteraction) {
   const embed = new EmbedBuilder()
@@ -32,7 +32,10 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
         value:
           "**Challenge Players**: `/pip_game token:PENGUIN amount:5` - Start a Penguin Ice Pebble match\n" +
           "**View Profile**: `/pip_profile` - See your balance, stats, and recent activity\n" +
-          "**Withdraw Funds**: `/pip_withdraw token:PENGUIN amount:10` - Send tokens to your wallet",
+          "**Detailed Stats**: `/pip_stats` - Comprehensive transaction history and analytics\n" +
+          "**Achievements**: `/pip_achievements` - View your unlocked achievements and progress\n" +
+          "**Leaderboards**: `/pip_leaderboard category:streaks` - See top players (streaks, wins, tips, etc.)\n" +
+          "**Withdraw Funds**: `/pip_withdraw` - Interactive withdrawal interface with your holdings and limits",
         inline: false
       },
       {
@@ -63,12 +66,15 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
           "`/pip_profile` - View balance and stats\n\n" +
           "**Money & Tokens**:\n" +
           "`/pip_deposit` - Add funds to your account\n" +
-          "`/pip_withdraw` - Send tokens to your wallet\n" +
+          "`/pip_withdraw` - Interactive withdrawal interface\n" +
           "`/pip_tip` - Send tips (direct or group)\n\n" +
           "**Social & Gaming**:\n" +
           "`/pip_bio` - Manage your PenguBook profile\n" +
           "`/pip_pengubook` - Browse community profiles\n" +
           "`/pip_game` - Challenge others to play\n" +
+          "`/pip_achievements` - View unlocked achievements\n" +
+          "`/pip_leaderboard` - See community leaderboards\n" +
+          "`/pip_stats` - Detailed transaction analytics\n" +
           "`/pip_help` - Show this guide",
         inline: false
       }
@@ -78,8 +84,24 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
     })
     .setTimestamp();
 
+  // Add web access button
+  const webAccessRow = new ActionRowBuilder<ButtonBuilder>()
+    .addComponents(
+      new ButtonBuilder()
+        .setURL(`${process.env.WEB_BASE_URL || 'http://localhost:3000'}/pengubook`)
+        .setLabel("🌐 Open PenguBook in Browser")
+        .setStyle(ButtonStyle.Link)
+        .setEmoji("💻"),
+      new ButtonBuilder()
+        .setCustomId("pip:view_profile")
+        .setLabel("👤 View My Profile")
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("📊")
+    );
+
   await i.reply({
     embeds: [embed],
+    components: [webAccessRow],
     ephemeral: true
   });
 }

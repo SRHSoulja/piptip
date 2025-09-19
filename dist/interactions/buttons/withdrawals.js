@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../../services/db.js";
-import { decToBigDirect, formatAmount, formatDecimal, toAtomicDirect } from "../../services/token.js";
+import { formatAmount, formatDecimal, toAtomicDirect } from "../../services/token.js";
 import { withdrawalLimiter } from "../../services/withdrawal_limiter.js";
 export async function handleWithdrawToken(i, parts) {
     await i.deferUpdate().catch(() => { });
@@ -381,18 +381,15 @@ export async function handleConfirmWithdraw(i, parts) {
                 components: []
             });
         }
-        // Check user balance
-        const userBalance = await prisma.userBalance.findUnique({
-            where: { userId_tokenId: { userId: user.id, tokenId } }
-        });
-        const amtAtomic = toAtomicDirect(amount, token.decimals);
-        const userBalAtomic = userBalance ? decToBigDirect(userBalance.amount, token.decimals) : BigInt(0);
-        if (userBalAtomic < amtAtomic) {
+        // Use comprehensive atomic withdrawal check (fixes race conditions)
+        const { performComprehensiveWithdrawalCheck } = await import("../../services/atomic_withdrawal.js");
+        const comprehensiveCheck = await performComprehensiveWithdrawalCheck(i.user.id, tokenId, amount);
+        if (!comprehensiveCheck.canProceed) {
             return i.editReply({
                 content: [
-                    "❌ **Insufficient Balance**",
+                    "❌ **Withdrawal Cannot Proceed**",
                     "",
-                    `You have ${formatAmount(userBalAtomic, token)} but requested ${formatAmount(amtAtomic, token)}`,
+                    `**Reason:** ${comprehensiveCheck.error}`,
                     "",
                     policyLine
                 ].join("\n"),
@@ -454,6 +451,8 @@ export async function handleConfirmWithdraw(i, parts) {
                 });
             }
         }
+        // Convert amount to atomic units for blockchain operations
+        const amtAtomic = toAtomicDirect(amount, token.decimals);
         // Update to processing state
         await i.editReply({
             content: [
@@ -514,22 +513,28 @@ export async function handleConfirmWithdraw(i, parts) {
             });
         }
         try {
-            // Execute the withdrawal transaction
-            const tx = await tokenContract.transfer(user.agwAddress, amtAtomic);
-            await tx.wait();
-            // Debit user balance and record transaction
-            await debitToken(i.user.id, token.id, amtAtomic, "WITHDRAW", {
+            // Execute atomic withdrawal (fixes race conditions)
+            const { executeAtomicWithdrawal } = await import("../../services/atomic_withdrawal.js");
+            const atomicResult = await executeAtomicWithdrawal({
+                userId: user.id,
+                tokenId,
+                amountHuman: amount,
+                destinationAddress: user.agwAddress,
+                discordUserId: i.user.id,
                 guildId: i.guildId,
-                txHash: tx.hash
-            });
+                metadata: { source: 'discord_withdrawal_button' }
+            }, token, tokenContract, signer);
+            if (!atomicResult.success) {
+                throw new Error(atomicResult.error || 'Atomic withdrawal failed');
+            }
             // Record successful withdrawal for tracking
             // SECURITY: Record successful withdrawal in database (persistent tracking)
             await withdrawalLimiter.recordSuccessfulWithdrawal(user.id, token.id, amount);
             // Queue success notification
             await queueNotice(user.id, "withdraw_success", {
                 token: token.symbol,
-                amount: formatAmount(amtAtomic, token),
-                tx: tx.hash
+                amount: formatAmount(atomicResult.amountAtomic, token),
+                tx: atomicResult.txHash
             });
             // Add cooldown info to success message if applicable
             const cooldownInfo = limitCheck.cooldownMinutes && limitCheck.cooldownMinutes > 0
@@ -540,9 +545,9 @@ export async function handleConfirmWithdraw(i, parts) {
                 content: [
                     "✅ **Withdrawal Successful**",
                     "",
-                    `**Amount:** ${formatAmount(amtAtomic, token)}`,
+                    `**Amount:** ${formatAmount(atomicResult.amountAtomic, token)}`,
                     `**Destination:** \`${user.agwAddress}\``,
-                    `**Transaction:** \`${tx.hash}\``,
+                    `**Transaction:** \`${atomicResult.txHash}\``,
                     "",
                     "Your tokens have been sent to your linked wallet!",
                     cooldownInfo,
@@ -563,7 +568,7 @@ export async function handleConfirmWithdraw(i, parts) {
                     "",
                     `**Error:** ${error?.reason || error?.message || String(error)}`,
                     "",
-                    "Your balance has not been affected. Please try again later.",
+                    "Your balance was protected by atomic operations. Please try again later.",
                     "",
                     policyLine
                 ].join("\n"),

@@ -546,15 +546,80 @@ adminRouter.get("/ui.js", async (_req, res) => {
     }
 });
 /* ------------------------------------------------------------------------ */
-/*                           Authentication Middleware                       */
+/*                    Enhanced Multi-Factor Authentication                   */
 /* ------------------------------------------------------------------------ */
-adminRouter.use(async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
-    if (!token || token !== getAdminSecret()) {
-        return res.status(401).json({ ok: false, error: "Unauthorized" });
+// Authentication endpoints (before middleware)
+adminRouter.post('/auth/login', async (req, res) => {
+    try {
+        const { authenticateAdmin } = await import('../services/admin_auth.js');
+        const bearerToken = req.body.token || '';
+        const result = await authenticateAdmin(bearerToken, req);
+        if (!result.success) {
+            return res.status(401).json({
+                success: false,
+                error: result.error
+            });
+        }
+        res.json({
+            success: true,
+            sessionId: result.session.sessionId,
+            requiresMFA: result.requiresMFA,
+            message: result.requiresMFA ? 'MFA verification required' : 'Authentication successful'
+        });
     }
-    next();
+    catch (error) {
+        console.error('Admin login error:', error);
+        res.status(500).json({ success: false, error: 'Authentication system error' });
+    }
+});
+adminRouter.post('/auth/mfa/initiate', async (req, res) => {
+    try {
+        const { initiateMFA } = await import('../services/admin_auth.js');
+        const { sessionId } = req.body;
+        const result = await initiateMFA(sessionId);
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+        res.json({
+            success: true,
+            challengeId: result.challengeId,
+            message: 'MFA code sent. Check console for code (development mode).'
+        });
+    }
+    catch (error) {
+        console.error('MFA initiation error:', error);
+        res.status(500).json({ success: false, error: 'MFA system error' });
+    }
+});
+adminRouter.post('/auth/mfa/verify', async (req, res) => {
+    try {
+        const { verifyMFA } = await import('../services/admin_auth.js');
+        const { challengeId, code } = req.body;
+        const result = await verifyMFA(challengeId, code);
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+        res.json({
+            success: true,
+            sessionId: result.sessionId,
+            message: 'MFA verification successful'
+        });
+    }
+    catch (error) {
+        console.error('MFA verification error:', error);
+        res.status(500).json({ success: false, error: 'MFA verification error' });
+    }
+});
+// Enhanced authentication middleware
+adminRouter.use(async (req, res, next) => {
+    try {
+        const { adminMiddleware } = await import('../services/admin_auth.js');
+        return adminMiddleware()(req, res, next);
+    }
+    catch (error) {
+        console.error('Admin middleware error:', error);
+        res.status(500).json({ error: 'Authentication system error' });
+    }
 });
 /* ------------------------------------------------------------------------ */
 /*                              Route Modules                               */

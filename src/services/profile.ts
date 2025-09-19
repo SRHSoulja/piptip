@@ -480,6 +480,15 @@ export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: 
     );
   }
 
+  // Add web access button
+  profileRowComponents.push(
+    new ButtonBuilder()
+      .setURL(`${process.env.WEB_BASE_URL || 'http://localhost:3000'}/pengubook`)
+      .setLabel("🌐 Web View")
+      .setStyle(ButtonStyle.Link)
+      .setEmoji("💻")
+  );
+
   profileRowComponents.push(
     new ButtonBuilder()
       .setCustomId("pip:dismiss_profile")

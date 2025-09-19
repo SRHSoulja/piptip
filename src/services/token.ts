@@ -3,6 +3,7 @@ import "dotenv/config";
 import { formatUnits, parseUnits } from "ethers";
 import { prisma } from "./db.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
+import { getCachedTokens, setCachedTokens } from "./redis_cache.js";
 
 
 /** For legacy callers that still read a single TOKEN_ADDRESS */
@@ -39,8 +40,19 @@ let _tokens: TokenRow[] = [];
 let _tokensTs = 0;
 const TOKENS_TTL_MS = 10_000;
 
-/** Load active tokens (cached). */
+/** Load active tokens (cached with Redis fallback). */
 export async function getActiveTokens(force = false): Promise<TokenRow[]> {
+  // Check Redis cache first
+  if (!force) {
+    const cachedTokens = await getCachedTokens();
+    if (cachedTokens && cachedTokens.length > 0) {
+      _tokens = cachedTokens;
+      _tokensTs = Date.now();
+      return _tokens;
+    }
+  }
+
+  // Check memory cache
   const now = Date.now();
   if (!force && now - _tokensTs < TOKENS_TTL_MS && _tokens.length) return _tokens;
 
@@ -55,6 +67,9 @@ export async function getActiveTokens(force = false): Promise<TokenRow[]> {
     address: r.address.toLowerCase(),
     decimals: Number(r.decimals),
   })) as unknown as TokenRow[];
+
+  // Cache in Redis for faster future access
+  await setCachedTokens(_tokens, 300); // 5 minute cache
 
   _tokensTs = now;
   return _tokens;

@@ -2,6 +2,7 @@
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import session from "express-session";
+import path from "path";
 import { flushNoticesEphemeral } from "./services/notifier.js";
 import {
   Client,
@@ -15,7 +16,7 @@ import { healthRouter } from "./web/health.js";
 import { internalRouter } from "./web/internal.js";
 import { adminRouter } from "./web/admin.js";
 import { authRouter } from "./web/auth.js";
-import { pengubookRouter } from "./web/pengubook.js";
+import { pengubookModularRouter } from "./web/pengubook/router.js";
 
 import pipWithdraw from "./commands/pip_withdraw.js";
 import pipLink from "./commands/pip_link.js";
@@ -72,7 +73,14 @@ app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
 app.use("/admin", adminRouter);
 app.use("/auth", authRouter);
-app.use("/pengubook", pengubookRouter);
+app.use("/pengubook", pengubookModularRouter);
+
+// Static CSS route for PenguBook enhanced styles
+app.get("/static/pengubook.css", (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/css');
+  res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+  res.sendFile(path.join(process.cwd(), 'src/web/static/pengubook.css'));
+});
 
 // ---------- Discord bot ----------
 const bot = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -82,14 +90,14 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
   return async (i: Interaction) => {
     let timerCleared = false;
     
-    // auto-defer after 2s if nothing replied yet
+    // auto-defer after 1.5s if nothing replied yet (optimized for faster perceived response)
     const timer = setTimeout(async () => {
       if (!timerCleared && "deferred" in i && !i.deferred && "replied" in i && !i.replied && "deferReply" in i) {
         try { await (i as any).deferReply({ flags: 64 }); } catch (error) {
           // Silently ignore auto-defer failures since they're usually due to race conditions
         }
       }
-    }, 2000);
+    }, 1500);
 
     try {
       // run your actual handler (the big switch)
