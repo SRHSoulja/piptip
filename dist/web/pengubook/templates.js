@@ -168,6 +168,179 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
             }
         }, 30000);
         ` : ''}
+
+        // ===== Global Aesthetic Persistence System =====
+        // Load and apply user aesthetic preferences on every page
+        (function() {
+            // Load preferences from localStorage
+            const loadStoredPreferences = () => {
+                const stored = localStorage.getItem('pengubook-aesthetics');
+                const defaults = {
+                    theme: 'dark',
+                    accentColor: '#3b82f6',
+                    density: 'comfortable',
+                    font: 'system'
+                };
+
+                if (stored) {
+                    try {
+                        return { ...defaults, ...JSON.parse(stored) };
+                    } catch (e) {
+                        console.warn('Failed to parse aesthetic preferences:', e);
+                        return defaults;
+                    }
+                }
+                return defaults;
+            };
+
+            // Color utility functions
+            const hexToRgb = (hex) => {
+                const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : null;
+            };
+
+            const lighten = (r, g, b, factor) => {
+                return \`rgb(\${Math.round(r + (255 - r) * factor)}, \${Math.round(g + (255 - g) * factor)}, \${Math.round(b + (255 - b) * factor)})\`;
+            };
+
+            const darken = (r, g, b, factor) => {
+                return \`rgb(\${Math.round(r * (1 - factor))}, \${Math.round(g * (1 - factor))}, \${Math.round(b * (1 - factor))})\`;
+            };
+
+            // Apply theme
+            const applyTheme = (theme) => {
+                document.documentElement.className = document.documentElement.className.replace(/pg-theme-\\w+/g, '');
+                document.documentElement.classList.add(\`pg-theme-\${theme}\`);
+
+                // Update meta theme-color for mobile browsers
+                const metaTheme = document.querySelector('meta[name="theme-color"]');
+                const themeColors = {
+                    light: '#ffffff',
+                    dark: '#1f2937',
+                    midnight: '#0f1419',
+                    auto: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#1f2937' : '#ffffff'
+                };
+                if (metaTheme) {
+                    metaTheme.content = themeColors[theme] || themeColors.dark;
+                }
+            };
+
+            // Apply accent color
+            const applyAccentColor = (color) => {
+                const rgb = hexToRgb(color);
+                if (!rgb) return;
+
+                const { r, g, b } = rgb;
+
+                // Generate color palette
+                const variations = {
+                    50: lighten(r, g, b, 0.95),
+                    100: lighten(r, g, b, 0.9),
+                    200: lighten(r, g, b, 0.8),
+                    300: lighten(r, g, b, 0.6),
+                    400: lighten(r, g, b, 0.3),
+                    500: color,
+                    600: darken(r, g, b, 0.1),
+                    700: darken(r, g, b, 0.2),
+                    800: darken(r, g, b, 0.3),
+                    900: darken(r, g, b, 0.4)
+                };
+
+                // Apply to CSS variables
+                Object.entries(variations).forEach(([weight, colorValue]) => {
+                    document.documentElement.style.setProperty(\`--pg-primary-\${weight}\`, colorValue);
+                });
+            };
+
+            // Apply density
+            const applyDensity = (density) => {
+                document.documentElement.className = document.documentElement.className.replace(/pg-density-\\w+/g, '');
+                document.documentElement.classList.add(\`pg-density-\${density}\`);
+
+                const densityMap = {
+                    compact: {
+                        '--pg-space-4': '0.75rem',
+                        '--pg-space-6': '1rem',
+                        '--pg-space-8': '1.25rem',
+                        '--pg-text-base': '0.875rem',
+                        '--pg-text-lg': '1rem'
+                    },
+                    comfortable: {
+                        '--pg-space-4': '1rem',
+                        '--pg-space-6': '1.5rem',
+                        '--pg-space-8': '2rem',
+                        '--pg-text-base': '1rem',
+                        '--pg-text-lg': '1.125rem'
+                    },
+                    spacious: {
+                        '--pg-space-4': '1.5rem',
+                        '--pg-space-6': '2rem',
+                        '--pg-space-8': '2.5rem',
+                        '--pg-text-base': '1.125rem',
+                        '--pg-text-lg': '1.25rem'
+                    }
+                };
+
+                const variables = densityMap[density] || densityMap.comfortable;
+                Object.entries(variables).forEach(([property, value]) => {
+                    document.documentElement.style.setProperty(property, value);
+                });
+            };
+
+            // Apply font
+            const applyFont = (font) => {
+                const fontMap = {
+                    system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif',
+                    inter: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+                    poppins: '"Poppins", -apple-system, BlinkMacSystemFont, sans-serif',
+                    jetbrains: '"JetBrains Mono", "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace',
+                    comic: '"Comic Neue", "Comic Sans MS", cursive'
+                };
+
+                const fontFamily = fontMap[font] || fontMap.system;
+                document.documentElement.style.setProperty('--pg-font-family', fontFamily);
+                document.body.style.fontFamily = fontFamily;
+
+                // Load Google Fonts if needed
+                if (font !== 'system' && !document.querySelector(\`link[href*="\${font}"]\`)) {
+                    const fonts = {
+                        inter: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
+                        poppins: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap',
+                        jetbrains: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap',
+                        comic: 'https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap'
+                    };
+
+                    if (fonts[font]) {
+                        const link = document.createElement('link');
+                        link.rel = 'stylesheet';
+                        link.href = fonts[font];
+                        document.head.appendChild(link);
+                    }
+                }
+            };
+
+            // Apply all preferences immediately (before DOM loads for smoother experience)
+            const preferences = loadStoredPreferences();
+            applyTheme(preferences.theme);
+            applyAccentColor(preferences.accentColor);
+            applyDensity(preferences.density);
+            applyFont(preferences.font);
+
+            // Expose global function to re-apply preferences
+            window.reapplyAesthetics = () => {
+                const prefs = loadStoredPreferences();
+                applyTheme(prefs.theme);
+                applyAccentColor(prefs.accentColor);
+                applyDensity(prefs.density);
+                applyFont(prefs.font);
+            };
+
+            console.log('🎨 PenguBook Aesthetics loaded:', preferences);
+        })();
     </script>
 </body>
 </html>`;

@@ -174,7 +174,7 @@ export default async function pipPenguBook(i) {
             .setCustomId(`pip:pengubook_profile:${profile.discordId}`)
             .setLabel("👀 View Full Profile")
             .setStyle(ButtonStyle.Secondary), new ButtonBuilder()
-            .setURL(`${process.env.WEB_BASE_URL || 'http://localhost:3000'}/pengubook`)
+            .setURL(`${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/pengubook`)
             .setLabel("🌐 Open in Browser")
             .setStyle(ButtonStyle.Link)
             .setEmoji("💻"), new ButtonBuilder()
