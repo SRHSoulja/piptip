@@ -282,6 +282,19 @@ export async function transferToken(
   const toBal = toAtomic(toBalRow.amount, decimals);
   const totalDebit = amountAtomic + fee;
 
+  // DEBUG: Log the transfer values to debug balance issues
+  console.log('DEBUG transferToken Balance Check:', {
+    fromDiscordId,
+    tokenSymbol: token.symbol,
+    fromBalanceRaw: fromBalRow.amount.toString(),
+    fromBalAtomic: fromBal.toString(),
+    amountAtomic: amountAtomic.toString(),
+    feeAtomic: fee.toString(),
+    totalDebit: totalDebit.toString(),
+    hasEnough: fromBal >= totalDebit,
+    decimals
+  });
+
   if (fromBal < totalDebit) throw new Error("Insufficient balance for transfer");
 
   await prisma.$transaction(async (db) => {

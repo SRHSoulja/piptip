@@ -103,9 +103,10 @@ export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
     };
     
     const result = await processTip(tipData, i.client);
-    
+
+    const statusEmoji = result.success ? "✅" : "❌";
     await i.editReply({
-      content: `✅ **${result.message}**\n${result.details || ""}`,
+      content: `${statusEmoji} **${result.message}**\n${result.details || ""}`,
       embeds: [],
       components: []
     });
@@ -127,6 +128,7 @@ export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
 
 /** Show duration selection for group tips */
 export async function showDurationSelection(i: ButtonInteraction, data: { amount: number; note: string; tokenId: number }) {
+  console.log('🔍 DEBUG: showDurationSelection called with data:', data);
   const { getActiveTokens } = await import("../../services/token.js");
   const tokens = await getActiveTokens();
   const token = tokens.find(t => t.id === data.tokenId);
@@ -182,6 +184,8 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
 
   const actionRow1 = new ActionRowBuilder<ButtonBuilder>().addComponents(durationButtons);
   const actionRow2 = new ActionRowBuilder<ButtonBuilder>().addComponents(extendedDurationButtons);
+
+  console.log('🔍 DEBUG: Created action rows - Row1:', actionRow1.components.length, 'buttons, Row2:', actionRow2.components.length, 'buttons');
   
   const cancelRow = new ActionRowBuilder<ButtonBuilder>()
     .addComponents(
@@ -192,10 +196,14 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
         .setEmoji("❌")
     );
 
+  console.log('🔍 DEBUG: About to send', [actionRow1, actionRow2, cancelRow].length, 'action rows to Discord');
+
   await i.editReply({
     embeds: [embed],
     components: [actionRow1, actionRow2, cancelRow]
   });
+
+  console.log('🔍 DEBUG: Successfully sent duration selection to Discord');
 }
 
 /** Show final confirmation screen */
