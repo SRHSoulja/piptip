@@ -11,7 +11,7 @@ import { handleLegacyPipModal } from "./buttons/legacy.js";
 import { handlePick, handleJoin, handleCancel } from "./buttons/matches.js";
 import { handlePromptLinkWallet, handleLinkWalletModal, handleLinkWalletSubmit } from "./buttons/wallet.js";
 import { handleShowDepositInstructions, handleDepositToken, handleCancelDeposit } from "./buttons/deposits.js";
-import { handlePenguBookNav, handlePenguBookModes, handleBioToggle, handleTipFromBook, handleViewOwnBio, handlePenguBookCTA, handlePenguBookProfile, handlePenguBookInbox } from "./buttons/pengubook.js";
+import { handlePenguBookModes, handleBioToggle, handleTipFromBook, handleViewOwnBio, handlePenguBookCTA, handlePenguBookProfile, handlePenguBookInbox } from "./buttons/pengubook.js";
 import { handleRefreshAchievements, handleShowLeaderboard, handleViewOwnAchievements } from "./buttons/achievements.js";
 /** Router for pip button customIds: pip:<action>:<matchId>:<move?> */
 // Main handler that routes by interaction type using type guards
@@ -162,12 +162,48 @@ async function handleLegacyPipButton(i) {
     }
     // Handle PenguBook actions
     if (action === "pengubook_browse") {
-        return handlePenguBookNav(i, "recent", 1);
+        // When navigating from profile, update the existing message
+        await i.deferUpdate();
+        // Call the same logic as /pip_pengubook command but with editReply
+        const pipPenguBook = (await import("../commands/pip_pengubook.js")).default;
+        const fakeInteraction = Object.assign(Object.create(Object.getPrototypeOf(i)), i, {
+            options: {
+                getString: (name) => name === "mode" ? "recent" : null,
+                getInteger: (name) => name === "page" ? 1 : null
+            },
+            reply: async (options) => {
+                // Convert reply to editReply for button interactions
+                if (options.flags === 64) {
+                    delete options.flags;
+                }
+                return i.editReply(options);
+            },
+            editReply: i.editReply.bind(i),
+            deferReply: async () => { } // Already deferred with deferUpdate
+        });
+        return pipPenguBook(fakeInteraction);
     }
     if (action === "pengubook_nav") {
         const mode = parts[2] || "recent";
         const page = parseInt(parts[3]) || 1;
-        return handlePenguBookNav(i, mode, page);
+        await i.deferUpdate();
+        // Call the same logic as /pip_pengubook command
+        const pipPenguBook = (await import("../commands/pip_pengubook.js")).default;
+        const fakeInteraction = Object.assign(Object.create(Object.getPrototypeOf(i)), i, {
+            options: {
+                getString: (name) => name === "mode" ? mode : null,
+                getInteger: (name) => name === "page" ? page : null
+            },
+            reply: async (options) => {
+                if (options.flags === 64) {
+                    delete options.flags;
+                }
+                return i.editReply(options);
+            },
+            editReply: i.editReply.bind(i),
+            deferReply: async () => { } // Already deferred with deferUpdate
+        });
+        return pipPenguBook(fakeInteraction);
     }
     if (action === "pengubook_modes") {
         return handlePenguBookModes(i);

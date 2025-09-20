@@ -30,6 +30,16 @@ export async function profileEmbed(data: {
   achievements?: any[];
   createdAt?: Date;
   hasActiveMembership?: boolean;
+  // Enhanced profile features
+  socialScore?: any;
+  socialScoreText?: string;
+  socialRank?: number;
+  dailyStreakText?: string;
+  levelDetails?: any;
+  xpProgressText?: string;
+  levelBenefitsText?: string;
+  contributionStats?: any;
+  contributionText?: string;
 }) {
   // Handle balance display - support both new and legacy formats
   let balanceDisplay = "0 tokens";
@@ -76,6 +86,24 @@ export async function profileEmbed(data: {
       name: "🎖️ Colony Rank",
       value: formatLevelDisplay(levelInfo),
       inline: false
+    });
+  }
+
+  // Add XP progress details
+  if (data.xpProgressText) {
+    basicFields.push({
+      name: "⭐ XP Progress",
+      value: data.xpProgressText,
+      inline: true
+    });
+  }
+
+  // Add social score
+  if (data.socialScoreText) {
+    basicFields.push({
+      name: "🌟 Social Score",
+      value: data.socialScoreText,
+      inline: true
     });
   }
 
@@ -144,6 +172,33 @@ export async function profileEmbed(data: {
       name: "🎯 Win Streak",
       value: data.streakText,
       inline: true
+    });
+  }
+
+  // Show daily activity streak
+  if (data.dailyStreakText) {
+    embed.addFields({
+      name: "📅 Daily Activity",
+      value: data.dailyStreakText,
+      inline: true
+    });
+  }
+
+  // Show group tip contributions
+  if (data.contributionText) {
+    embed.addFields({
+      name: "🤝 Group Tip Contributions",
+      value: data.contributionText,
+      inline: true
+    });
+  }
+
+  // Show level benefits
+  if (data.levelBenefitsText) {
+    embed.addFields({
+      name: "🎁 Current Level Benefits",
+      value: data.levelBenefitsText,
+      inline: false
     });
   }
 

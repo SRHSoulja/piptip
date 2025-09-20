@@ -5,6 +5,9 @@ import { prisma } from "./db.js";
 import { profileEmbed } from "../ui/embeds.js";
 import { formatDecimal, bigToDecDirect } from "./token.js";
 import { getStreakStats, formatStreakText, getUserAchievements } from "./streaks.js";
+import { calculateSocialScore, getUserRank } from "./social_leaderboards.js";
+import { getDailyProgress } from "./daily_engagement.js";
+import { getUserLevel } from "./penguin_levels.js";
 
 // Track active profile requests to prevent spam
 export const activeProfileRequests = new Set<string>();
@@ -354,9 +357,31 @@ export async function generateProfileData(userId: string, discordUser: User) {
         .join("\n")
     : "No recent activity";
 
-  // Get streak and achievement data
-  const streakStats = await getStreakStats(userId);
-  const achievementsRaw = await getUserAchievements(userId);
+  // Get group tip contribution stats
+  const groupTipContributions = await prisma.groupTipContribution.groupBy({
+    by: ['contributorId'],
+    where: { contributorId: u.id },
+    _count: { id: true },
+    _sum: { amount: true }
+  }).catch(() => []);
+
+  const contributionStats = groupTipContributions.length > 0
+    ? {
+        count: groupTipContributions[0]._count.id,
+        totalAmount: Number(groupTipContributions[0]._sum.amount || 0)
+      }
+    : { count: 0, totalAmount: 0 };
+
+  // Get enhanced profile data (streak, achievements, social score, daily activity, level details)
+  const [streakStats, achievementsRaw, socialScoreData, dailyStats, socialRank, levelDetails] = await Promise.all([
+    getStreakStats(userId),
+    getUserAchievements(userId),
+    calculateSocialScore(userId),
+    getDailyProgress(u.id).catch(() => ({ goals: [], streakFreezes: 0 })),
+    getUserRank(userId, 'social').catch(() => 0),
+    getUserLevel(userId)
+  ]);
+
   const streakText = formatStreakText(streakStats.currentWins, streakStats.longestWins);
 
   // Format achievements for display
@@ -366,6 +391,30 @@ export async function generateProfileData(userId: string, discordUser: User) {
         .map((achievement: any) => formatAchievementBadge(achievement))
         .join("\n")
     : null;
+
+  // Format social score for display
+  const socialScoreText = `${socialScoreData.totalScore.toLocaleString()} points` +
+    (socialRank > 0 ? ` (#${socialRank} in colony)` : "");
+
+  // Format daily activity streak
+  const completedGoals = dailyStats.goals?.filter(g => g.completed).length || 0;
+  const totalGoals = dailyStats.goals?.length || 3;
+  const dailyStreakText = completedGoals > 0
+    ? `${completedGoals}/${totalGoals} daily goals completed today`
+    : "No goals completed today";
+
+  // Format XP progress
+  const xpProgressText = levelDetails.xpToNextLevel > 0
+    ? `${levelDetails.currentXP.toLocaleString()} XP (${levelDetails.xpToNextLevel.toLocaleString()} to next level)`
+    : `${levelDetails.currentXP.toLocaleString()} XP (Max Level!)`;
+
+  // Format level benefits
+  const levelBenefitsText = levelDetails.currentLevel.benefits.join(", ");
+
+  // Format group tip contributions
+  const contributionText = contributionStats.count > 0
+    ? `${contributionStats.count} contributions (${formatDecimal(contributionStats.totalAmount, 'total')} fish added)`
+    : "No contributions yet";
 
   return {
     user: u,
@@ -384,7 +433,18 @@ export async function generateProfileData(userId: string, discordUser: User) {
     hasBio: !!u.bio, // Add bio status for PenguBook CTA
     streakStats,
     streakText,
-    achievements
+    achievements,
+    // Enhanced profile data
+    socialScore: socialScoreData,
+    socialScoreText,
+    socialRank,
+    dailyStats,
+    dailyStreakText,
+    levelDetails,
+    xpProgressText,
+    levelBenefitsText,
+    contributionStats,
+    contributionText
   };
 }
 
@@ -520,6 +580,16 @@ export async function createProfileEmbed(data: any) {
     streakText: data.streakText,
     achievements: data.achievements,
     createdAt: data.user.createdAt,
-    hasActiveMembership: data.activeMemberships.length > 0
+    hasActiveMembership: data.activeMemberships.length > 0,
+    // Enhanced profile features
+    socialScore: data.socialScore,
+    socialScoreText: data.socialScoreText,
+    socialRank: data.socialRank,
+    dailyStreakText: data.dailyStreakText,
+    levelDetails: data.levelDetails,
+    xpProgressText: data.xpProgressText,
+    levelBenefitsText: data.levelBenefitsText,
+    contributionStats: data.contributionStats,
+    contributionText: data.contributionText
   });
 }

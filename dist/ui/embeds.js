@@ -48,6 +48,22 @@ export async function profileEmbed(data) {
             inline: false
         });
     }
+    // Add XP progress details
+    if (data.xpProgressText) {
+        basicFields.push({
+            name: "⭐ XP Progress",
+            value: data.xpProgressText,
+            inline: true
+        });
+    }
+    // Add social score
+    if (data.socialScoreText) {
+        basicFields.push({
+            name: "🌟 Social Score",
+            value: data.socialScoreText,
+            inline: true
+        });
+    }
     embed.addFields(...basicFields);
     // Account info
     if (data.createdAt) {
@@ -102,6 +118,30 @@ export async function profileEmbed(data) {
             name: "🎯 Win Streak",
             value: data.streakText,
             inline: true
+        });
+    }
+    // Show daily activity streak
+    if (data.dailyStreakText) {
+        embed.addFields({
+            name: "📅 Daily Activity",
+            value: data.dailyStreakText,
+            inline: true
+        });
+    }
+    // Show group tip contributions
+    if (data.contributionText) {
+        embed.addFields({
+            name: "🤝 Group Tip Contributions",
+            value: data.contributionText,
+            inline: true
+        });
+    }
+    // Show level benefits
+    if (data.levelBenefitsText) {
+        embed.addFields({
+            name: "🎁 Current Level Benefits",
+            value: data.levelBenefitsText,
+            inline: false
         });
     }
     // Show recent achievements (max 3)

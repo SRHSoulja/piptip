@@ -41,19 +41,28 @@ export async function browseHandler(req, res) {
             orderBy: { bioLastUpdated: 'desc' },
             take: 50
         });
+        // Check if current user has a bio
+        const currentUserHasBio = await prisma.user.findFirst({
+            where: { id: user.id, bio: { not: null } },
+            select: { bio: true }
+        });
         const content = `
     <div class="pg-container">
         <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">👥 Browse PenguBook Users</h1>
 
         ${users.length === 0 ? `
         <div class="pg-empty-state">
-            <div class="pg-empty-state__icon">👥</div>
-            <h2 class="pg-empty-state__title">No users found</h2>
+            <div class="pg-empty-state__icon">🐧</div>
+            <h2 class="pg-empty-state__title">${currentUserHasBio ? "You're the first one here!" : "No other users yet"}</h2>
             <p class="pg-empty-state__description">
-                No users have set up their PenguBook profiles yet. Be one of the first to create your profile!
+                ${currentUserHasBio
+            ? "Looks like you're the pioneer! Your profile is set up, but no other users have joined PenguBook yet. Share with friends to grow the community!"
+            : "No other users have set up their PenguBook profiles yet. Be the first to create your profile!"}
             </p>
             <div style="margin-top: var(--pg-space-6);">
-                <a href="/pengubook/profile" class="pg-btn pg-btn--primary">Create Profile</a>
+                ${currentUserHasBio
+            ? `<a href="/pengubook/profile" class="pg-btn pg-btn--primary">View Your Profile</a>`
+            : `<a href="/pengubook/profile" class="pg-btn pg-btn--primary">Create Profile</a>`}
             </div>
         </div>
         ` : `
