@@ -110,10 +110,13 @@ export async function generateProfileData(userId, discordUser) {
         }),
         // OPTIMIZED: Get group tip stats with proper Prisma queries (revert to work with current schema)
         Promise.all([
-            // Group tips created by user
+            // Group tips created by user (only successfully funded ones)
             prisma.groupTip.groupBy({
                 by: ['tokenId'],
-                where: { creatorId: u.id },
+                where: {
+                    creatorId: u.id,
+                    status: { in: ['ACTIVE', 'EXPIRED'] } // Only count successfully funded group tips
+                },
                 _count: { id: true },
                 _sum: { totalAmount: true }
             }),
