@@ -190,8 +190,8 @@ export async function awardXP(discordId, xpAmount, source) {
             data: {
                 userId: user.id,
                 amount: finalXP,
-                source,
-                totalXPAfter: newXP
+                reason: source,
+                metadata: JSON.stringify({ totalXPAfter: newXP })
             }
         }).catch(() => { }); // Ignore if table doesn't exist
         const levelUp = newLevel.level > previousLevel.level;
