@@ -622,6 +622,26 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   </section>
 
   <section>
+    <h2>🏆 Achievement Management</h2>
+    <p>Manage dynamic achievements and user progress</p>
+    <div class="row">
+      <button id="loadAchievements">🔄 Refresh Achievements</button>
+      <button id="createAchievement">➕ Create Achievement</button>
+      <button id="seedAchievements">🌱 Seed Default Achievements</button>
+      <span id="achievementMsg"></span>
+    </div>
+    <table id="achievementsTbl">
+      <thead>
+        <tr>
+          <th>ID</th><th>Title</th><th>Description</th><th>Type</th>
+          <th>Target</th><th>Reward</th><th>Active</th><th>Completions</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
     <h2>💾 Database Backups</h2>
     <p>Automated hourly backups and manual backup management</p>
     <div class="row">
