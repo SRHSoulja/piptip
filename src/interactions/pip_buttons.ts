@@ -213,13 +213,49 @@ async function handleLegacyPipButton(i: ButtonInteraction) {
 
   // Handle PenguBook actions
   if (action === "pengubook_browse") {
-    return handlePenguBookNav(i, "recent", 1);
+    // When navigating from profile, update the existing message
+    await i.deferUpdate();
+    // Call the same logic as /pip_pengubook command but with editReply
+    const pipPenguBook = (await import("../commands/pip_pengubook.js")).default;
+    const fakeInteraction = Object.assign(Object.create(Object.getPrototypeOf(i)), i, {
+      options: {
+        getString: (name: string) => name === "mode" ? "recent" : null,
+        getInteger: (name: string) => name === "page" ? 1 : null
+      },
+      reply: async (options: any) => {
+        // Convert reply to editReply for button interactions
+        if (options.flags === 64) {
+          delete options.flags;
+        }
+        return i.editReply(options);
+      },
+      editReply: i.editReply.bind(i),
+      deferReply: async () => {} // Already deferred with deferUpdate
+    });
+    return pipPenguBook(fakeInteraction);
   }
 
   if (action === "pengubook_nav") {
     const mode = parts[2] || "recent";
     const page = parseInt(parts[3]) || 1;
-    return handlePenguBookNav(i, mode, page);
+    await i.deferUpdate();
+    // Call the same logic as /pip_pengubook command
+    const pipPenguBook = (await import("../commands/pip_pengubook.js")).default;
+    const fakeInteraction = Object.assign(Object.create(Object.getPrototypeOf(i)), i, {
+      options: {
+        getString: (name: string) => name === "mode" ? mode : null,
+        getInteger: (name: string) => name === "page" ? page : null
+      },
+      reply: async (options: any) => {
+        if (options.flags === 64) {
+          delete options.flags;
+        }
+        return i.editReply(options);
+      },
+      editReply: i.editReply.bind(i),
+      deferReply: async () => {} // Already deferred with deferUpdate
+    });
+    return pipPenguBook(fakeInteraction);
   }
 
   if (action === "pengubook_modes") {
