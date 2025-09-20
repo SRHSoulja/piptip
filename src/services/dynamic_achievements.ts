@@ -155,11 +155,18 @@ export async function processAchievementEvent(
         // Update progress tracking
         await updateUserProgress(userId, definition.id, currentProgress, eventData);
 
-        // Check if achievement should be unlocked
+        // Check if achievement should be unlocked (atomic to prevent double-unlocks)
         if (currentProgress >= definition.threshold) {
-          const unlocked = await unlockAchievement(userId, definition, currentProgress, eventData);
-          if (unlocked) {
-            newAchievements.push(formatAchievementUnlock(definition));
+          try {
+            const unlocked = await unlockAchievement(userId, definition, currentProgress, eventData);
+            if (unlocked) {
+              newAchievements.push(formatAchievementUnlock(definition));
+            }
+          } catch (error) {
+            // Likely already unlocked by concurrent process - ignore
+            if (!(error as Error).message?.includes('already unlocked')) {
+              throw error;
+            }
           }
         }
 
