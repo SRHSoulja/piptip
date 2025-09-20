@@ -5,6 +5,29 @@ import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from
 export async function handleGroupTipClaim(i, groupTipId) {
     await i.deferReply({ ephemeral: true });
     try {
+        // Add retry mechanism for read-after-write consistency
+        let groupTipData = null;
+        let attempts = 0;
+        const maxAttempts = 3;
+        while (!groupTipData && attempts < maxAttempts) {
+            attempts++;
+            groupTipData = await prisma.groupTip.findUnique({
+                where: { id: groupTipId },
+                include: {
+                    Creator: true,
+                    Token: true,
+                },
+            });
+            if (!groupTipData && attempts < maxAttempts) {
+                console.log(`Group tip ${groupTipId} not found, retrying... (attempt ${attempts}/${maxAttempts})`);
+                await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
+            }
+        }
+        if (!groupTipData) {
+            return i.editReply({
+                content: "🐧 Group tip not found! It might have expired or been removed."
+            });
+        }
         const result = await prisma.$transaction(async (tx) => {
             const tip = await tx.groupTip.findUnique({
                 where: { id: groupTipId },

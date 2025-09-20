@@ -22,8 +22,13 @@ export default async function pipProfile(i: ChatInputCommandInteraction) {
   });
 
   try {
-    // Generate comprehensive profile data
-    const profileData = await generateProfileData(userId, i.user);
+    // Generate comprehensive profile data with timeout
+    const profileData = await Promise.race([
+      generateProfileData(userId, i.user),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Profile generation timed out after 15 seconds")), 15000)
+      )
+    ]) as Awaited<ReturnType<typeof generateProfileData>>;
 
     // Create profile components
     const hasLinkedWallet = !!profileData.user.agwAddress;
@@ -31,23 +36,41 @@ export default async function pipProfile(i: ChatInputCommandInteraction) {
     const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
     const embed = await createProfileEmbed(profileData);
 
-    // Update the reply with the full profile
+    // Update the reply with the full profile (with error handling)
     await i.editReply({
       content: null, // Clear the loading message
       embeds: [embed],
       components: profileButtons
+    }).catch(async (editError) => {
+      console.error("Failed to edit reply with profile data:", editError);
+      // Fallback: try to send a simple response
+      await i.editReply({
+        content: "❌ **Profile loaded but couldn't display properly**\n*The profile data was generated successfully but Discord rejected the response. Try again.*",
+        embeds: [],
+        components: []
+      }).catch(() => {});
     });
 
   } catch (error: any) {
     console.error("Profile command error:", error);
-    const errorMessage = `❌ **Error loading profile**\n${error?.message || String(error)}\n\n*You can try the command again in a moment.*`;
-    
+    let errorMessage = `❌ **Error loading profile**\n`;
+
+    if (error?.message?.includes("timed out")) {
+      errorMessage += `Profile generation took too long. This may indicate database connectivity issues.\n\n*Try again in a moment.*`;
+    } else if (error?.message?.includes("rate limited")) {
+      errorMessage += `${error.message}\n\n*Please wait before trying again.*`;
+    } else {
+      errorMessage += `${error?.message || String(error)}\n\n*You can try the command again in a moment.*`;
+    }
+
     // Since we already replied, use editReply for errors
-    await i.editReply({ 
+    await i.editReply({
       content: errorMessage,
       embeds: [],
       components: []
-    }).catch(() => {});
+    }).catch((editError) => {
+      console.error("Failed to edit reply with error message:", editError);
+    });
   } finally {
     // Always remove user from active requests
     releaseProfileRequest(userId);

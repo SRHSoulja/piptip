@@ -16,15 +16,7 @@ const createElement = (tag, options = {}) => {
   }
   return el;
 };
-const createSecureButton = (text, onClick) => {
-  const btn = document.createElement('button');
-  btn.textContent = text;
-  btn.onclick = onClick;
-  btn.style.margin = '2px';
-  btn.style.padding = '4px 8px';
-  btn.style.fontSize = '12px';
-  return btn;
-};
+// Removed duplicate createSecureButton function
 const createTableRow = (cells) => {
   const tr = document.createElement('tr');
   cells.forEach(cell => {

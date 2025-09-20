@@ -1,6 +1,6 @@
 import { prisma } from "./db.js";
-import { getActiveTokens, toAtomicDirect, formatAmount, bigToDecDirect } from "./token.js";
-import { transferToken, debitToken } from "./balances.js";
+import { getActiveTokens, toAtomicDirect, formatAmount, bigToDecDirect, decToBigDirect } from "./token.js";
+import { transferToken, ensureUser } from "./balances.js";
 import { getConfig } from "../config.js";
 import { getActiveAd } from "./ads.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
@@ -237,7 +237,7 @@ export async function processTip(data, client) {
                     details: "Duration must be between 1-60 minutes."
                 };
             }
-            // Validate channel BEFORE charging user
+            // Validate channel BEFORE any operations
             if (!data.channelId) {
                 return {
                     success: false,
@@ -253,36 +253,55 @@ export async function processTip(data, client) {
                     details: "Cannot post in this channel type."
                 };
             }
-            // Charge user for group tip
-            await debitToken(data.userId, token.id, atomic + feeAtomic, "TIP", { guildId: data.guildId });
-            const expiresAt = new Date(Date.now() + data.duration * 60 * 1000);
-            // Create the group tip (using current schema)
-            const result = await prisma.groupTip.create({
-                data: {
-                    creatorId: fromUser.id,
-                    tokenId: token.id,
-                    totalAmount: data.amount.toString(),
-                    taxAtomic: feeAtomic.toString(), // Store tax amount for refunds
-                    duration: data.duration * 60,
-                    status: "ACTIVE",
-                    expiresAt,
-                    guildId: data.guildId,
-                },
+            // CRITICAL: Check balance BEFORE any state changes
+            const fromUser = await ensureUser(data.userId);
+            const currentBalance = await prisma.userBalance.findUnique({
+                where: { userId_tokenId: { userId: fromUser.id, tokenId: token.id } }
             });
-            // Record fee transaction if applicable
-            if (feeAtomic > 0n) {
-                await prisma.transaction.create({
+            const balanceAtomic = currentBalance ? decToBigDirect(currentBalance.amount, token.decimals) : 0n;
+            if (balanceAtomic < atomic + feeAtomic) {
+                return {
+                    success: false,
+                    message: "Insufficient balance",
+                    details: `You don't have enough ${data.amount} tokens + fees for this group tip.`
+                };
+            }
+            const expiresAt = new Date(Date.now() + data.duration * 60 * 1000);
+            // Use atomic transaction for group tip creation
+            const result = await prisma.$transaction(async (tx) => {
+                // Import the transaction-safe version
+                const { debitTokenTx } = await import("./balances.js");
+                // Charge user for group tip (after confirming balance)
+                await debitTokenTx(tx, data.userId, token.id, atomic + feeAtomic, "TIP", { guildId: data.guildId });
+                // Create the group tip (using current schema)
+                const groupTip = await tx.groupTip.create({
                     data: {
-                        type: "TIP",
-                        userId: fromUser.id,
+                        creatorId: fromUser.id,
                         tokenId: token.id,
-                        amount: bigToDecDirect(atomic, token.decimals),
-                        fee: bigToDecDirect(feeAtomic, token.decimals),
+                        totalAmount: data.amount.toString(),
+                        taxAtomic: feeAtomic.toString(), // Store tax amount for refunds
+                        duration: (data.duration || 5) * 60,
+                        status: "ACTIVE",
+                        expiresAt,
                         guildId: data.guildId,
-                        metadata: JSON.stringify({ groupTipId: result.id, kind: "GROUP_TIP_CREATE" }),
                     },
                 });
-            }
+                // Record fee transaction if applicable
+                if (feeAtomic > 0n) {
+                    await tx.transaction.create({
+                        data: {
+                            type: "TIP",
+                            userId: fromUser.id,
+                            tokenId: token.id,
+                            amount: bigToDecDirect(atomic, token.decimals),
+                            fee: bigToDecDirect(feeAtomic, token.decimals),
+                            guildId: data.guildId,
+                            metadata: JSON.stringify({ groupTipId: groupTip.id, kind: "GROUP_TIP_CREATE" }),
+                        },
+                    });
+                }
+                return groupTip;
+            });
             // Create embed with ads
             const ad = await getActiveAd();
             const embed = groupTipEmbed({

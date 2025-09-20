@@ -36,8 +36,10 @@
         <!-- Auth Section -->
         <div class="section">
             <h2>🔐 Authentication</h2>
-            <input type="password" id="secret" placeholder="Admin Secret" style="width: 300px;">
-            <button id="saveSecret">Connect</button>
+            <form id="authForm" style="display: flex; align-items: center; gap: 10px;">
+                <input type="password" id="secret" placeholder="Admin Secret" style="width: 300px;" required>
+                <button type="submit" id="saveSecret">Connect</button>
+            </form>
             <div id="authStatus" style="margin-top: 10px;"></div>
         </div>
 

@@ -6,31 +6,63 @@ import { getStreakStats, formatStreakText, getUserAchievements } from "./streaks
 import { calculateSocialScore, getUserRank } from "./social_leaderboards.js";
 import { getDailyProgress } from "./daily_engagement.js";
 import { getUserLevel } from "./penguin_levels.js";
-// Track active profile requests to prevent spam
+// Track active profile requests to prevent spam (with timestamps for better cleanup)
+const activeProfileRequestsWithTime = new Map();
 export const activeProfileRequests = new Set();
 // Rate limiting: track last request times
 const lastProfileRequests = new Map();
 const PROFILE_RATE_LIMIT = 5000; // 5 seconds between requests
 // Automatic cleanup for stuck requests (safety net)
-const PROFILE_REQUEST_TIMEOUT = 30000; // 30 seconds
-// Clean up old rate limit entries every hour
+const PROFILE_REQUEST_TIMEOUT = 20000; // 20 seconds (reduced from 30)
+// Aggressive cleanup every 10 seconds to prevent stuck states
 setInterval(() => {
     const now = Date.now();
+    // Clean up stuck profile requests
+    for (const [userId, timestamp] of activeProfileRequestsWithTime.entries()) {
+        if (now - timestamp > PROFILE_REQUEST_TIMEOUT) {
+            console.log(`🧹 Auto-cleaning stuck profile request for user ${userId} (${Math.round((now - timestamp) / 1000)}s old)`);
+            activeProfileRequests.delete(userId);
+            activeProfileRequestsWithTime.delete(userId);
+        }
+    }
+    // Clean up old rate limit entries
     for (const [userId, timestamp] of lastProfileRequests.entries()) {
         if (now - timestamp > 3600000) { // 1 hour
             lastProfileRequests.delete(userId);
         }
     }
-}, 3600000);
+}, 10000); // Every 10 seconds
 export function trackProfileRequest(userId) {
+    const now = Date.now();
     activeProfileRequests.add(userId);
-    // Auto-cleanup after timeout as safety net
+    activeProfileRequestsWithTime.set(userId, now);
+    // Auto-cleanup after timeout as additional safety net
     setTimeout(() => {
-        activeProfileRequests.delete(userId);
+        if (activeProfileRequestsWithTime.has(userId)) {
+            console.log(`⏰ Timeout cleanup for profile request: ${userId}`);
+            activeProfileRequests.delete(userId);
+            activeProfileRequestsWithTime.delete(userId);
+        }
     }, PROFILE_REQUEST_TIMEOUT);
 }
 export function releaseProfileRequest(userId) {
     activeProfileRequests.delete(userId);
+    activeProfileRequestsWithTime.delete(userId);
+}
+// Admin function to force-clear all stuck profile requests
+export function clearAllProfileRequests() {
+    const count = activeProfileRequests.size;
+    activeProfileRequests.clear();
+    activeProfileRequestsWithTime.clear();
+    console.log(`🧹 Force-cleared ${count} active profile requests`);
+    return count;
+}
+// Get status of active profile requests for debugging
+export function getProfileRequestStatus() {
+    return {
+        active: activeProfileRequests.size,
+        withTimestamps: Array.from(activeProfileRequestsWithTime.entries())
+    };
 }
 export async function generateProfileData(userId, discordUser) {
     // Rate limiting check
