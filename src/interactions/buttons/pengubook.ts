@@ -187,7 +187,11 @@ export async function handlePenguBookNav(i: ButtonInteraction, mode: string, pag
       new ButtonBuilder()
         .setCustomId("pip:pengubook_modes")
         .setLabel("📊 Browse Modes")
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("pip:back_to_profile")
+        .setLabel("👤 Back to Profile")
+        .setStyle(ButtonStyle.Secondary)
     );
     
     // Track browsing
