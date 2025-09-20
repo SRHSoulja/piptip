@@ -1302,10 +1302,8 @@ function displayUsers(users) {
     btn.onclick = () => editBalance(btn.dataset.discordId, btn.dataset.tokenSymbol, btn.dataset.currentAmount, btn);
   });
   
-  // Add token functionality
-  tbody.querySelectorAll(".add-token-btn").forEach(btn => {
-    btn.onclick = () => addTokenToUser(btn.dataset.discordId, btn);
-  });
+  // Add token functionality - NOTE: Event handlers are already set in createSecureButton calls
+  // Removed duplicate onclick assignment to prevent multiple executions
   
   // Add delete functionality
   tbody.querySelectorAll(".deleteUser").forEach(btn => {
