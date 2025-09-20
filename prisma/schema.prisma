@@ -26,6 +26,7 @@ model User {
   wins       Int      @default(0) // SECURITY: Prevent negative values
   losses     Int      @default(0) // SECURITY: Prevent negative values
   ties       Int      @default(0) // SECURITY: Prevent negative values
+  totalXP    Int      @default(0) // Penguin XP progression system
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -82,6 +83,9 @@ model User {
   // Referral system relations
   referralsMade     Referral[] @relation("UserReferrals")
   referredBy        Referral[] @relation("UserReferred")
+
+  // XP tracking relations
+  xpTransactions XpTransaction[]
 
   // Streak and achievement relations
   streak       UserStreak? @relation("UserStreaks")
@@ -433,6 +437,21 @@ model Transaction {
   @@index([guildId])
   @@index([type])
   @@index([userId])
+}
+
+model XpTransaction {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  amount    Int      // XP amount (can be negative for penalties)
+  reason    String   // Reason for XP change (e.g., "tip_sent", "achievement_unlocked")
+  metadata  String?  // Additional context as JSON
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([reason])
 }
 
 model WebhookEvent {
