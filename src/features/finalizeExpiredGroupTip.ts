@@ -38,11 +38,12 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
 
   const totalAtomic = decToBigDirect(tip.totalAmount, tip.Token.decimals);
   
-  // Separate PENDING (need refunds) from CLAIMED (get payouts) 
-  const pendingClaims = tip.claims.filter(c => c.status === 'PENDING');
-  const claimedClaims = tip.claims.filter(c => c.status === 'CLAIMED');
+  // All claims should get payouts - PENDING means they claimed but haven't been paid yet
+  // Only exclude REFUNDED claims (which shouldn't exist at this point anyway)
+  const validClaims = tip.claims.filter(c => c.status === 'PENDING' || c.status === 'CLAIMED');
+  const invalidClaims = tip.claims.filter(c => c.status !== 'PENDING' && c.status !== 'CLAIMED');
 
-  if (claimedClaims.length === 0) {
+  if (validClaims.length === 0) {
     // No successful claims - refund everything to creator using centralized engine
     const refundResult = await RefundEngine.refundContribution(tip.id);
     if (!refundResult.success) {
@@ -50,10 +51,10 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
       return { kind: "NOOP" };
     }
 
-    // Handle pending claims separately
-    if (pendingClaims.length > 0) {
+    // Handle any invalid claims (shouldn't exist normally)
+    if (invalidClaims.length > 0) {
       await prisma.groupTipClaim.updateMany({
-        where: { groupTipId: tip.id, status: 'PENDING' },
+        where: { groupTipId: tip.id, status: { notIn: ['PENDING', 'CLAIMED'] } },
         data: { status: 'REFUNDED', refundedAt: new Date() }
       });
     }
@@ -66,25 +67,25 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
     };
   }
 
-  // Split payout among CLAIMED claims and refund PENDING claims - batch all operations
-  const n = BigInt(claimedClaims.length);
+  // Split payout among all valid claims - batch all operations
+  const n = BigInt(validClaims.length);
   const per = totalAtomic / n;
   const rem = totalAtomic % n;
 
   const payouts: { discordId: string; shareText: string }[] = [];
   
   await prisma.$transaction(async (tx) => {
-    // Batch refund all PENDING claims first
-    if (pendingClaims.length > 0) {
+    // Batch refund any invalid claims (shouldn't exist normally)
+    if (invalidClaims.length > 0) {
       await tx.groupTipClaim.updateMany({
-        where: { groupTipId: tip.id, status: 'PENDING' },
+        where: { groupTipId: tip.id, status: { notIn: ['PENDING', 'CLAIMED'] } },
         data: { status: 'REFUNDED', refundedAt: new Date() }
       });
     }
-    
-    // Batch payout to all CLAIMED claims
-    for (let idx = 0; idx < claimedClaims.length; idx++) {
-      const c = claimedClaims[idx];
+
+    // Batch payout to all valid claims
+    for (let idx = 0; idx < validClaims.length; idx++) {
+      const c = validClaims[idx];
       const share = idx === 0 ? per + rem : per;
       if (!c.User) {
         console.error(`GroupTipClaim ${c.id} has no associated User`);
@@ -94,6 +95,12 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
         guildId: tip.guildId ?? undefined,
       });
       payouts.push({ discordId: c.User.discordId, shareText: formatAmount(share, tip.Token) });
+
+      // Mark claim as paid
+      await tx.groupTipClaim.update({
+        where: { id: c.id },
+        data: { status: 'CLAIMED', claimedAt: new Date() }
+      });
     }
     
     await tx.groupTip.update({ where: { id: tip.id }, data: { status: "FINALIZED" } });
