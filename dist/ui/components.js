@@ -32,13 +32,17 @@ export function cancelRow(matchId) {
         .setLabel("Cancel")
         .setStyle(ButtonStyle.Danger));
 }
-/** Group tip claim button */
+/** Group tip claim and add buttons */
 export function groupTipClaimRow(groupTipId, disabled = false) {
     return new ActionRowBuilder().addComponents(new ButtonBuilder()
         .setCustomId(`grouptip:claim:${groupTipId}`)
         .setLabel("🐧 Grab My Fish!")
         .setStyle(ButtonStyle.Success)
         .setEmoji("🎁")
-        .setDisabled(disabled) // 🔑 allow disabling
-    );
+        .setDisabled(disabled), new ButtonBuilder()
+        .setCustomId(`grouptip:add:${groupTipId}`)
+        .setLabel("🐟 Add More Fish!")
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("➕")
+        .setDisabled(disabled));
 }

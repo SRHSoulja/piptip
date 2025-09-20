@@ -25,6 +25,7 @@ import pipAchievements from "./commands/pip_achievements.js";
 import pipLeaderboard from "./commands/pip_leaderboard.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
+import { handleGroupTipModal } from "./interactions/group_tip_modal.js";
 import { isButtonInteraction, isModalSubmitInteraction } from "./discord/guards.js";
 import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
 import { TierRoleSyncService } from "./services/tier_role_manager.js";
@@ -343,6 +344,8 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
         const customId = i.customId;
         if (customId.startsWith("pip:"))
             return handlePipButton(i);
+        if (customId.startsWith("grouptip_contribute:"))
+            return handleGroupTipModal(i);
         console.warn("Unknown modal interaction:", customId);
         return;
     }

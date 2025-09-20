@@ -21,7 +21,7 @@ export async function handleRefreshProfile(i) {
         const hasLinkedWallet = !!profileData.user.agwAddress;
         const hasInboxMessages = profileData.unreadMessageCount > 0;
         const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
-        const embed = createProfileEmbed(profileData);
+        const embed = await createProfileEmbed(profileData);
         // Update with fresh profile
         await i.editReply({
             content: null,
@@ -80,7 +80,7 @@ export async function handleViewProfile(i) {
         const hasLinkedWallet = !!profileData.user.agwAddress;
         const hasInboxMessages = profileData.unreadMessageCount > 0;
         const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
-        const embed = createProfileEmbed(profileData);
+        const embed = await createProfileEmbed(profileData);
         await i.editReply({
             content: null, // Clear any existing content
             embeds: [embed],

@@ -411,9 +411,10 @@ export function createProfileButtons(activeMemberships, hasLinkedWallet = true, 
     actionRows.push(profileRow);
     return actionRows;
 }
-export function createProfileEmbed(data) {
-    return profileEmbed({
+export async function createProfileEmbed(data) {
+    return await profileEmbed({
         user: data.discordUser,
+        discordId: data.user.discordId, // Add discordId for level lookup
         agwAddress: data.user.agwAddress ?? null,
         balanceText: data.balanceText,
         wins: data.user.wins,

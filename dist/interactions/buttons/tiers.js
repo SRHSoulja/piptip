@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { prisma } from "../../services/db.js";
 import { formatDecimal } from "../../services/token.js";
+import { PENGUIN_ERRORS, createPenguinSuccess } from "../../utils/penguin_messages.js";
 /** Handle tier purchase button */
 export async function handleBuyTier(i, tierId) {
     await i.deferReply({ ephemeral: true }).catch(() => { });
@@ -15,28 +16,32 @@ export async function handleBuyTier(i, tierId) {
             }
         });
         if (!tier) {
-            return i.editReply({ content: "This membership tier is no longer available." });
+            return i.editReply({
+                content: PENGUIN_ERRORS.membershipNotAvailable()
+            });
         }
         if (tier.prices.length === 0) {
-            return i.editReply({ content: "No pricing configured for this tier. Please contact an administrator." });
+            return i.editReply({
+                content: PENGUIN_ERRORS.noPricingConfigured()
+            });
         }
         // Create payment method selection buttons
         const paymentButtons = tier.prices.map(price => {
             return new ButtonBuilder()
                 .setCustomId(`pip:confirm_purchase:${tier.id}:${price.tokenId}`)
-                .setLabel(`Pay with ${formatDecimal(price.amount, price.token.symbol)}`)
+                .setLabel(`🐧 Pay ${formatDecimal(price.amount, price.token.symbol)}`)
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji("💰");
+                .setEmoji("🐟");
         });
         const paymentRow = new ActionRowBuilder()
             .addComponents(paymentButtons.slice(0, 5)); // Max 5 buttons per row
-        const benefits = tier.tipTaxFree ? "🎉 Tax-free tipping" : "Standard benefits";
+        const benefits = tier.tipTaxFree ? "🎉 Tax-free fish sharing" : "🐧 Standard colony benefits";
         await i.editReply({
-            content: `**💳 Purchase ${tier.name}**\n\n` +
-                `⏱️ **Duration:** ${tier.durationDays} days\n` +
+            content: `**🐧 Join the ${tier.name} Colony!**\n\n` +
+                `⏱️ **Duration:** ${tier.durationDays} days of premium penguin life\n` +
                 `✨ **Benefits:** ${benefits}\n` +
                 (tier.description ? `📝 **Description:** ${tier.description}\n` : '') +
-                `\n**Choose your payment method:**`,
+                `\n**🐟 Choose your fish payment method:**`,
             components: [paymentRow]
         });
     }
@@ -69,7 +74,7 @@ export async function handleConfirmPurchase(i, tierId, tokenId) {
                 }
             });
             if (!tierPrice || !tierPrice.tier.active) {
-                throw new Error("Membership tier or pricing not available.");
+                throw new Error("😔 This colony membership is no longer available, fellow penguin!");
             }
             // Check user balance
             const userBalance = await tx.userBalance.findUnique({
@@ -80,7 +85,7 @@ export async function handleConfirmPurchase(i, tierId, tokenId) {
             const currentBalance = Number(userBalance?.amount || 0);
             const requiredAmount = Number(tierPrice.amount);
             if (currentBalance < requiredAmount) {
-                throw new Error(`Insufficient balance. You have ${formatDecimal(currentBalance, tierPrice.token.symbol)}, but need ${formatDecimal(requiredAmount, tierPrice.token.symbol)}.`);
+                throw new Error(`🐟 Not enough fish! You have ${formatDecimal(currentBalance, tierPrice.token.symbol)}, but need ${formatDecimal(requiredAmount, tierPrice.token.symbol)} to join this colony tier.`);
             }
             // Check for existing active membership of the same tier
             const existingMembership = await tx.tierMembership.findFirst({
@@ -92,7 +97,7 @@ export async function handleConfirmPurchase(i, tierId, tokenId) {
                 }
             });
             if (existingMembership) {
-                throw new Error(`You already have an active ${tierPrice.tier.name} membership.`);
+                throw new Error(`🐧 You're already a proud member of the ${tierPrice.tier.name} colony! Your membership is still active.`);
             }
             // Deduct payment from user balance
             await tx.userBalance.update({
@@ -137,8 +142,8 @@ export async function handleConfirmPurchase(i, tierId, tokenId) {
         });
         const isExtension = existingMembership ? true : false;
         const successMessage = isExtension
-            ? `🎉 **Membership Extended Successfully!**\n\nYour membership has been extended. Check your profile to see your updated expiry date.`
-            : `🎉 **Membership Purchased Successfully!**\n\nYou now have access to premium features. Check your profile to see your new membership status.`;
+            ? createPenguinSuccess("Colony Membership Extended!", "Your penguin colony membership has been extended! Check your profile to see your updated expiry date and enjoy those premium perks! 🐧✨", { personality: 'excited', emoji: '🎉' })
+            : createPenguinSuccess("Welcome to the Premium Colony!", "You're now a premium penguin! Access your exclusive features and check your new status in your profile. Time to make some waves! 🐧👑", { personality: 'excited', emoji: '🎉' });
         // Assign Discord role for the purchased tier
         try {
             const { tierRoleManager } = await import("../../services/tier_role_manager.js");
@@ -155,7 +160,7 @@ export async function handleConfirmPurchase(i, tierId, tokenId) {
     catch (err) {
         console.error("Confirm purchase error:", err);
         await i.editReply({
-            content: `❌ Purchase failed: ${err?.message || String(err)}`
+            content: PENGUIN_ERRORS.purchaseFailed(err?.message || String(err))
         }).catch(() => { });
     }
 }
@@ -174,7 +179,9 @@ export async function handlePurchaseMembership(i) {
             orderBy: { priceAmount: 'asc' }
         });
         if (activeTiers.length === 0) {
-            return i.editReply({ content: "No membership tiers are currently available." });
+            return i.editReply({
+                content: PENGUIN_ERRORS.noMembershipTiers()
+            });
         }
         // Check if user has any active memberships to customize messaging
         const user = await prisma.user.findUnique({
@@ -193,7 +200,7 @@ export async function handlePurchaseMembership(i) {
         // Create tier selection embed
         const tiersList = activeTiers.map((tier, index) => {
             const prices = tier.prices.map(p => `${formatDecimal(p.amount, p.token.symbol)}`).join(" or ");
-            const benefits = tier.tipTaxFree ? "🎉 Tax-free tipping" : "Standard benefits";
+            const benefits = tier.tipTaxFree ? "🎉 Tax-free fish sharing" : "🐧 Standard colony benefits";
             return `**${index + 1}. ${tier.name}** (${tier.durationDays} days)\n` +
                 `💰 Cost: ${prices}\n` +
                 `✨ Benefits: ${benefits}` +
@@ -201,12 +208,12 @@ export async function handlePurchaseMembership(i) {
         }).join("\n\n");
         // Create tier selection buttons for actual purchase
         const tierButtons = activeTiers.slice(0, 5).map((tier, index) => {
-            const buttonLabel = hasActiveMemberships ? `Extend ${tier.name}` : `Buy ${tier.name}`;
+            const buttonLabel = hasActiveMemberships ? `🐧 Extend ${tier.name}` : `🐧 Join ${tier.name}`;
             return new ButtonBuilder()
                 .setCustomId(`pip:buy_tier:${tier.id}`)
                 .setLabel(buttonLabel)
                 .setStyle(ButtonStyle.Secondary)
-                .setEmoji("💳");
+                .setEmoji("🐟");
         });
         const actionRows = [];
         // Split buttons into rows (max 5 per row)
@@ -216,11 +223,11 @@ export async function handlePurchaseMembership(i) {
             actionRows.push(row);
         }
         const actionText = hasActiveMemberships ?
-            `Click a button below to extend your membership:` :
-            `Click a button below to purchase a membership:`;
+            `🐟 Waddle over and extend your colony membership:` :
+            `🐟 Choose your penguin colony tier:`;
         const titleText = hasActiveMemberships ?
-            `**🌟 Extend Your Membership**\n\n${tiersList}\n\n${actionText}` :
-            `**🌟 Available Membership Tiers**\n\n${tiersList}\n\n${actionText}`;
+            `**🐧 Extend Your Colony Membership**\n\n${tiersList}\n\n${actionText}` :
+            `**🐧 Join the Premium Penguin Colony!**\n\n${tiersList}\n\n${actionText}`;
         await i.editReply({
             content: titleText,
             components: actionRows
@@ -229,7 +236,7 @@ export async function handlePurchaseMembership(i) {
     catch (err) {
         console.error("Purchase membership error:", err);
         await i.editReply({
-            content: `Error loading membership options: ${err?.message || String(err)}`
+            content: PENGUIN_ERRORS.membershipLoadError(err?.message || String(err))
         }).catch(() => { });
     }
 }

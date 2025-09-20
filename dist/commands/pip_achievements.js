@@ -2,7 +2,8 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlag
 import { prisma } from "../services/db.js";
 import { getStreakStats, formatStreakText } from "../services/streaks.js";
 import { areAchievementsEnabled } from "../services/emergency_controls.js";
-import { getUserAchievements, formatAchievementBadge } from "../services/achievement_display.js";
+import { getUserAchievements, formatAchievementBadge, getAchievementCategoryInfo } from "../services/achievement_display.js";
+import { createPenguinError } from "../utils/penguin_messages.js";
 export default async function pipAchievements(i) {
     try {
         // Check if achievements are globally enabled
@@ -38,7 +39,7 @@ export default async function pipAchievements(i) {
         ]);
         if (!user) {
             return i.reply({
-                content: "❌ You don't have an account yet! Use `/pip_profile` to get started.",
+                content: createPenguinError("No Penguin Colony Membership!", "You need to join the penguin colony first! Use `/pip_profile` to get started and begin your journey to earning achievement badges! 🐧", { personality: 'friendly', emoji: '🐧' }),
                 flags: MessageFlags.Ephemeral
             });
         }
@@ -70,32 +71,28 @@ export default async function pipAchievements(i) {
             categoryList.push(achievement);
             achievementsByCategory.set(achievement.category, categoryList);
         }
-        // Display achievements by category
+        // Display achievements by category with enhanced styling
         if (achievements.length > 0) {
             const categoryOrder = ['streaks', 'tips', 'deposits', 'referrals', 'veteran', 'special'];
-            const categoryNames = {
-                streaks: "🔥 Streak Achievements",
-                tips: "💸 Tipping Achievements",
-                deposits: "💰 Deposit Milestones",
-                referrals: "👥 Referral Achievements",
-                veteran: "🎖️ Veteran Status",
-                special: "✨ Special Achievements"
-            };
             for (const category of categoryOrder) {
                 const categoryAchievements = achievementsByCategory.get(category) || [];
                 if (categoryAchievements.length > 0) {
+                    const categoryInfo = getAchievementCategoryInfo(category);
                     const badges = categoryAchievements
                         .sort((a, b) => new Date(b.unlockedAt).getTime() - new Date(a.unlockedAt).getTime())
-                        .slice(0, 5)
+                        .slice(0, 4) // Reduced to 4 to make room for enhanced formatting
                         .map((achievement) => {
-                        const badge = formatAchievementBadge(achievement);
+                        const badge = formatAchievementBadge(achievement, true); // Show progress
                         const date = `<t:${Math.floor(new Date(achievement.unlockedAt).getTime() / 1000)}:R>`;
-                        return `${badge} - ${date}`;
+                        return `${badge}\n*Unlocked ${date}*`;
                     })
-                        .join("\n");
+                        .join("\n\n");
+                    // Show count if more achievements exist
+                    const moreCount = categoryAchievements.length > 4 ? categoryAchievements.length - 4 : 0;
+                    const finalValue = badges + (moreCount > 0 ? `\n\n*+${moreCount} more ${categoryInfo.name.toLowerCase()}*` : '');
                     embed.addFields({
-                        name: categoryNames[category],
-                        value: badges.substring(0, 1024),
+                        name: `${categoryInfo.emoji} ${categoryInfo.name} (${categoryAchievements.length})`,
+                        value: finalValue.substring(0, 1024),
                         inline: false
                     });
                 }
@@ -108,17 +105,23 @@ export default async function pipAchievements(i) {
             const rarityText = Object.entries(rarityCount)
                 .map(([rarity, count]) => {
                 const rarityEmojis = {
-                    common: "⚪",
-                    rare: "🔵",
-                    epic: "🟣",
-                    legendary: "🟡"
+                    common: "🐧",
+                    rare: "🐧✨",
+                    epic: "🐧🌟",
+                    legendary: "🐧👑"
                 };
-                return `${rarityEmojis[rarity]} ${rarity}: ${count}`;
+                const rarityNames = {
+                    common: "Common Penguins",
+                    rare: "Rare Penguins",
+                    epic: "Epic Penguins",
+                    legendary: "Legendary Penguins"
+                };
+                return `${rarityEmojis[rarity]} **${count}** ${rarityNames[rarity]}`;
             })
-                .join(" • ");
+                .join("\n");
             if (rarityText) {
                 embed.addFields({
-                    name: "💎 Rarity Breakdown",
+                    name: "💎 Penguin Collection",
                     value: rarityText,
                     inline: false
                 });
@@ -126,20 +129,31 @@ export default async function pipAchievements(i) {
         }
         else {
             embed.addFields({
-                name: "🎯 No Achievements Yet",
-                value: "Play matches, send tips, and explore PIPtip to unlock achievements!",
+                name: "🐧 Start Your Penguin Journey!",
+                value: "🎯 **Get started with these activities:**\n" +
+                    "• 🥊 Play Penguin-Ice-Pebble matches\n" +
+                    "• 🐟 Share fish with colony members\n" +
+                    "• 💰 Build up your fish reserves\n" +
+                    "• 👥 Invite friends to join the colony\n\n" +
+                    "*Your first achievement is just a waddle away!* 🐧✨",
                 inline: false
             });
         }
-        // Action buttons
+        // Enhanced action buttons
         const buttons = new ActionRowBuilder()
             .addComponents(new ButtonBuilder()
             .setCustomId("achievements_refresh")
-            .setLabel("🔄 Refresh")
-            .setStyle(ButtonStyle.Secondary), new ButtonBuilder()
+            .setLabel("🔄 Refresh Achievements")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("🐧"), new ButtonBuilder()
             .setCustomId("achievements_categories")
-            .setLabel("📋 Browse All")
-            .setStyle(ButtonStyle.Primary));
+            .setLabel("📋 Browse Colony Honors")
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji("🏆"), new ButtonBuilder()
+            .setCustomId("achievements_progress")
+            .setLabel("📊 View Progress")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("📈"));
         await i.reply({
             embeds: [embed],
             components: [buttons]

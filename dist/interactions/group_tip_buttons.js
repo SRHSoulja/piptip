@@ -1,6 +1,7 @@
 import { prisma } from "../services/db.js";
 import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { finalizeExpiredGroupTip } from "../features/finalizeExpiredGroupTip.js";
+import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
 export async function handleGroupTipClaim(i, groupTipId) {
     await i.deferReply({ ephemeral: true });
     try {
@@ -91,5 +92,78 @@ export async function handleGroupTipButton(i) {
     }
     if (action === "claim")
         return handleGroupTipClaim(i, groupTipId);
+    if (action === "add")
+        return handleGroupTipAdd(i, groupTipId);
     return i.reply({ content: "Unknown group tip action.", ephemeral: true });
+}
+// NEW: Handle adding to group tip
+export async function handleGroupTipAdd(i, groupTipId) {
+    try {
+        // Get group tip info for context
+        const groupTip = await prisma.groupTip.findUnique({
+            where: { id: groupTipId },
+            include: { Token: true, Creator: true }
+        });
+        if (!groupTip) {
+            return i.reply({
+                content: "🐧 Group tip not found! It might have expired or been removed.",
+                ephemeral: true
+            });
+        }
+        // Check if expired
+        if (groupTip.expiresAt.getTime() < Date.now()) {
+            return i.reply({
+                content: "🐧 This group tip has expired! You can no longer add to it.",
+                ephemeral: true
+            });
+        }
+        // Check if user is the creator
+        if (groupTip.Creator && groupTip.Creator.discordId === i.user.id) {
+            return i.reply({
+                content: "🐧 You can't add to your own group tip! That's like tipping yourself! 😄",
+                ephemeral: true
+            });
+        }
+        // Check if already contributed
+        const user = await prisma.user.findUnique({
+            where: { discordId: i.user.id }
+        });
+        if (user) {
+            const existingContribution = await prisma.groupTipContribution.findUnique({
+                where: {
+                    groupTipId_contributorId: {
+                        groupTipId: groupTipId,
+                        contributorId: user.id
+                    }
+                }
+            });
+            if (existingContribution) {
+                return i.reply({
+                    content: "🐧 You've already contributed to this group tip! One contribution per penguin! 🐟",
+                    ephemeral: true
+                });
+            }
+        }
+        // Create modal for contribution amount
+        const modal = new ModalBuilder()
+            .setCustomId(`grouptip_contribute:${groupTipId}`)
+            .setTitle(`🐟 Add Fish to Group Tip`);
+        const amountInput = new TextInputBuilder()
+            .setCustomId('contribution_amount')
+            .setLabel(`Amount to contribute (${groupTip.Token.symbol})`)
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('e.g., 50')
+            .setRequired(true)
+            .setMaxLength(20);
+        const row = new ActionRowBuilder().addComponents(amountInput);
+        modal.addComponents(row);
+        await i.showModal(modal);
+    }
+    catch (error) {
+        console.error("Error in handleGroupTipAdd:", error);
+        await i.reply({
+            content: `🐧 Oops! Something went wrong: ${error?.message || String(error)}`,
+            ephemeral: true
+        });
+    }
 }
