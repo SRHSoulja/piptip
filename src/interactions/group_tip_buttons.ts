@@ -64,15 +64,28 @@ export async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: numb
         throw new Error("You cannot claim your own group tip");
       }
 
-      // Skip preloaded claims check - rely on DB unique constraint below
+      // Ensure user exists first
+      const user = await tx.user.upsert({
+        where: { discordId: i.user.id },
+        update: {},
+        create: { discordId: i.user.id },
+      });
 
-      // Ensure user exists
-// Ensure user exists
-const user = await tx.user.upsert({
-  where: { discordId: i.user.id },
-  update: {},
-  create: { discordId: i.user.id },
-});
+      // Check if user has already contributed to this group tip
+      const existingContribution = await tx.groupTipContribution.findUnique({
+        where: {
+          groupTipId_contributorId: {
+            groupTipId: tip.id,
+            contributorId: user.id
+          }
+        }
+      });
+
+      if (existingContribution) {
+        throw new Error("You've already contributed to this group tip! Contributors can't also claim! 🐟");
+      }
+
+      // Skip preloaded claims check - rely on DB unique constraint below
 
 // Record claim (catch duplicate if they spam-click)
 try {
@@ -170,24 +183,41 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
       });
     }
 
-    // Check if already contributed
+    // Check if already contributed or claimed
     const user = await prisma.user.findUnique({
       where: { discordId: i.user.id }
     });
 
     if (user) {
-      const existingContribution = await prisma.groupTipContribution.findUnique({
-        where: {
-          groupTipId_contributorId: {
-            groupTipId: groupTipId,
-            contributorId: user.id
+      const [existingContribution, existingClaim] = await Promise.all([
+        prisma.groupTipContribution.findUnique({
+          where: {
+            groupTipId_contributorId: {
+              groupTipId: groupTipId,
+              contributorId: user.id
+            }
           }
-        }
-      });
+        }),
+        prisma.groupTipClaim.findUnique({
+          where: {
+            groupTipId_userId: {
+              groupTipId: groupTipId,
+              userId: user.id
+            }
+          }
+        })
+      ]);
 
       if (existingContribution) {
         return i.reply({
           content: "🐧 You've already contributed to this group tip! One contribution per penguin! 🐟",
+          ephemeral: true
+        });
+      }
+
+      if (existingClaim) {
+        return i.reply({
+          content: "🐧 You've already claimed this group tip! You can't contribute after claiming! 🎯",
           ephemeral: true
         });
       }
