@@ -781,7 +781,7 @@ export async function handlePenguBookProfile(i: ButtonInteraction, targetDiscord
     
     // Create action buttons
     const buttons = new ActionRowBuilder<ButtonBuilder>();
-    
+
     if (profile.allowTipsFromBook && profile.discordId !== i.user.id) {
       buttons.addComponents(
         new ButtonBuilder()
@@ -791,6 +791,14 @@ export async function handlePenguBookProfile(i: ButtonInteraction, targetDiscord
           .setEmoji("<a:PenguSipJuice:1415470745491996673>")
       );
     }
+
+    // Add back button to return to browsing
+    buttons.addComponents(
+      new ButtonBuilder()
+        .setCustomId("pip:pengubook_nav:recent:1")
+        .setLabel("← Back to Browse")
+        .setStyle(ButtonStyle.Secondary)
+    );
     
     // Track that user viewed this profile
     if (profile.discordId !== i.user.id) {

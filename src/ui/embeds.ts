@@ -2,9 +2,11 @@
 import { EmbedBuilder } from "discord.js";
 import type { PipMove } from "../services/matches.js";
 import { fmtDec } from "../services/token.js";
+import { getUserLevel, formatLevelDisplay } from "../services/penguin_levels.js";
 
-export function profileEmbed(data: {
+export async function profileEmbed(data: {
   user?: { username: string; displayName?: string | null; avatarURL?: (options?: any) => string | null };
+  discordId?: string;
   agwAddress?: string | null;
   balanceText?: string;
   balanceAtomic?: any; // Legacy support
@@ -39,9 +41,20 @@ export function profileEmbed(data: {
       : fmtDec(data.balanceAtomic);
   }
 
+  // Get user level information
+  let levelInfo = null;
+  if (data.discordId) {
+    try {
+      levelInfo = await getUserLevel(data.discordId);
+    } catch (error) {
+      console.warn("Could not fetch user level:", error);
+    }
+  }
+
+  // Enhanced penguin-themed profile with level and visual hierarchy
   const embed = new EmbedBuilder()
-    .setTitle("🐧🧊🪨 PIPTip Profile")
-    .setColor(data.hasActiveMembership ? 0xFFD700 : 0x5865F2) // Gold for premium, Discord blue for regular
+    .setTitle(levelInfo ? `${levelInfo.currentLevel.emoji} ${data.user?.username || "Penguin"} - ${levelInfo.currentLevel.title}` : "🐧 Penguin Colony Profile 🐧")
+    .setColor(data.hasActiveMembership ? 0xFFD700 : 0x67e8f9) // Gold for premium, Ice blue for regular penguins
     .setTimestamp();
 
   // Set user avatar as thumbnail if available
@@ -50,12 +63,23 @@ export function profileEmbed(data: {
     if (avatarUrl) embed.setThumbnail(avatarUrl);
   }
 
-  // Mobile-optimized basic info section (shorter field names)
-  embed.addFields(
-    { name: "💰 Balance", value: balanceDisplay, inline: true },
-    { name: "🎮 W•L•T", value: `${data.wins}•${data.losses}•${data.ties}`, inline: true },
-    { name: "💳 Wallet", value: data.agwAddress ? `\`${data.agwAddress.slice(0, 10)}...\`` : "Not linked", inline: true }
-  );
+  // Enhanced penguin-themed basic info section with level
+  const basicFields = [
+    { name: "🐟 Fish Balance", value: balanceDisplay, inline: true },
+    { name: "⚔️ Battle Record", value: `${data.wins}W • ${data.losses}L • ${data.ties}T`, inline: true },
+    { name: "🏠 Ice Cave Address", value: data.agwAddress ? `\`${data.agwAddress.slice(0, 10)}...\`` : "🚫 No cave linked", inline: true }
+  ];
+
+  // Add level information if available
+  if (levelInfo) {
+    basicFields.push({
+      name: "🎖️ Colony Rank",
+      value: formatLevelDisplay(levelInfo),
+      inline: false
+    });
+  }
+
+  embed.addFields(...basicFields);
 
   // Account info
   if (data.createdAt) {
@@ -148,13 +172,17 @@ export function profileEmbed(data: {
   return embed;
 }
 
-/** Public offer embed */
+/** Enhanced public offer embed with better visual hierarchy */
 export function matchOfferEmbed(challengerTag: string, wagerText: string, ad?: { text: string; url?: string }) {
   const e = new EmbedBuilder()
-    .setTitle("<a:BoxingPengu:1415471596717477949> Penguin Ice Pebble — Challenge!")
+    .setTitle("<a:BoxingPengu:1415471596717477949> Penguin Colony Challenge!")
     .setDescription(
-      `${challengerTag} has started a match.\n**Wager:** ${wagerText}\nClick a button to join.`
-    );
+      `🐧 **${challengerTag}** is looking for a worthy opponent!\n\n` +
+      `🎯 **Challenge Type:** Penguin-Ice-Pebble\n` +
+      `💰 **Stakes:** ${wagerText}\n\n` +
+      `⚡ **Ready to battle?** Choose your weapon below!`
+    )
+    .setColor(0x67e8f9); // Ice blue
 
   if (ad) {
     e.addFields({
@@ -194,18 +222,18 @@ export function matchResultEmbed(opts: {
   let description = "";
   
   if (isTie) {
-    title = "🤝 Epic Tie!"; 
+    title = "🤝🐧 Epic Penguin Standoff!";
     color = 0xFFD700; // Gold
-    description = `${challengerEmoji} vs ${joinerEmoji}\n\n🔄 **Perfect Match!** Both players chose the same move!\n💰 All wagers refunded`;
+    description = `${challengerEmoji} **VS** ${joinerEmoji}\n\n🔄 **Perfect Penguin Synchronization!**\nBoth penguins chose the same strategy!\n\n💰 All fish returned to their owners`;
   } else if (isWin) {
     const winner = opts.resultLine.includes(opts.challengerTag) ? "challenger" : "joiner";
     const winnerTag = winner === "challenger" ? opts.challengerTag : opts.joinerTag;
     const winnerEmoji = winner === "challenger" ? challengerEmoji : joinerEmoji;
     const loserEmoji = winner === "challenger" ? joinerEmoji : challengerEmoji;
     
-    title = "<a:BoxingPengu:1415471596717477949> Victory Achieved!";
+    title = "<a:BoxingPengu:1415471596717477949> Penguin Victory!";
     color = 0x00FF00; // Green
-    description = `${challengerEmoji} vs ${joinerEmoji}\n\n🎉 **${winnerTag} WINS!**\n${winnerEmoji} beats ${loserEmoji}`;
+    description = `${challengerEmoji} **VS** ${joinerEmoji}\n\n🎉 **${winnerTag} TRIUMPHS!**\n\n🏆 ${winnerEmoji} conquers ${loserEmoji} in penguin combat!`;
   }
   
   const e = new EmbedBuilder()
@@ -219,22 +247,22 @@ export function matchResultEmbed(opts: {
   const joinerValue = formatPlayerDetails(opts.joinerTag, opts.joinerMove, opts.joinerStats);
   
   e.addFields(
-    { name: "🥊 Challenger", value: challengerValue, inline: true },
-    { name: "⚔️ Opponent", value: joinerValue, inline: true },
-    { name: "💥 Battle Summary", value: `${challengerEmoji} **VS** ${joinerEmoji}`, inline: true }
+    { name: "🥊🐧 Challenger", value: challengerValue, inline: true },
+    { name: "⚔️🐧 Opponent", value: joinerValue, inline: true },
+    { name: "💥 Battle Outcome", value: `${challengerEmoji} **VS** ${joinerEmoji}`, inline: true }
   );
   
   // Financial details with better formatting
   if (opts.payoutText || opts.rakeText || opts.potText) {
     const financialDetails = [];
-    if (opts.potText) financialDetails.push(`💰 **Total Pot:** ${opts.potText}`);
-    if (opts.payoutText) financialDetails.push(`🎁 **Winner Takes:** ${opts.payoutText}`);
-    if (opts.rakeText) financialDetails.push(`🏛️ **House Fee:** ${opts.rakeText}`);
+    if (opts.potText) financialDetails.push(`🐟 **Total Fish Pool:** ${opts.potText}`);
+    if (opts.payoutText) financialDetails.push(`🎁 **Victor's Bounty:** ${opts.payoutText}`);
+    if (opts.rakeText) financialDetails.push(`🏛️ **Colony Tax:** ${opts.rakeText}`);
     
     e.addFields({
-      name: "💸 Financial Breakdown", 
-      value: financialDetails.join("\n"), 
-      inline: false 
+      name: "💸 Fish Economics",
+      value: financialDetails.join("\n"),
+      inline: false
     });
   }
 
@@ -283,42 +311,71 @@ export function groupTipEmbed(data: {
   claimedBy: string[];
   note?: string;
   isExpired?: boolean;
-  ad?: { text: string; url?: string }; // ADD THIS LINE
+  ad?: { text: string; url?: string };
+  contributors?: Array<{ name: string; amount: string }>; // New: track who added to the tip
+  totalAmount?: string; // New: total amount including contributions
 }) {
-  let description = `${data.creator} is sharing ${data.amount}!`;
-  if (data.note) description += `\n📝 ${data.note}`;
+  let description = `🐧 **${data.creator}** is sharing fish with the colony!`;
+
+  // Show total amount if there are contributions
+  if (data.totalAmount && data.contributors && data.contributors.length > 0) {
+    description += `\n\n🐟 **Total Pool:** ${data.totalAmount}`;
+    description += `\n💝 **Original:** ${data.amount} (by ${data.creator})`;
+  } else {
+    description += `\n\n🐟 **Amount:** ${data.amount}`;
+  }
+
+  if (data.note) description += `\n📝 **Message:** ${data.note}`;
 
   const timestamp = Math.floor(data.expiresAt.getTime() / 1000);
 
   const e = new EmbedBuilder()
-    .setTitle("🎉 Group Tip")
+    .setTitle("🎉🐧 Colony Fish Sharing!")
     .setDescription(description)
+    .setColor(0x38d9a9) // Teal
     .addFields(
-      { name: "Claimants", value: `${data.claimCount} people`, inline: true },
+      { name: "🐧 Colony Members", value: `${data.claimCount} penguins`, inline: true },
       {
-        name: data.isExpired ? "Expired" : "Expires",
-        value: data.isExpired ? "This tip has expired" : `<t:${timestamp}:R>`,
+        name: data.isExpired ? "⏰ Status" : "⏰ Timer",
+        value: data.isExpired ? "🚫 Fish sharing ended" : `⏳ Ends <t:${timestamp}:R>`,
         inline: true,
       },
       {
-        name: "Who Claimed",
+        name: "🎣 Fish Claimed By",
         value: data.claimedBy.length
           ? data.claimedBy.slice(0, 10).join(", ") + (data.claimedBy.length > 10 ? "..." : "")
-          : "None yet",
+          : "🐧 No one yet - be the first!",
         inline: false,
       }
-    )
-    .setTimestamp(data.expiresAt);
+    );
 
-  // ADD THIS SECTION:
+  // Add contributors section if there are any
+  if (data.contributors && data.contributors.length > 0) {
+    const contributorsList = data.contributors
+      .slice(0, 5) // Show max 5 contributors
+      .map(c => `• ${c.name}: ${c.amount}`)
+      .join("\n");
+
+    const moreContributors = data.contributors.length > 5 ? `\n*+${data.contributors.length - 5} more contributors*` : "";
+
+    e.addFields({
+      name: "🤝 Colony Contributors",
+      value: contributorsList + moreContributors,
+      inline: false
+    });
+  }
+
+  e.setTimestamp(data.expiresAt);
+
+  // Sponsored content section
   if (data.ad) {
     e.addFields({
-      name: "Sponsored",
+      name: "📢 Sponsored",
       value: data.ad.url ? `[${data.ad.text}](${data.ad.url})` : data.ad.text,
       inline: false,
     });
   }
 
-  if (data.isExpired) e.setColor(0x999999);
+  if (data.isExpired) e.setColor(0x999999); // Gray for expired
   return e;
 }

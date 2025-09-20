@@ -40,8 +40,9 @@ model User {
   tipsReceived Tip[] @relation("TipTo")
 
   // Group tipping relations
-  groupTipsCreated GroupTip[]      @relation("GroupTipCreator")
-  groupTipsClaimed GroupTipClaim[] @relation("GroupTipClaims")
+  groupTipsCreated     GroupTip[]             @relation("GroupTipCreator")
+  groupTipsClaimed     GroupTipClaim[]        @relation("GroupTipClaims")
+  groupTipContributions GroupTipContribution[] @relation("GroupTipContributions")
 
   // Balances
   balances UserBalance[]
@@ -259,9 +260,11 @@ model GroupTip {
   id          Int      @id @default(autoincrement())
   creatorId   Int?
   tokenId     Int
-  totalAmount Decimal
-  taxAtomic   Decimal  @default(0) // exact tax amount debited at creation
-  duration    Int
+  totalAmount        Decimal
+  taxAtomic          Decimal  @default(0) // exact tax amount debited at creation
+  contributionsTotal Decimal  @default(0) // total amount contributed by others
+  contributorsCount  Int      @default(0) // number of contributors
+  duration           Int
   messageId   String?
   channelId   String?
   guildId     String?
@@ -270,9 +273,10 @@ model GroupTip {
   refundedAt  DateTime?
   createdAt   DateTime @default(now())
 
-  Creator User?           @relation("GroupTipCreator", fields: [creatorId], references: [id])
-  Token   Token           @relation(fields: [tokenId], references: [id])
-  claims  GroupTipClaim[]
+  Creator       User?                   @relation("GroupTipCreator", fields: [creatorId], references: [id])
+  Token         Token                   @relation(fields: [tokenId], references: [id])
+  claims        GroupTipClaim[]
+  contributions GroupTipContribution[]
 
   @@index([status, expiresAt])
   @@index([createdAt])
@@ -302,6 +306,24 @@ model GroupTipClaim {
   @@index([status])
   @@index([groupTipId])
   @@index([userId])
+}
+
+model GroupTipContribution {
+  id            Int      @id @default(autoincrement())
+  groupTipId    Int
+  contributorId Int
+  amount        Decimal
+  taxPaid       Decimal  @default(0)
+  status        String   @default("COMPLETED")
+  createdAt     DateTime @default(now())
+
+  groupTip    GroupTip @relation(fields: [groupTipId], references: [id], onDelete: Cascade)
+  contributor User     @relation("GroupTipContributions", fields: [contributorId], references: [id], onDelete: Cascade)
+
+  @@unique([groupTipId, contributorId])
+  @@index([groupTipId])
+  @@index([contributorId])
+  @@index([status])
 }
 
 model Token {

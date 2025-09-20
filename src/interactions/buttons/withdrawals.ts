@@ -4,6 +4,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBu
 import { prisma } from "../../services/db.js";
 import { decToBigDirect, formatAmount, formatDecimal, toAtomicDirect } from "../../services/token.js";
 import { withdrawalLimiter } from "../../services/withdrawal_limiter.js";
+import { PENGUIN_ERRORS, PENGUIN_LOADING, PENGUIN_SUCCESS } from "../../utils/penguin_messages.js";
 
 export async function handleWithdrawToken(i: ButtonInteraction, parts: string[]) {
   await i.deferUpdate().catch(() => {});
@@ -326,7 +327,7 @@ export async function handleWithdrawAmount(i: ButtonInteraction, parts: string[]
       .addComponents(
         new ButtonBuilder()
           .setCustomId(`pip:confirm_withdraw:${tokenId}:${amount}`)
-          .setLabel("✅ Confirm Withdrawal")
+          .setLabel("✅ Send My Fish Home!")
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId(`pip:withdraw_token:${tokenId}`)
@@ -536,19 +537,9 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
     // Convert amount to atomic units for blockchain operations
     const amtAtomic = toAtomicDirect(amount, token.decimals);
 
-    // Update to processing state
+    // Update to processing state with penguin loading
     await i.editReply({
-      content: [
-        "⏳ **Processing Withdrawal**",
-        "",
-        `**Token:** ${token.symbol}`,
-        `**Amount:** ${formatAmount(amtAtomic, token)}`,
-        `**Destination:** \`${user.agwAddress}\``,
-        "",
-        "Please wait while we process your withdrawal...",
-        "",
-        policyLine
-      ].join("\n"),
+      content: `${PENGUIN_LOADING.withdraw()}\n\n**Token:** ${token.symbol}\n**Amount:** ${formatAmount(amtAtomic, token)}\n**Destination:** \`${user.agwAddress}\`\n\n${policyLine}`,
       components: []
     });
 

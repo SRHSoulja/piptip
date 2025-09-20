@@ -3,6 +3,7 @@ import { MessageFlags } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../services/db.js";
 import { getActiveTokens } from "../services/token.js";
+import { PENGUIN_ERRORS } from "../utils/penguin_messages.js";
 export default async function pipTip(i) {
     try {
         // Check for emergency mode
@@ -26,7 +27,7 @@ export default async function pipTip(i) {
         // Validate amount
         if (!amount || typeof amount !== "number" || !isFinite(amount) || amount <= 0 || amount > 1e15) {
             return i.reply({
-                content: "❌ **Invalid amount**\\nAmount must be a positive number.",
+                content: PENGUIN_ERRORS.invalidAmount(),
                 flags: MessageFlags.Ephemeral
             });
         }
@@ -34,7 +35,7 @@ export default async function pipTip(i) {
         const decimalPlaces = (amount.toString().split('.')[1] || '').length;
         if (decimalPlaces > 2) {
             return i.reply({
-                content: "❌ **Too many decimal places**\\nPlease limit your amount to 2 decimal places (e.g., 10.50).",
+                content: PENGUIN_ERRORS.invalidAmount(),
                 flags: MessageFlags.Ephemeral
             });
         }
@@ -42,13 +43,13 @@ export default async function pipTip(i) {
         if (targetUser) {
             if (targetUser.bot) {
                 return i.reply({
-                    content: "❌ **Cannot tip bots**\\nYou can't tip a bot.",
+                    content: PENGUIN_ERRORS.cannotTipBot(),
                     flags: MessageFlags.Ephemeral
                 });
             }
             if (targetUser.id === i.user.id) {
                 return i.reply({
-                    content: "❌ **Cannot tip yourself**\\nUse group tips to share with everyone!",
+                    content: PENGUIN_ERRORS.cannotTipSelf(),
                     flags: MessageFlags.Ephemeral
                 });
             }
@@ -57,7 +58,7 @@ export default async function pipTip(i) {
         const tokens = await getActiveTokens();
         if (tokens.length === 0) {
             return i.reply({
-                content: "❌ **No tokens available**\\nNo active tokens are currently available for tipping.",
+                content: PENGUIN_ERRORS.noTokensAvailable(),
                 flags: MessageFlags.Ephemeral
             });
         }
@@ -105,7 +106,7 @@ export default async function pipTip(i) {
         const cancelRow = new ActionRowBuilder()
             .addComponents(new ButtonBuilder()
             .setCustomId("pip:cancel_tip")
-            .setLabel("Cancel")
+            .setLabel("🐧 Nevermind")
             .setStyle(ButtonStyle.Secondary)
             .setEmoji("❌"));
         actionRows.push(cancelRow);
@@ -117,7 +118,7 @@ export default async function pipTip(i) {
     }
     catch (error) {
         console.error("Enhanced tip command error:", error);
-        const errorMessage = `❌ **Tip command failed**\\n${error?.message || String(error)}`;
+        const errorMessage = PENGUIN_ERRORS.genericError("tip");
         if (i.deferred || i.replied) {
             await i.editReply({ content: errorMessage, embeds: [], components: [] }).catch(() => { });
         }

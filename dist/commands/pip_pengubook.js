@@ -181,7 +181,10 @@ export default async function pipPenguBook(i) {
             .setCustomId("pip:pengubook_modes")
             .setLabel("Browse Modes")
             .setStyle(ButtonStyle.Primary)
-            .setEmoji("<a:Pengu_Jamming:1415471056881455314>"));
+            .setEmoji("<a:Pengu_Jamming:1415471056881455314>"), new ButtonBuilder()
+            .setCustomId("pip:back_to_profile")
+            .setLabel("👤 Back to Profile")
+            .setStyle(ButtonStyle.Secondary));
         // Track that user is browsing (if viewing someone else's profile)
         if (profile.discordId !== i.user.id) {
             try {

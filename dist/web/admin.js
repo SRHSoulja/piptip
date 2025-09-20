@@ -23,6 +23,7 @@ import roleTaxRouter from "./admin/role_tax_management.js";
 import roleRakeRouter from "./admin/role_rake_management.js";
 import { resourcesRouter } from "./admin/resources.js";
 import { goodKnightWebhooksRouter } from "./admin/good_knight_webhooks.js";
+import tierRolesRouter from "./admin/tier_roles.js";
 import { prisma } from "../services/db.js";
 import { getTreasurySnapshot } from "../services/treasury.js";
 export const adminRouter = Router();
@@ -128,6 +129,7 @@ adminRouter.get("/ui", (_req, res) => {
       <a href="/admin/role-rake" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #f59e0b; color: white; text-decoration: none; border-radius: 4px;">🎲 Role Rake Reductions</a>
       <a href="/admin/resources" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #ef4444; color: white; text-decoration: none; border-radius: 4px;">📈 Resource Monitor</a>
       <a href="/admin/good-knight" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #8b5cf6; color: white; text-decoration: none; border-radius: 4px;">🛡️ Good Knight Webhooks</a>
+      <a href="/admin/tier-roles/status" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #6366f1; color: white; text-decoration: none; border-radius: 4px;">👑 Tier Role Management</a>
     </div>
   </section>
 
@@ -832,6 +834,7 @@ adminRouter.use("/role-tax", roleTaxRouter);
 adminRouter.use("/role-rake", roleRakeRouter);
 adminRouter.use("/resources", resourcesRouter);
 adminRouter.use("/good-knight", goodKnightWebhooksRouter);
+adminRouter.use("/tier-roles", tierRolesRouter);
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */
 /* ------------------------------------------------------------------------ */

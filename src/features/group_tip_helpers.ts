@@ -12,6 +12,7 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
       Creator: true,
       Token: true,
       claims: { include: { User: true }, orderBy: { claimedAt: "asc" } },
+      contributions: { include: { contributor: true }, orderBy: { createdAt: "asc" } },
     },
   });
   if (!tip || !tip.channelId || !tip.messageId) return;

@@ -29,7 +29,7 @@ export default async function pipProfile(i: ChatInputCommandInteraction) {
     const hasLinkedWallet = !!profileData.user.agwAddress;
     const hasInboxMessages = profileData.unreadMessageCount > 0;
     const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
-    const embed = createProfileEmbed(profileData);
+    const embed = await createProfileEmbed(profileData);
 
     // Update the reply with the full profile
     await i.editReply({

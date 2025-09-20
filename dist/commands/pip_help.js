@@ -41,7 +41,7 @@ export default async function pipHelp(i) {
         name: "⭐ Premium Features",
         value: "🔹 **Tier Memberships**: Purchase premium tiers for reduced fees and special perks\n" +
             "🔹 **Tax-Free Tipping**: Premium members get lower or no fees on tips\n" +
-            "🔹 **Enhanced Stats**: Detailed analytics and activity tracking\n\n" +
+            "🔹 **Exclusive Perks**: Priority support and special benefits\n\n" +
             "*Check your profile for membership options!*",
         inline: false
     }, {

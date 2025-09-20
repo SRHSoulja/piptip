@@ -103,7 +103,7 @@ export async function updateStreak(discordId: string, won: boolean): Promise<{ n
             streak: milestone,
             date: now.toISOString()
           });
-          achievementUnlocked = `🔥 ${milestone} Win Streak!`;
+          achievementUnlocked = `🔥🐧 ${milestone} Victory Streak!`;
           break;
         }
       }
@@ -117,7 +117,7 @@ export async function updateStreak(discordId: string, won: boolean): Promise<{ n
               longestStreak: milestone,
               date: now.toISOString()
             });
-            achievementUnlocked = `🏆 Personal Best: ${milestone} Wins!`;
+            achievementUnlocked = `🏆🐧 Personal Best: ${milestone} Victories!`;
             break;
           }
         }
@@ -242,69 +242,69 @@ export async function getStreakLeaderboard(limit: number = 10) {
   }
 }
 
-// Format streak for display
+// Format streak for display with penguin flair
 export function formatStreakText(currentWins: number, longestWins: number): string {
   if (currentWins === 0) {
-    return longestWins > 0 ? `Best streak: ${longestWins} wins` : "No win streak yet";
+    return longestWins > 0 ? `🐧 Best streak: ${longestWins} victories` : "🐧 No win streak yet - time to start hunting!";
   }
 
   const emoji = getStreakEmoji(currentWins);
-  let text = `${emoji} ${currentWins} win streak`;
+  let text = `${emoji} ${currentWins} victory streak`;
 
   if (currentWins === longestWins && longestWins > 1) {
-    text += " (Personal Best!)";
+    text += " (🏆 Personal Best!)";
   } else if (longestWins > currentWins) {
-    text += ` • Best: ${longestWins}`;
+    text += ` • 🎯 Best: ${longestWins}`;
   }
 
   return text;
 }
 
-// Get emoji for streak level
+// Get emoji for streak level with penguin progression
 function getStreakEmoji(wins: number): string {
-  if (wins >= 100) return "💎";
-  if (wins >= 50) return "🏆";
-  if (wins >= 25) return "👑";
-  if (wins >= 15) return "⚡";
-  if (wins >= 10) return "🔥";
-  if (wins >= 5) return "🌟";
-  if (wins >= 3) return "✨";
-  return "🎯";
+  if (wins >= 100) return "🐧💎"; // Diamond Emperor Penguin
+  if (wins >= 50) return "🐧👑";  // Royal Penguin
+  if (wins >= 25) return "🐧⚡";  // Lightning Penguin
+  if (wins >= 15) return "🔥🐧";  // Fire Penguin
+  if (wins >= 10) return "🌟🐧";  // Star Penguin
+  if (wins >= 5) return "✨🐧";   // Sparkling Penguin
+  if (wins >= 3) return "🎯🐧";   // Sharp Penguin
+  return "🐧";                   // Basic Penguin
 }
 
 // Create achievement (reusable utility) - MOVED TO BOTTOM
 
-// Get achievement badge text
+// Get achievement badge text with penguin theming
 export function formatAchievementBadge(achievement: any): string {
   switch (achievement.type) {
     case 'win_streak':
-      return `🔥 ${achievement.level} Win Streak`;
+      return `🔥🐧 ${achievement.level} Victory Streak`;
     case 'longest_streak':
-      return `🏆 ${achievement.level} Best Streak`;
+      return `🏆🐧 ${achievement.level} Best Streak`;
     case 'referral_count':
-      return `👥 ${achievement.level * 5} Referrals`;
+      return `👥🐧 ${achievement.level * 5} Colony Members`;
     case 'total_tips':
-      return `💰 ${achievement.level}k Tips Sent`;
+      return `💰🐧 ${achievement.level}k Fish Shared`;
     case 'big_tipper':
-      return `💎 ${achievement.level * 100}+ Tip Sent`;
+      return `💎🐧 ${achievement.level * 100}+ Big Fish`;
     case 'deposit_milestone':
       const milestones = [100, 250, 500, 1000, 2500, 5000];
-      return `🏦 ${milestones[achievement.level - 1] || achievement.level * 500} Deposited`;
+      return `🏦🐧 ${milestones[achievement.level - 1] || achievement.level * 500} Fish Deposited`;
     case 'responsible_gamer':
-      return `🛡️ Responsible Gaming`;
+      return `🛡️🐧 Responsible Penguin`;
     case 'mindful_spender':
-      return `💚 Mindful Spender x${achievement.level}`;
+      return `💚🐧 Wise Penguin x${achievement.level}`;
     case 'veteran_player':
       const labels = ['7 days', '1 month', '3 months', '6 months', '1 year'];
-      return `🎖️ ${labels[achievement.level - 1] || 'Veteran'} Veteran`;
+      return `🎖️🐧 ${labels[achievement.level - 1] || 'Veteran'} Colony Elder`;
     case 'comeback_kid':
-      return `💪 Comeback Kid`;
+      return `💪🐧 Resilient Penguin`;
     case 'social_butterfly':
-      return `🦋 ${achievement.level * 10} People Tipped`;
+      return `🦋🐧 ${achievement.level * 10} Friends Made`;
     case 'lucky_winner':
-      return `🍀 Lucky Streak (${achievement.level} Wins)`;
+      return `🍀🐧 Lucky Streak (${achievement.level} Wins)`;
     default:
-      return `🎖️ ${achievement.type} ${achievement.level}`;
+      return `🎖️🐧 ${achievement.type} ${achievement.level}`;
   }
 }
 
@@ -342,7 +342,7 @@ export async function checkTipAchievements(fromUserId: number, tipCount: number,
         userId: fromUserId,
         type: "total_tips",
         level: totalTipLevel,
-        displayText: `💰 ${totalTipLevel}k Tips Sent!`
+        displayText: `💰🐧 ${totalTipLevel}k Fish Shared!`
       });
     }
 
@@ -355,7 +355,7 @@ export async function checkTipAchievements(fromUserId: number, tipCount: number,
           userId: fromUserId,
           type: "big_tipper",
           level: i + 1,
-          displayText: `💎 ${milestone}+ Big Tip!`
+          displayText: `💎🐧 ${milestone}+ Big Fish!`
         });
       }
     }
@@ -375,7 +375,7 @@ export async function checkTipAchievements(fromUserId: number, tipCount: number,
         userId: fromUserId,
         type: "social_butterfly",
         level: socialLevel,
-        displayText: `🦋 ${socialLevel * 10} People Tipped!`
+        displayText: `🦋🐧 ${socialLevel * 10} Friends Made!`
       });
     }
 
@@ -450,7 +450,7 @@ export async function checkDepositAchievements(userId: number, depositAmount: nu
       // Check for responsible gaming achievement instead
       const responsibleResult = await createAchievement(userId, "responsible_gamer", 1);
       if (responsibleResult) {
-        achievements.push(`🛡️ Responsible Gaming - Pacing deposits wisely!`);
+        achievements.push(`🛡️🐧 Responsible Penguin - Pacing deposits wisely!`);
       }
       return achievements;
     }
@@ -461,7 +461,7 @@ export async function checkDepositAchievements(userId: number, depositAmount: nu
       if (depositAmount >= milestone) {
         const result = await createAchievement(userId, "deposit_milestone", i + 1);
         if (result !== null) {
-          achievements.push(`🏦 ${milestone} Token Deposit!`);
+          achievements.push(`🏦🐧 ${milestone} Fish Deposit!`);
           break; // Only award one per deposit
         }
       }
@@ -476,7 +476,7 @@ export async function checkDepositAchievements(userId: number, depositAmount: nu
     if (depositAmount <= 500 && totalDeposits > 10) {
       const result = await createAchievement(userId, "mindful_spender", Math.floor(totalDeposits / 10));
       if (result) {
-        achievements.push(`💚 Mindful Spender - Consistent responsible deposits!`);
+        achievements.push(`💚🐧 Wise Penguin - Consistent responsible deposits!`);
       }
     }
 
@@ -515,7 +515,7 @@ export async function checkEngagementAchievements(userId: number): Promise<strin
         if (result !== null) {
           const label = milestone < 30 ? `${milestone} days` :
                        milestone < 365 ? `${Math.floor(milestone/30)} months` : "1 year";
-          achievements.push(`🎖️ ${label} Veteran!`);
+          achievements.push(`🎖️🐧 ${label} Colony Elder!`);
         }
       }
     }
@@ -525,7 +525,7 @@ export async function checkEngagementAchievements(userId: number): Promise<strin
     if (totalGames >= 10 && user.wins > user.losses) {
       const result = await createAchievement(userId, "comeback_kid", 1);
       if (result !== null) {
-        achievements.push(`💪 Comeback Kid!`);
+        achievements.push(`💪🐧 Resilient Penguin!`);
       }
     }
 

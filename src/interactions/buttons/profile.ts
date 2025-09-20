@@ -1,5 +1,6 @@
 // src/interactions/buttons/profile.ts
 import type { ButtonInteraction } from "discord.js";
+import { PENGUIN_LOADING, PENGUIN_ERRORS } from "../../utils/penguin_messages.js";
 
 /** Handle profile refresh button */
 export async function handleRefreshProfile(i: ButtonInteraction) {
@@ -14,7 +15,7 @@ export async function handleRefreshProfile(i: ButtonInteraction) {
     // Check if user already has a profile request processing
     if (activeProfileRequests.has(userId)) {
       return await i.editReply({
-        content: "⏳ Profile refresh already in progress! Please wait.",
+        content: PENGUIN_LOADING.profile(),
         embeds: [],
         components: []
       });
@@ -28,7 +29,7 @@ export async function handleRefreshProfile(i: ButtonInteraction) {
     const hasLinkedWallet = !!profileData.user.agwAddress;
     const hasInboxMessages = profileData.unreadMessageCount > 0;
     const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
-    const embed = createProfileEmbed(profileData);
+    const embed = await createProfileEmbed(profileData);
     
     // Update with fresh profile
     await i.editReply({
@@ -73,19 +74,28 @@ export async function handleDismissProfile(i: ButtonInteraction) {
 
 /** Handle view profile button */
 export async function handleViewProfile(i: ButtonInteraction) {
-  await i.deferReply({ ephemeral: true }).catch(() => {});
-  
+  // Check if this is a navigation from PenguBook (update existing message)
+  // or a new profile view (create ephemeral response)
+  const fromPenguBook = i.customId.includes('back_to_profile');
+
+  if (fromPenguBook) {
+    await i.deferUpdate().catch(() => {});
+  } else {
+    await i.deferReply({ ephemeral: true }).catch(() => {});
+  }
+
   try {
     // Import profile functionality
     const { generateProfileData, createProfileButtons, createProfileEmbed } = await import("../../services/profile.js");
-    
+
     const profileData = await generateProfileData(i.user.id, i.user);
     const hasLinkedWallet = !!profileData.user.agwAddress;
     const hasInboxMessages = profileData.unreadMessageCount > 0;
     const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
-    const embed = createProfileEmbed(profileData);
+    const embed = await createProfileEmbed(profileData);
 
     await i.editReply({
+      content: null, // Clear any existing content
       embeds: [embed],
       components: profileButtons
     });
@@ -93,7 +103,9 @@ export async function handleViewProfile(i: ButtonInteraction) {
   } catch (error: any) {
     console.error("View profile error:", error);
     await i.editReply({
-      content: `❌ **Error loading profile**\n${error?.message || String(error)}`
+      content: `❌ **Error loading profile**\n${error?.message || String(error)}`,
+      embeds: [],
+      components: []
     });
   }
 }

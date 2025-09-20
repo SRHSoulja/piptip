@@ -1,0 +1,300 @@
+// src/services/group_tip_contributions.ts - Secure group tip contribution system
+import { prisma } from "./db.js";
+import { userHasActiveTaxFreeTier } from "./tiers.js";
+import { formatDecimal } from "./token.js";
+import { PENGUIN_ERRORS, createPenguinSuccess } from "../utils/penguin_messages.js";
+
+// Rate limiting: Track recent contribution attempts
+const recentContributions = new Map<string, number>();
+const CONTRIBUTION_COOLDOWN = 5000; // 5 seconds between contributions per user
+
+// Validation constants
+const MIN_CONTRIBUTION = 1; // Minimum 1 atomic unit
+const MAX_CONTRIBUTION_RATIO = 10; // Can't contribute more than 10x the original amount
+
+export interface ContributionResult {
+  success: boolean;
+  message: string;
+  newTotal?: string;
+  taxPaid?: string;
+  error?: string;
+}
+
+// Main function to add contribution to group tip
+export async function addGroupTipContribution(
+  groupTipId: number,
+  contributorDiscordId: string,
+  contributionAmount: number
+): Promise<ContributionResult> {
+
+  // 1. RATE LIMITING
+  const rateLimitKey = `${contributorDiscordId}:${groupTipId}`;
+  const lastContribution = recentContributions.get(rateLimitKey) || 0;
+  const now = Date.now();
+
+  if (now - lastContribution < CONTRIBUTION_COOLDOWN) {
+    const remainingMs = CONTRIBUTION_COOLDOWN - (now - lastContribution);
+    return {
+      success: false,
+      message: PENGUIN_ERRORS.rateLimited(Math.ceil(remainingMs / 1000)),
+      error: "Rate limited"
+    };
+  }
+
+  // 2. INPUT VALIDATION
+  if (!Number.isInteger(contributionAmount) || contributionAmount < MIN_CONTRIBUTION) {
+    return {
+      success: false,
+      message: PENGUIN_ERRORS.invalidContributionAmount(),
+      error: "Invalid amount"
+    };
+  }
+
+  try {
+    // 3. ATOMIC TRANSACTION with comprehensive validation
+    const result = await prisma.$transaction(async (tx) => {
+
+      // Get group tip with lock
+      const groupTip = await tx.groupTip.findUnique({
+        where: { id: groupTipId },
+        include: {
+          Creator: true,
+          Token: true,
+          contributions: true // Include existing contributions
+        }
+      });
+
+      if (!groupTip) {
+        throw new Error("Group tip not found");
+      }
+
+      // 4. BUSINESS LOGIC VALIDATION
+
+      // Check if group tip is still active
+      if (groupTip.status !== "ACTIVE") {
+        throw new Error("This group tip is no longer active");
+      }
+
+      // Check if expired
+      const now = new Date();
+      if (groupTip.expiresAt.getTime() < now.getTime()) {
+        throw new Error("This group tip has expired");
+      }
+
+      // Prevent creator from contributing to their own tip
+      if (groupTip.Creator && groupTip.Creator.discordId === contributorDiscordId) {
+        throw new Error("You cannot contribute to your own group tip");
+      }
+
+      // 5. CONTRIBUTION LIMITS
+      const originalAmount = Number(groupTip.totalAmount);
+      if (contributionAmount > originalAmount * MAX_CONTRIBUTION_RATIO) {
+        throw new Error(`Maximum contribution is ${formatDecimal(originalAmount * MAX_CONTRIBUTION_RATIO, groupTip.Token.symbol)}`);
+      }
+
+      // 6. USER SETUP
+      const contributor = await tx.user.upsert({
+        where: { discordId: contributorDiscordId },
+        update: {},
+        create: { discordId: contributorDiscordId }
+      });
+
+      // 7. CHECK FOR EXISTING CONTRIBUTION (prevent duplicates)
+      const existingContribution = await tx.groupTipContribution.findUnique({
+        where: {
+          groupTipId_contributorId: {
+            groupTipId: groupTipId,
+            contributorId: contributor.id
+          }
+        }
+      });
+
+      if (existingContribution) {
+        throw new Error("You have already contributed to this group tip");
+      }
+
+      // 8. TAX CALCULATION (respects tier benefits)
+      const hasTaxFreeTier = await userHasActiveTaxFreeTier(contributor.id);
+      let taxAmount = 0;
+      let totalCost = contributionAmount;
+
+      if (!hasTaxFreeTier) {
+        // Apply 5% tax (same as regular tips)
+        taxAmount = Math.floor(contributionAmount * 0.05);
+        totalCost = contributionAmount + taxAmount;
+      }
+
+      // 9. BALANCE VALIDATION
+      const userBalance = await tx.userBalance.findUnique({
+        where: {
+          userId_tokenId: {
+            userId: contributor.id,
+            tokenId: groupTip.tokenId
+          }
+        }
+      });
+
+      const currentBalance = Number(userBalance?.amount || 0);
+      if (currentBalance < totalCost) {
+        const needed = formatDecimal(totalCost, groupTip.Token.symbol);
+        const available = formatDecimal(currentBalance, groupTip.Token.symbol);
+        throw new Error(`Insufficient balance. You need ${needed} but have ${available} (including tax)`);
+      }
+
+      // 10. FINANCIAL TRANSACTION
+
+      // Deduct total cost from user balance
+      await tx.userBalance.update({
+        where: {
+          userId_tokenId: {
+            userId: contributor.id,
+            tokenId: groupTip.tokenId
+          }
+        },
+        data: {
+          amount: { decrement: totalCost }
+        }
+      });
+
+      // Record the contribution
+      const contribution = await tx.groupTipContribution.create({
+        data: {
+          groupTipId: groupTipId,
+          contributorId: contributor.id,
+          amount: contributionAmount,
+          taxPaid: taxAmount,
+          status: 'COMPLETED'
+        }
+      });
+
+      // Update group tip totals
+      const updatedGroupTip = await tx.groupTip.update({
+        where: { id: groupTipId },
+        data: {
+          contributionsTotal: { increment: contributionAmount },
+          contributorsCount: { increment: 1 }
+        }
+      });
+
+      // 11. TRANSACTION LOGGING
+      await tx.transaction.create({
+        data: {
+          type: 'GROUP_TIP_CONTRIBUTION',
+          userId: contributor.id,
+          tokenId: groupTip.tokenId,
+          amount: contributionAmount,
+          fee: taxAmount,
+          metadata: `Contribution to group tip ${groupTipId}`
+        }
+      });
+
+      // Calculate new total including contributions
+      const newTotalAmount = Number(groupTip.totalAmount) + Number(updatedGroupTip.contributionsTotal);
+
+      return {
+        contribution,
+        newTotalAmount,
+        taxPaid: taxAmount,
+        tokenSymbol: groupTip.Token.symbol,
+        groupTip: updatedGroupTip
+      };
+    });
+
+    // 12. UPDATE RATE LIMITING
+    recentContributions.set(rateLimitKey, now);
+
+    // 13. SUCCESS RESPONSE
+    const newTotalFormatted = formatDecimal(result.newTotalAmount, result.tokenSymbol);
+    const contributionFormatted = formatDecimal(contributionAmount, result.tokenSymbol);
+    const taxPaidFormatted = result.taxPaid > 0 ? formatDecimal(result.taxPaid, result.tokenSymbol) : null;
+
+    let successMessage = createPenguinSuccess(
+      "Contribution Added! 🐟➕",
+      `You've added ${contributionFormatted} to the group tip! The total pool is now ${newTotalFormatted}. Thank you for making the colony feast bigger! 🎉`,
+      { personality: 'excited', emoji: '🐧' }
+    );
+
+    if (taxPaidFormatted) {
+      successMessage += `\n\n💰 Tax paid: ${taxPaidFormatted}`;
+    }
+
+    return {
+      success: true,
+      message: successMessage,
+      newTotal: newTotalFormatted,
+      taxPaid: taxPaidFormatted || undefined
+    };
+
+  } catch (error: any) {
+    console.error("Group tip contribution error:", error);
+    return {
+      success: false,
+      message: PENGUIN_ERRORS.contributionFailed(error.message),
+      error: error.message
+    };
+  }
+}
+
+// Get contributors for a group tip
+export async function getGroupTipContributors(groupTipId: number): Promise<Array<{
+  name: string;
+  amount: string;
+  taxPaid: string;
+}>> {
+  try {
+    const contributions = await prisma.groupTipContribution.findMany({
+      where: {
+        groupTipId,
+        status: 'COMPLETED'
+      },
+      include: {
+        contributor: true
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // Note: We can't get Discord usernames without the client
+    // This would need to be enriched at the display layer
+    return contributions.map(contrib => ({
+      name: `User-${contrib.contributor.discordId.slice(-4)}`, // Placeholder
+      amount: contrib.amount.toString(),
+      taxPaid: contrib.taxPaid.toString()
+    }));
+
+  } catch (error) {
+    console.error("Error getting group tip contributors:", error);
+    return [];
+  }
+}
+
+// Calculate total group tip amount including contributions
+export async function getGroupTipTotal(groupTipId: number): Promise<{
+  originalAmount: string;
+  contributionsTotal: string;
+  grandTotal: string;
+  contributorsCount: number;
+} | null> {
+  try {
+    const groupTip = await prisma.groupTip.findUnique({
+      where: { id: groupTipId },
+      include: { Token: true }
+    });
+
+    if (!groupTip) return null;
+
+    const originalAmount = Number(groupTip.totalAmount);
+    const contributionsTotal = Number(groupTip.contributionsTotal || 0);
+    const grandTotal = originalAmount + contributionsTotal;
+
+    return {
+      originalAmount: formatDecimal(originalAmount, groupTip.Token.symbol),
+      contributionsTotal: formatDecimal(contributionsTotal, groupTip.Token.symbol),
+      grandTotal: formatDecimal(grandTotal, groupTip.Token.symbol),
+      contributorsCount: groupTip.contributorsCount || 0
+    };
+
+  } catch (error) {
+    console.error("Error calculating group tip total:", error);
+    return null;
+  }
+}

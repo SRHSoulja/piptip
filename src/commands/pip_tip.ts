@@ -3,6 +3,7 @@ import { MessageFlags, type ChatInputCommandInteraction, type User } from "disco
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../services/db.js";
 import { getActiveTokens, formatAmount } from "../services/token.js";
+import { PENGUIN_ERRORS, PENGUIN_LOADING, createPenguinError } from "../utils/penguin_messages.js";
 
 export default async function pipTip(i: ChatInputCommandInteraction) {
   try {
@@ -29,33 +30,33 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
 
     // Validate amount
     if (!amount || typeof amount !== "number" || !isFinite(amount) || amount <= 0 || amount > 1e15) {
-      return i.reply({ 
-        content: "❌ **Invalid amount**\\nAmount must be a positive number.", 
-        flags: MessageFlags.Ephemeral 
+      return i.reply({
+        content: PENGUIN_ERRORS.invalidAmount(),
+        flags: MessageFlags.Ephemeral
       });
     }
 
     // Enforce 2 decimal places limit for user-friendliness
     const decimalPlaces = (amount.toString().split('.')[1] || '').length;
     if (decimalPlaces > 2) {
-      return i.reply({ 
-        content: "❌ **Too many decimal places**\\nPlease limit your amount to 2 decimal places (e.g., 10.50).", 
-        flags: MessageFlags.Ephemeral 
+      return i.reply({
+        content: PENGUIN_ERRORS.invalidAmount(),
+        flags: MessageFlags.Ephemeral
       });
     }
 
     // Validate target user for direct tips
     if (targetUser) {
       if (targetUser.bot) {
-        return i.reply({ 
-          content: "❌ **Cannot tip bots**\\nYou can't tip a bot.", 
-          flags: MessageFlags.Ephemeral 
+        return i.reply({
+          content: PENGUIN_ERRORS.cannotTipBot(),
+          flags: MessageFlags.Ephemeral
         });
       }
       if (targetUser.id === i.user.id) {
-        return i.reply({ 
-          content: "❌ **Cannot tip yourself**\\nUse group tips to share with everyone!", 
-          flags: MessageFlags.Ephemeral 
+        return i.reply({
+          content: PENGUIN_ERRORS.cannotTipSelf(),
+          flags: MessageFlags.Ephemeral
         });
       }
     }
@@ -63,9 +64,9 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
     // Get available tokens
     const tokens = await getActiveTokens();
     if (tokens.length === 0) {
-      return i.reply({ 
-        content: "❌ **No tokens available**\\nNo active tokens are currently available for tipping.", 
-        flags: MessageFlags.Ephemeral 
+      return i.reply({
+        content: PENGUIN_ERRORS.noTokensAvailable(),
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -124,7 +125,7 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
       .addComponents(
         new ButtonBuilder()
           .setCustomId("pip:cancel_tip")
-          .setLabel("Cancel")
+          .setLabel("🐧 Nevermind")
           .setStyle(ButtonStyle.Secondary)
           .setEmoji("❌")
       );
@@ -138,8 +139,8 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
 
   } catch (error: any) {
     console.error("Enhanced tip command error:", error);
-    const errorMessage = `❌ **Tip command failed**\\n${error?.message || String(error)}`;
-    
+    const errorMessage = PENGUIN_ERRORS.genericError("tip");
+
     if (i.deferred || i.replied) {
       await i.editReply({ content: errorMessage, embeds: [], components: [] }).catch(() => {});
     } else {

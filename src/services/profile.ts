@@ -442,7 +442,7 @@ export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: 
   const profileRowComponents = [
     new ButtonBuilder()
       .setCustomId("pip:refresh_profile")
-      .setLabel("🔄 Refresh")
+      .setLabel("🔄 Refresh Penguin Stats")
       .setStyle(ButtonStyle.Secondary),
   ];
 
@@ -480,14 +480,7 @@ export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: 
     );
   }
 
-  // Add web access button
-  profileRowComponents.push(
-    new ButtonBuilder()
-      .setURL(`${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/pengubook`)
-      .setLabel("🌐 Web View")
-      .setStyle(ButtonStyle.Link)
-      .setEmoji("💻")
-  );
+  // Web View button removed - it belongs in Pengubook command, not profile
 
   profileRowComponents.push(
     new ButtonBuilder()
@@ -502,9 +495,10 @@ export function createProfileButtons(activeMemberships: any[], hasLinkedWallet: 
   return actionRows;
 }
 
-export function createProfileEmbed(data: any) {
-  return profileEmbed({
+export async function createProfileEmbed(data: any) {
+  return await profileEmbed({
     user: data.discordUser,
+    discordId: data.user.discordId, // Add discordId for level lookup
     agwAddress: data.user.agwAddress ?? null,
     balanceText: data.balanceText,
     wins: data.user.wins,

@@ -83,6 +83,27 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
         ${content}
     </main>
 
+    <!-- Mobile Bottom Navigation -->
+    <nav class="pg-nav-mobile" role="navigation" aria-label="Mobile navigation">
+        <a href="/pengubook" class="pg-nav-mobile__item ${currentPage === 'home' ? 'pg-nav-mobile__item--active' : ''}" aria-current="${currentPage === 'home' ? 'page' : 'false'}">
+            <span class="pg-nav-mobile__icon">🏠</span>
+            <span class="pg-nav-mobile__label">Home</span>
+        </a>
+        <a href="/pengubook/inbox" class="pg-nav-mobile__item ${currentPage === 'inbox' ? 'pg-nav-mobile__item--active' : ''}">
+            <span class="pg-nav-mobile__icon">📨</span>
+            <span class="pg-nav-mobile__label">Inbox</span>
+            ${userData?.unreadCount > 0 ? `<span class="pg-nav-mobile__badge">${userData.unreadCount}</span>` : ''}
+        </a>
+        <a href="/pengubook/browse" class="pg-nav-mobile__item ${currentPage === 'browse' ? 'pg-nav-mobile__item--active' : ''}">
+            <span class="pg-nav-mobile__icon">👥</span>
+            <span class="pg-nav-mobile__label">Browse</span>
+        </a>
+        <a href="/pengubook/profile" class="pg-nav-mobile__item ${currentPage === 'profile' ? 'pg-nav-mobile__item--active' : ''}">
+            <span class="pg-nav-mobile__icon">⚙️</span>
+            <span class="pg-nav-mobile__label">Profile</span>
+        </a>
+    </nav>
+
     <!-- Loading overlay for better UX -->
     <div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 20, 25, 0.8); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center;">
         <div class="pg-card" style="text-align: center; min-width: 200px;">
@@ -168,6 +189,88 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
             }
         }, 30000);
         ` : ''}
+
+        // Skeleton loading utilities
+        window.showSkeletonGrid = (container, count = 6) => {
+            const skeletonHTML = Array(count).fill(0).map(() => \`
+                <div class="pg-profile-card-enhanced">
+                    <div class="pg-profile-card-enhanced__header">
+                        <div class="pg-skeleton pg-skeleton--avatar"></div>
+                        <div style="flex: 1;">
+                            <div class="pg-skeleton pg-skeleton--title"></div>
+                            <div class="pg-skeleton pg-skeleton--text" style="width: 70%;"></div>
+                        </div>
+                    </div>
+                    <div style="margin: var(--pg-space-4) 0;">
+                        <div class="pg-skeleton pg-skeleton--text"></div>
+                        <div class="pg-skeleton pg-skeleton--text" style="width: 80%;"></div>
+                        <div class="pg-skeleton pg-skeleton--text" style="width: 60%;"></div>
+                    </div>
+                    <div class="pg-profile-card-enhanced__stats">
+                        <div class="pg-profile-card-enhanced__stat">
+                            <div class="pg-skeleton pg-skeleton--text" style="width: 30px; height: 24px;"></div>
+                            <div class="pg-skeleton pg-skeleton--text" style="width: 40px; height: 16px;"></div>
+                        </div>
+                        <div class="pg-profile-card-enhanced__stat">
+                            <div class="pg-skeleton pg-skeleton--text" style="width: 30px; height: 24px;"></div>
+                            <div class="pg-skeleton pg-skeleton--text" style="width: 40px; height: 16px;"></div>
+                        </div>
+                        <div class="pg-profile-card-enhanced__stat">
+                            <div class="pg-skeleton pg-skeleton--text" style="width: 30px; height: 24px;"></div>
+                            <div class="pg-skeleton pg-skeleton--text" style="width: 40px; height: 16px;"></div>
+                        </div>
+                    </div>
+                </div>
+            \`).join('');
+
+            if (container) {
+                container.innerHTML = skeletonHTML;
+                container.classList.add('pg-grid', 'pg-grid--2');
+            }
+        };
+
+        window.showSearchSkeleton = () => {
+            const container = document.querySelector('.pg-grid');
+            if (container) {
+                window.showSkeletonGrid(container, 4);
+            }
+        };
+
+        // Enhanced search with skeleton loading
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchForm = document.querySelector('.pg-search-enhanced');
+            const searchInput = document.getElementById('searchInput');
+
+            if (searchForm && searchInput) {
+                let searchTimeout;
+
+                // Real-time search with debounce
+                let lastSearchValue = searchInput.value;
+                searchInput.addEventListener('input', () => {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        if (searchInput.value !== lastSearchValue) {
+                            window.showSearchSkeleton();
+                            searchForm.submit();
+                        }
+                    }, 500);
+                });
+
+                // Show skeleton on form submit
+                searchForm.addEventListener('submit', () => {
+                    window.showSearchSkeleton();
+                });
+            }
+
+            // Page navigation with skeleton loading
+            document.querySelectorAll('a[href*="/pengubook/browse"]').forEach(link => {
+                if (link.href.includes('page=') || link.href.includes('search=')) {
+                    link.addEventListener('click', () => {
+                        window.showSearchSkeleton();
+                    });
+                }
+            });
+        });
     </script>
 </body>
 </html>`;
@@ -242,6 +345,31 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
             </div>
         </div>
 
+        <!-- Real-time Activity Feed -->
+        <div class="pg-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-6);">
+                <h2 style="margin: 0; color: var(--pg-dark-800);">🔥 Live Activity Feed</h2>
+                <div class="pg-activity-status">
+                    <span class="pg-activity-pulse"></span>
+                    <span style="font-size: var(--pg-text-sm); color: var(--pg-dark-600);">Live</span>
+                </div>
+            </div>
+
+            <div id="activityFeed" class="pg-activity-feed">
+                <!-- Activity items will be loaded here -->
+                <div class="pg-activity-loading">
+                    <div class="pg-spinner"></div>
+                    <p style="margin: var(--pg-space-3) 0 0 0; color: var(--pg-dark-600);">Loading activity...</p>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: var(--pg-space-6);">
+                <button id="loadMoreActivity" class="pg-btn pg-btn--outline" style="display: none;">
+                    Load More Activity
+                </button>
+            </div>
+        </div>
+
         ${user?.bio ? `
         <!-- User Bio Section -->
         <div class="pg-card">
@@ -268,6 +396,186 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
             <a href="/pengubook/profile" class="pg-btn pg-btn--outline">Set Up Profile</a>
         </div>
         `}
+
+        <!-- Activity Feed JavaScript -->
+        <script>
+            // Activity feed management
+            let currentActivityPage = 1;
+            let isLoadingActivity = false;
+            let hasMoreActivity = true;
+
+            // Format time relative to now
+            function formatTimeAgo(timestamp) {
+                const now = new Date();
+                const time = new Date(timestamp);
+                const diffMs = now - time;
+                const diffMinutes = Math.floor(diffMs / (1000 * 60));
+                const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+                if (diffMinutes < 1) return 'Just now';
+                if (diffMinutes < 60) return \`\${diffMinutes}m ago\`;
+                if (diffHours < 24) return \`\${diffHours}h ago\`;
+                if (diffDays < 7) return \`\${diffDays}d ago\`;
+                return time.toLocaleDateString();
+            }
+
+            // Generate activity item HTML
+            function generateActivityHTML(activity) {
+                const timeAgo = formatTimeAgo(activity.timestamp);
+
+                switch (activity.type) {
+                    case 'tip':
+                        return \`
+                            <div class="pg-activity-item" data-id="\${activity.id}">
+                                <div class="pg-activity-icon pg-activity-icon--tip">💸</div>
+                                <div class="pg-activity-content">
+                                    <p class="pg-activity-text">
+                                        <strong>User#\${activity.data.fromUser.slice(-4)}</strong> tipped
+                                        <strong>User#\${activity.data.toUser.slice(-4)}</strong>
+                                        \${activity.data.message ? \` - "\${activity.data.message}"\` : ''}
+                                    </p>
+                                    <div class="pg-activity-meta">
+                                        <span class="pg-activity-time">\${timeAgo}</span>
+                                        <span class="pg-activity-amount">\${activity.data.amount}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        \`;
+
+                    case 'profile_update':
+                        return \`
+                            <div class="pg-activity-item" data-id="\${activity.id}">
+                                <div class="pg-activity-icon pg-activity-icon--user">👤</div>
+                                <div class="pg-activity-content">
+                                    <p class="pg-activity-text">
+                                        <strong>User#\${activity.data.discordId.slice(-4)}</strong> updated their profile
+                                        \${activity.data.bio ? \` - "\${activity.data.bio}"\` : ''}
+                                    </p>
+                                    <div class="pg-activity-meta">
+                                        <span class="pg-activity-time">\${timeAgo}</span>
+                                        <span class="pg-activity-badge">Profile</span>
+                                    </div>
+                                </div>
+                            </div>
+                        \`;
+
+                    case 'match':
+                        const winnerText = activity.data.winner ?
+                            \`<strong>User#\${activity.data.winner.slice(-4)}</strong> won!\` :
+                            'Match ended in a tie!';
+                        return \`
+                            <div class="pg-activity-item" data-id="\${activity.id}">
+                                <div class="pg-activity-icon pg-activity-icon--match">⚔️</div>
+                                <div class="pg-activity-content">
+                                    <p class="pg-activity-text">
+                                        <strong>User#\${activity.data.user1.slice(-4)}</strong> vs
+                                        <strong>User#\${activity.data.user2.slice(-4)}</strong> - \${winnerText}
+                                    </p>
+                                    <div class="pg-activity-meta">
+                                        <span class="pg-activity-time">\${timeAgo}</span>
+                                        <span class="pg-activity-badge">Match</span>
+                                    </div>
+                                </div>
+                            </div>
+                        \`;
+
+                    default:
+                        return '';
+                }
+            }
+
+            // Load activity feed
+            async function loadActivityFeed(page = 1, append = false) {
+                if (isLoadingActivity) return;
+
+                isLoadingActivity = true;
+                const feedContainer = document.getElementById('activityFeed');
+                const loadMoreBtn = document.getElementById('loadMoreActivity');
+
+                if (!append) {
+                    feedContainer.innerHTML = \`
+                        <div class="pg-activity-loading">
+                            <div class="pg-spinner"></div>
+                            <p style="margin: var(--pg-space-3) 0 0 0; color: var(--pg-dark-600);">Loading activity...</p>
+                        </div>
+                    \`;
+                }
+
+                try {
+                    const response = await fetch(\`/pengubook/api/activity-feed?page=\${page}&limit=20\`);
+                    const data = await response.json();
+
+                    if (data.success && data.activities.length > 0) {
+                        const activitiesHTML = data.activities.map(generateActivityHTML).join('');
+
+                        if (append) {
+                            const loadingEl = feedContainer.querySelector('.pg-activity-loading');
+                            if (loadingEl) loadingEl.remove();
+                            feedContainer.insertAdjacentHTML('beforeend', activitiesHTML);
+                        } else {
+                            feedContainer.innerHTML = activitiesHTML;
+                        }
+
+                        hasMoreActivity = data.hasMore;
+                        currentActivityPage = page;
+
+                        if (hasMoreActivity) {
+                            loadMoreBtn.style.display = 'block';
+                        } else {
+                            loadMoreBtn.style.display = 'none';
+                        }
+                    } else if (data.activities.length === 0 && page === 1) {
+                        feedContainer.innerHTML = \`
+                            <div class="pg-activity-empty">
+                                <div class="pg-activity-empty-icon">🌟</div>
+                                <h3 style="margin: 0 0 var(--pg-space-2) 0; color: var(--pg-dark-700);">No Activity Yet</h3>
+                                <p style="margin: 0; color: var(--pg-dark-600);">
+                                    Start exploring PenguBook! Send tips, update your profile, or play matches to see activity here.
+                                </p>
+                            </div>
+                        \`;
+                        loadMoreBtn.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Failed to load activity feed:', error);
+                    feedContainer.innerHTML = \`
+                        <div class="pg-activity-empty">
+                            <div class="pg-activity-empty-icon">⚠️</div>
+                            <h3 style="margin: 0 0 var(--pg-space-2) 0; color: var(--pg-dark-700);">Failed to Load</h3>
+                            <p style="margin: 0; color: var(--pg-dark-600);">
+                                Unable to load activity feed. Please refresh the page to try again.
+                            </p>
+                        </div>
+                    \`;
+                    loadMoreBtn.style.display = 'none';
+                }
+
+                isLoadingActivity = false;
+            }
+
+            // Load more activity handler
+            document.addEventListener('DOMContentLoaded', () => {
+                const loadMoreBtn = document.getElementById('loadMoreActivity');
+                if (loadMoreBtn) {
+                    loadMoreBtn.addEventListener('click', () => {
+                        if (hasMoreActivity && !isLoadingActivity) {
+                            loadActivityFeed(currentActivityPage + 1, true);
+                        }
+                    });
+                }
+
+                // Initial load
+                loadActivityFeed(1);
+
+                // Auto-refresh every 30 seconds
+                setInterval(() => {
+                    if (!isLoadingActivity && currentActivityPage === 1) {
+                        loadActivityFeed(1);
+                    }
+                }, 30000);
+            });
+        </script>
     </div>`;
         res.send(generateBaseHTML(content, '🐧 PenguBook - Home', 'home', {
             user: currentUser,
@@ -349,7 +657,7 @@ pengubookEnhancedRouter.get("/inbox", async (req, res) => {
         res.status(500).send("Error loading inbox");
     }
 });
-// GET /pengubook/browse - Enhanced user discovery
+// GET /pengubook/browse - Enhanced user discovery with search and filtering
 pengubookEnhancedRouter.get("/browse", async (req, res) => {
     try {
         const currentUser = getCurrentUser(req);
@@ -357,12 +665,65 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
             return res.redirect("/auth/discord");
         const user = await findOrCreateUser(currentUser.discordId);
         const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get all users who show in PenguBook (excluding current user)
+        // Extract search and filter parameters
+        const searchQuery = req.query.search || '';
+        const sortBy = req.query.sort || 'recent';
+        const filterBy = req.query.filter || 'all';
+        const page = parseInt(req.query.page) || 1;
+        const limit = 20;
+        const offset = (page - 1) * limit;
+        // Build dynamic where clause based on filters
+        let whereClause = {
+            showInPenguBook: true,
+            id: { not: user.id }
+        };
+        // Add search functionality
+        if (searchQuery) {
+            whereClause.OR = [
+                { bio: { contains: searchQuery, mode: 'insensitive' } },
+                { xUsername: { contains: searchQuery, mode: 'insensitive' } },
+                { discordId: { contains: searchQuery } }
+            ];
+        }
+        // Add bio filter
+        if (filterBy === 'with_bio') {
+            whereClause.bio = { not: null };
+        }
+        else if (filterBy === 'no_bio') {
+            whereClause.bio = null;
+        }
+        else if (filterBy === 'with_social') {
+            whereClause.xUsername = { not: null };
+        }
+        else if (filterBy === 'active_gamers') {
+            whereClause.OR = [
+                { wins: { gt: 0 } },
+                { losses: { gt: 0 } }
+            ];
+        }
+        // Define sort options
+        let orderBy;
+        switch (sortBy) {
+            case 'popular':
+                orderBy = { bioViewCount: 'desc' };
+                break;
+            case 'active':
+                orderBy = [{ wins: 'desc' }, { bioLastUpdated: 'desc' }];
+                break;
+            case 'newest':
+                orderBy = { createdAt: 'desc' };
+                break;
+            case 'recent':
+            default:
+                orderBy = { bioLastUpdated: 'desc' };
+                break;
+        }
+        // Get total count for pagination
+        const totalUsers = await prisma.user.count({ where: whereClause });
+        const totalPages = Math.ceil(totalUsers / limit);
+        // Get filtered and sorted users
         const users = await prisma.user.findMany({
-            where: {
-                showInPenguBook: true,
-                id: { not: user.id }
-            },
+            where: whereClause,
             select: {
                 id: true,
                 discordId: true,
@@ -374,14 +735,69 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
                 wins: true,
                 losses: true,
                 ties: true,
-                createdAt: true
+                createdAt: true,
+                _count: {
+                    select: {
+                        tipsSent: { where: { status: 'COMPLETED' } },
+                        tipsReceived: { where: { status: 'COMPLETED' } }
+                    }
+                }
             },
-            orderBy: { bioLastUpdated: 'desc' },
-            take: 50
+            orderBy,
+            skip: offset,
+            take: limit
         });
         const content = `
     <div class="pg-container">
         <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">👥 Browse PenguBook Users</h1>
+
+        <!-- Enhanced Search and Filter Interface -->
+        <div style="margin-bottom: var(--pg-space-8);">
+            <form class="pg-search-enhanced" method="GET" action="/pengubook/browse">
+                <div style="position: relative;">
+                    <input
+                        type="text"
+                        name="search"
+                        value="${searchQuery}"
+                        placeholder="Search users by bio, username, or Discord ID..."
+                        class="pg-search-enhanced__input"
+                        id="searchInput"
+                    >
+                    <span class="pg-search-enhanced__icon">🔍</span>
+                </div>
+
+                <!-- Filter Pills -->
+                <div class="pg-search-enhanced__filters">
+                    <select name="sort" class="pg-search-filter" onchange="this.form.submit()">
+                        <option value="recent" ${sortBy === 'recent' ? 'selected' : ''}>Recently Updated</option>
+                        <option value="popular" ${sortBy === 'popular' ? 'selected' : ''}>Most Popular</option>
+                        <option value="active" ${sortBy === 'active' ? 'selected' : ''}>Most Active</option>
+                        <option value="newest" ${sortBy === 'newest' ? 'selected' : ''}>Newest Members</option>
+                    </select>
+
+                    <select name="filter" class="pg-search-filter" onchange="this.form.submit()">
+                        <option value="all" ${filterBy === 'all' ? 'selected' : ''}>All Users</option>
+                        <option value="with_bio" ${filterBy === 'with_bio' ? 'selected' : ''}>Has Bio</option>
+                        <option value="with_social" ${filterBy === 'with_social' ? 'selected' : ''}>Has Social Links</option>
+                        <option value="active_gamers" ${filterBy === 'active_gamers' ? 'selected' : ''}>Active Gamers</option>
+                    </select>
+
+                    ${searchQuery || sortBy !== 'recent' || filterBy !== 'all' ? `
+                    <a href="/pengubook/browse" class="pg-search-filter" style="text-decoration: none; display: inline-flex; align-items: center;">
+                        ✕ Clear Filters
+                    </a>
+                    ` : ''}
+                </div>
+            </form>
+
+            <!-- Results Summary -->
+            <div style="margin-top: var(--pg-space-4); color: var(--pg-dark-600); font-size: var(--pg-text-sm);">
+                ${totalUsers > 0 ? `
+                    Showing ${(page - 1) * limit + 1}-${Math.min(page * limit, totalUsers)} of ${totalUsers} users
+                    ${searchQuery ? `matching "${searchQuery}"` : ''}
+                ` : 'No users found'}
+            </div>
+        </div>
 
         ${users.length === 0 ? `
         <div class="pg-empty-state">
@@ -399,61 +815,72 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
             ${users.map((user) => {
             const socials = user.socials ? JSON.parse(user.socials) : [];
             const winRate = user.wins + user.losses > 0 ? ((user.wins / (user.wins + user.losses)) * 100).toFixed(1) : 'N/A';
+            const totalTips = user._count.tipsSent + user._count.tipsReceived;
             return `
-              <div class="pg-card" style="transition: all var(--pg-duration-normal) var(--pg-ease-out);">
-                  <div style="display: flex; align-items: center; gap: var(--pg-space-4); margin-bottom: var(--pg-space-4);">
+              <div class="pg-profile-card-enhanced" onclick="window.location.href='/pengubook/user/${user.discordId}'" style="cursor: pointer;">
+                  <div class="pg-profile-card-enhanced__header">
                       <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png"
                            alt="Avatar"
-                           class="pg-avatar"
-                           style="width: 60px; height: 60px;"
+                           class="pg-profile-card-enhanced__avatar"
                            id="avatar-${user.discordId}"
                            loading="lazy">
-                      <div style="flex: 1; min-width: 0;">
-                          <div style="font-weight: 700; color: var(--pg-dark-800); margin-bottom: var(--pg-space-1);" id="username-${user.discordId}">
-                              User#${user.discordId.slice(-4)}
+                      <div class="pg-profile-card-enhanced__info">
+                          <h3 id="username-${user.discordId}">User#${user.discordId.slice(-4)}</h3>
+                          <div style="color: var(--pg-dark-600); font-size: var(--pg-text-sm); display: flex; align-items: center; gap: var(--pg-space-3);">
+                              <span>👀 ${user.bioViewCount} views</span>
+                              ${totalTips > 0 ? `<span>💰 ${totalTips} tips</span>` : ''}
+                              ${user.xUsername ? `<span>🐦 @${user.xUsername}</span>` : ''}
                           </div>
-                          <div style="color: var(--pg-dark-600); font-size: var(--pg-text-sm);">
-                              👀 ${user.bioViewCount} views
-                          </div>
                       </div>
                   </div>
 
-                  <div class="pg-stats-grid" style="margin: var(--pg-space-4) 0;">
-                      <div class="pg-stat-card">
-                          <div class="pg-stat-value">${user.wins}</div>
-                          <div class="pg-stat-label">Wins</div>
+                  ${user.bio ? `
+                  <div style="margin: var(--pg-space-4) 0; color: var(--pg-dark-700); font-size: var(--pg-text-sm); line-height: 1.5;">
+                      ${user.bio.length > 120 ? user.bio.substring(0, 120) + '...' : user.bio}
+                  </div>
+                  ` : `
+                  <div style="margin: var(--pg-space-4) 0; color: var(--pg-dark-500); font-size: var(--pg-text-sm); font-style: italic;">
+                      No bio set yet
+                  </div>
+                  `}
+
+                  <div class="pg-profile-card-enhanced__stats">
+                      <div class="pg-profile-card-enhanced__stat">
+                          <span class="pg-profile-card-enhanced__stat-value">${user.wins}</span>
+                          <span class="pg-profile-card-enhanced__stat-label">Wins</span>
                       </div>
-                      <div class="pg-stat-card">
-                          <div class="pg-stat-value">${user.losses}</div>
-                          <div class="pg-stat-label">Losses</div>
+                      <div class="pg-profile-card-enhanced__stat">
+                          <span class="pg-profile-card-enhanced__stat-value">${user.losses}</span>
+                          <span class="pg-profile-card-enhanced__stat-label">Losses</span>
                       </div>
-                      <div class="pg-stat-card">
-                          <div class="pg-stat-value">${winRate}%</div>
-                          <div class="pg-stat-label">Win Rate</div>
+                      <div class="pg-profile-card-enhanced__stat">
+                          <span class="pg-profile-card-enhanced__stat-value">${winRate}%</span>
+                          <span class="pg-profile-card-enhanced__stat-label">Win Rate</span>
                       </div>
                   </div>
-
-                  <div style="color: var(--pg-dark-700); margin: var(--pg-space-4) 0; min-height: 3rem; line-height: 1.5;">
-                      ${user.bio || '<em style="color: var(--pg-dark-600);">No bio yet...</em>'}
-                  </div>
-
-                  ${socials.length > 0 ? `
-                  <div class="pg-social-links" style="margin: var(--pg-space-4) 0;">
-                      ${socials.map((social) => `
-                      <a href="${social.url}" target="_blank" rel="noopener noreferrer" class="pg-social-link" style="font-size: var(--pg-text-xs);">
-                          ${social.platform}
-                      </a>
-                      `).join('')}
-                  </div>
-                  ` : ''}
-
-                  <a href="/pengubook/user/${user.discordId}" class="pg-btn pg-btn--primary" style="width: 100%; margin-top: var(--pg-space-4);">
-                      View Profile & Tip
-                  </a>
               </div>
               `;
         }).join('')}
         </div>
+
+        <!-- Pagination -->
+        ${totalPages > 1 ? `
+        <div style="margin-top: var(--pg-space-8); display: flex; justify-content: center; align-items: center; gap: var(--pg-space-2);">
+            ${page > 1 ? `
+            <a href="/pengubook/browse?search=${encodeURIComponent(searchQuery)}&sort=${sortBy}&filter=${filterBy}&page=${page - 1}"
+               class="pg-btn pg-btn--secondary">← Previous</a>
+            ` : ''}
+
+            <span style="color: var(--pg-dark-600); font-size: var(--pg-text-sm); margin: 0 var(--pg-space-4);">
+                Page ${page} of ${totalPages}
+            </span>
+
+            ${page < totalPages ? `
+            <a href="/pengubook/browse?search=${encodeURIComponent(searchQuery)}&sort=${sortBy}&filter=${filterBy}&page=${page + 1}"
+               class="pg-btn pg-btn--secondary">Next →</a>
+            ` : ''}
+        </div>
+        ` : ''}
         `}
     </div>
 
@@ -768,6 +1195,131 @@ pengubookEnhancedRouter.get("/api/discord-user/:discordId", async (req, res) => 
     catch (error) {
         console.error("Discord user fetch error:", error);
         res.status(500).json({ success: false, error: "Failed to fetch user info" });
+    }
+});
+// GET /pengubook/api/activity-feed - Fetch recent activity for activity feed
+pengubookEnhancedRouter.get("/api/activity-feed", async (req, res) => {
+    try {
+        const currentUser = getCurrentUser(req);
+        if (!currentUser) {
+            return res.status(401).json({ success: false, error: "Not authenticated" });
+        }
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+        // Get recent tips (both given and received)
+        const recentTips = await prisma.tip.findMany({
+            take: limit,
+            skip: offset,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                From: true,
+                To: true,
+                Token: true
+            },
+            where: {
+                OR: [
+                    { From: { showInPenguBook: true } },
+                    { To: { showInPenguBook: true } }
+                ]
+            }
+        });
+        // Get recent user profile updates
+        const recentProfileUpdates = await prisma.user.findMany({
+            take: Math.floor(limit / 4),
+            orderBy: { updatedAt: 'desc' },
+            where: {
+                showInPenguBook: true,
+                bio: { not: null },
+                updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+            },
+            select: {
+                discordId: true,
+                bio: true,
+                updatedAt: true
+            }
+        });
+        // Get recent matches (if available)
+        const recentMatches = await prisma.match.findMany({
+            take: Math.floor(limit / 4),
+            orderBy: { createdAt: 'desc' },
+            include: {
+                Challenger: { select: { discordId: true, showInPenguBook: true } },
+                Joiner: { select: { discordId: true, showInPenguBook: true } }
+            },
+            where: {
+                OR: [
+                    { Challenger: { showInPenguBook: true } },
+                    { Joiner: { showInPenguBook: true } }
+                ],
+                result: { not: null }
+            }
+        }).catch(() => []); // Fallback if matches table doesn't exist
+        // Combine and format activities
+        const activities = [];
+        // Add tip activities
+        recentTips.forEach(tip => {
+            if (!tip.From || !tip.To)
+                return;
+            activities.push({
+                id: `tip-${tip.id}`,
+                type: 'tip',
+                timestamp: tip.createdAt,
+                data: {
+                    fromUser: tip.From.discordId,
+                    toUser: tip.To.discordId,
+                    amount: formatAmount(BigInt(tip.amountAtomic.toString()), tip.Token),
+                    message: tip.note
+                }
+            });
+        });
+        // Add profile update activities
+        recentProfileUpdates.forEach(user => {
+            activities.push({
+                id: `profile-${user.discordId}-${user.updatedAt.getTime()}`,
+                type: 'profile_update',
+                timestamp: user.updatedAt,
+                data: {
+                    discordId: user.discordId,
+                    bio: user.bio?.substring(0, 100) + (user.bio && user.bio.length > 100 ? '...' : '')
+                }
+            });
+        });
+        // Add match activities
+        recentMatches.forEach(match => {
+            if (!match.Challenger || !match.Joiner)
+                return;
+            const winner = match.result === 'challenger' ? match.Challenger.discordId :
+                match.result === 'joiner' ? match.Joiner.discordId : null;
+            activities.push({
+                id: `match-${match.id}`,
+                type: 'match',
+                timestamp: match.createdAt,
+                data: {
+                    user1: match.Challenger.discordId,
+                    user2: match.Joiner.discordId,
+                    winner: winner,
+                    result: match.result
+                }
+            });
+        });
+        // Sort by timestamp and limit
+        activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        const limitedActivities = activities.slice(0, limit);
+        res.json({
+            success: true,
+            activities: limitedActivities,
+            hasMore: activities.length > limit,
+            nextPage: activities.length > limit ? page + 1 : null
+        });
+    }
+    catch (error) {
+        console.error("Activity feed fetch error:", error);
+        res.status(500).json({
+            success: false,
+            error: "Failed to fetch activity feed",
+            details: String(error)
+        });
     }
 });
 // Helper function to generate user profile content

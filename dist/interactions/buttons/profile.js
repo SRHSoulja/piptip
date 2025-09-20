@@ -1,3 +1,4 @@
+import { PENGUIN_LOADING } from "../../utils/penguin_messages.js";
 /** Handle profile refresh button */
 export async function handleRefreshProfile(i) {
     await i.deferUpdate().catch(() => { });
@@ -8,7 +9,7 @@ export async function handleRefreshProfile(i) {
         // Check if user already has a profile request processing
         if (activeProfileRequests.has(userId)) {
             return await i.editReply({
-                content: "⏳ Profile refresh already in progress! Please wait.",
+                content: PENGUIN_LOADING.profile(),
                 embeds: [],
                 components: []
             });
@@ -63,7 +64,15 @@ export async function handleDismissProfile(i) {
 }
 /** Handle view profile button */
 export async function handleViewProfile(i) {
-    await i.deferReply({ ephemeral: true }).catch(() => { });
+    // Check if this is a navigation from PenguBook (update existing message)
+    // or a new profile view (create ephemeral response)
+    const fromPenguBook = i.customId.includes('back_to_profile');
+    if (fromPenguBook) {
+        await i.deferUpdate().catch(() => { });
+    }
+    else {
+        await i.deferReply({ ephemeral: true }).catch(() => { });
+    }
     try {
         // Import profile functionality
         const { generateProfileData, createProfileButtons, createProfileEmbed } = await import("../../services/profile.js");
@@ -73,6 +82,7 @@ export async function handleViewProfile(i) {
         const profileButtons = createProfileButtons(profileData.activeMemberships, hasLinkedWallet, profileData.hasBio, hasInboxMessages);
         const embed = createProfileEmbed(profileData);
         await i.editReply({
+            content: null, // Clear any existing content
             embeds: [embed],
             components: profileButtons
         });
@@ -80,7 +90,9 @@ export async function handleViewProfile(i) {
     catch (error) {
         console.error("View profile error:", error);
         await i.editReply({
-            content: `❌ **Error loading profile**\n${error?.message || String(error)}`
+            content: `❌ **Error loading profile**\n${error?.message || String(error)}`,
+            embeds: [],
+            components: []
         });
     }
 }

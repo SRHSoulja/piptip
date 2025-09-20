@@ -205,6 +205,9 @@ async function handleLegacyPipButton(i) {
     if (action === "pengubook_inbox_refresh") {
         return handlePenguBookInbox(i);
     }
+    if (action === "back_to_profile") {
+        return handleViewProfile(i);
+    }
     // Handle tip token selection
     if (action === "select_token") {
         return handleSelectToken(i, parts);

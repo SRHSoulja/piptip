@@ -27,6 +27,8 @@ import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
 import { isButtonInteraction, isModalSubmitInteraction } from "./discord/guards.js";
 import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
+import { TierRoleSyncService } from "./services/tier_role_manager.js";
+import { MembershipExpiryService } from "./services/membership_expiry_service.js";
 // shared command defs + registrar
 import { getCommandsJson } from "./services/commands_def.js";
 import { registerCommandsForApprovedGuilds } from "./services/command_registry.js";
@@ -364,6 +366,15 @@ bot.once(Events.ClientReady, async () => {
     catch (error) {
         console.error("Failed to restore group tip timers:", error);
     }
+    // Start tier role management and membership expiry services
+    try {
+        TierRoleSyncService.startPeriodicSync();
+        MembershipExpiryService.startPeriodicCleanup();
+        console.log("Tier management services started");
+    }
+    catch (error) {
+        console.error("Failed to start tier management services:", error);
+    }
 });
 // Global error handlers
 process.on("unhandledRejection", (error) => {
@@ -392,6 +403,15 @@ async function main() {
         const shutdown = async () => {
             console.log("Shutting down...");
             // await backupService.stop(); // Disabled - using external cron job
+            // Stop tier management services
+            try {
+                TierRoleSyncService.stopPeriodicSync();
+                MembershipExpiryService.stopPeriodicCleanup();
+                console.log("Tier management services stopped");
+            }
+            catch (error) {
+                console.error("Error stopping tier management services:", error);
+            }
             server.close(() => {
                 bot.destroy();
                 process.exit(0);

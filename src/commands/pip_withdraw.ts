@@ -4,6 +4,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "disc
 import { prisma } from "../services/db.js";
 import { formatAmount, decToBigDirect, formatDecimal } from "../services/token.js";
 import { withdrawalLimiter } from "../services/withdrawal_limiter.js";
+import { PENGUIN_ERRORS, PENGUIN_LOADING, createPenguinError } from "../utils/penguin_messages.js";
 
 export default async function pipWithdraw(i: ChatInputCommandInteraction) {
   try {
@@ -62,20 +63,7 @@ export default async function pipWithdraw(i: ChatInputCommandInteraction) {
         );
 
       return i.reply({
-        content: [
-          "❌ **Wallet Not Linked**",
-          "",
-          "You need to link your wallet before withdrawing.",
-          "Your tokens are safe in your account, but you need a wallet to withdraw them.",
-          "",
-          "**Don't have an Abstract wallet?**",
-          "Click the button below to get one free!",
-          "",
-          "**Already have a wallet?**",
-          "Use the Link Wallet button for instructions.",
-          "",
-          "💡 *Once linked, you can withdraw your tokens!*"
-        ].join("\n"),
+        content: PENGUIN_ERRORS.walletNotLinked(),
         components: [walletRow],
         flags: MessageFlags.Ephemeral
       });

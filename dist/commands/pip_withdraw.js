@@ -3,6 +3,7 @@ import { MessageFlags } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../services/db.js";
 import { formatDecimal } from "../services/token.js";
+import { PENGUIN_ERRORS } from "../utils/penguin_messages.js";
 export default async function pipWithdraw(i) {
     try {
         // Check for emergency mode
@@ -51,20 +52,7 @@ export default async function pipWithdraw(i) {
                 .setLabel("📚 Get Help")
                 .setStyle(ButtonStyle.Secondary));
             return i.reply({
-                content: [
-                    "❌ **Wallet Not Linked**",
-                    "",
-                    "You need to link your wallet before withdrawing.",
-                    "Your tokens are safe in your account, but you need a wallet to withdraw them.",
-                    "",
-                    "**Don't have an Abstract wallet?**",
-                    "Click the button below to get one free!",
-                    "",
-                    "**Already have a wallet?**",
-                    "Use the Link Wallet button for instructions.",
-                    "",
-                    "💡 *Once linked, you can withdraw your tokens!*"
-                ].join("\n"),
+                content: PENGUIN_ERRORS.walletNotLinked(),
                 components: [walletRow],
                 flags: MessageFlags.Ephemeral
             });

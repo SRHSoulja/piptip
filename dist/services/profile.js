@@ -373,7 +373,7 @@ export function createProfileButtons(activeMemberships, hasLinkedWallet = true, 
     const profileRowComponents = [
         new ButtonBuilder()
             .setCustomId("pip:refresh_profile")
-            .setLabel("🔄 Refresh")
+            .setLabel("🔄 Refresh Penguin Stats")
             .setStyle(ButtonStyle.Secondary),
     ];
     // Add PenguBook CTA if user doesn't have a bio (conversion funnel!)
@@ -402,12 +402,7 @@ export function createProfileButtons(activeMemberships, hasLinkedWallet = true, 
             .setStyle(mailboxStyle)
             .setEmoji("📨"));
     }
-    // Add web access button
-    profileRowComponents.push(new ButtonBuilder()
-        .setURL(`${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/pengubook`)
-        .setLabel("🌐 Web View")
-        .setStyle(ButtonStyle.Link)
-        .setEmoji("💻"));
+    // Web View button removed - it belongs in Pengubook command, not profile
     profileRowComponents.push(new ButtonBuilder()
         .setCustomId("pip:dismiss_profile")
         .setLabel("❌ Dismiss")

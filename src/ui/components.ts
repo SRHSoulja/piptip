@@ -46,14 +46,20 @@ export function cancelRow(matchId: number) {
   );
 }
 
-/** Group tip claim button */
+/** Group tip claim and add buttons */
 export function groupTipClaimRow(groupTipId: number, disabled = false) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`grouptip:claim:${groupTipId}`)
-      .setLabel("Claim Share")
+      .setLabel("🐧 Grab My Fish!")
       .setStyle(ButtonStyle.Success)
       .setEmoji("🎁")
-      .setDisabled(disabled) // 🔑 allow disabling
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(`grouptip:add:${groupTipId}`)
+      .setLabel("🐟 Add More Fish!")
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji("➕")
+      .setDisabled(disabled)
   );
 }

@@ -36,7 +36,7 @@ export function cancelRow(matchId) {
 export function groupTipClaimRow(groupTipId, disabled = false) {
     return new ActionRowBuilder().addComponents(new ButtonBuilder()
         .setCustomId(`grouptip:claim:${groupTipId}`)
-        .setLabel("Claim Share")
+        .setLabel("🐧 Grab My Fish!")
         .setStyle(ButtonStyle.Success)
         .setEmoji("🎁")
         .setDisabled(disabled) // 🔑 allow disabling

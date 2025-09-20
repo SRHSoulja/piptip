@@ -139,6 +139,15 @@ export async function handleConfirmPurchase(i, tierId, tokenId) {
         const successMessage = isExtension
             ? `🎉 **Membership Extended Successfully!**\n\nYour membership has been extended. Check your profile to see your updated expiry date.`
             : `🎉 **Membership Purchased Successfully!**\n\nYou now have access to premium features. Check your profile to see your new membership status.`;
+        // Assign Discord role for the purchased tier
+        try {
+            const { tierRoleManager } = await import("../../services/tier_role_manager.js");
+            await tierRoleManager.onMembershipPurchased(i.user.id, tierId);
+        }
+        catch (roleError) {
+            console.warn("Failed to assign Discord role for tier membership:", roleError);
+            // Don't fail the purchase if role assignment fails
+        }
         await i.editReply({
             content: successMessage
         });
