@@ -980,7 +980,12 @@ async function loadTopUsers() {
 async function addTokenToUser(discordId, buttonElement) {
   // Create inline add form
   const container = buttonElement.closest('.add-token-container');
-  
+
+  // Prevent multiple forms from being created
+  if (container.querySelector('.add-token-form')) {
+    return; // Form already exists, don't create another
+  }
+
   // Get all active tokens for dropdown
   const tokensResponse = await API("/admin/tokens");
   const tokensData = await tokensResponse.json();
@@ -993,6 +998,7 @@ async function addTokenToUser(discordId, buttonElement) {
   
   // Create add form
   const addForm = document.createElement('div');
+  addForm.className = 'add-token-form'; // Add class for detection
   addForm.style.cssText = 'display:block; background:#2a2a2a; padding:12px; border-radius:6px; border:1px solid #444; margin-top:8px;';
   // Create secure form elements
   const titleDiv = createElement('div', {
@@ -1302,8 +1308,10 @@ function displayUsers(users) {
     btn.onclick = () => editBalance(btn.dataset.discordId, btn.dataset.tokenSymbol, btn.dataset.currentAmount, btn);
   });
   
-  // Add token functionality - NOTE: Event handlers are already set in createSecureButton calls
-  // Removed duplicate onclick assignment to prevent multiple executions
+  // Add token functionality
+  tbody.querySelectorAll(".add-token-btn").forEach(btn => {
+    btn.onclick = () => addTokenToUser(btn.dataset.discordId, btn);
+  });
   
   // Add delete functionality
   tbody.querySelectorAll(".deleteUser").forEach(btn => {
