@@ -289,11 +289,11 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
 
     } else if (data.tipType === "group") {
       // Handle group tip
-      if (!data.duration || data.duration < 1 || data.duration > 60) {
+      if (!data.duration || data.duration < 1 || data.duration > 1440) {
         return {
           success: false,
           message: "Invalid duration",
-          details: "Duration must be between 1-60 minutes."
+          details: "Duration must be between 1 minute and 24 hours (1440 minutes)."
         };
       }
 
@@ -315,29 +315,27 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
         };
       }
 
-      // CRITICAL: Check balance BEFORE any state changes
+      // Prepare user for atomic transaction
       const fromUser = await ensureUser(data.userId);
-      const currentBalance = await prisma.userBalance.findUnique({
-        where: { userId_tokenId: { userId: fromUser.id, tokenId: token.id } }
-      });
-
-      const balanceAtomic = currentBalance ? decToBigDirect(currentBalance.amount, token.decimals) : 0n;
-      if (balanceAtomic < atomic + feeAtomic) {
-        return {
-          success: false,
-          message: "Insufficient balance",
-          details: `You don't have enough ${data.amount} tokens + fees for this group tip.`
-        };
-      }
-
       const expiresAt = new Date(Date.now() + data.duration * 60 * 1000);
 
-      // Use atomic transaction for group tip creation
-      const result = await prisma.$transaction(async (tx) => {
+      // Use atomic transaction for group tip creation with balance check inside
+      let result;
+      try {
+        result = await prisma.$transaction(async (tx) => {
         // Import the transaction-safe version
         const { debitTokenTx } = await import("./balances.js");
 
-        // Charge user for group tip (after confirming balance)
+        // ATOMIC: Check balance within transaction to prevent race conditions
+        const currentBalance = await tx.userBalance.findUnique({
+          where: { userId_tokenId: { userId: fromUser.id, tokenId: token.id } }
+        });
+        const balanceAtomic = currentBalance ? decToBigDirect(currentBalance.amount, token.decimals) : 0n;
+        if (balanceAtomic < atomic + feeAtomic) {
+          throw new Error(`Insufficient balance: You don't have enough ${data.amount} tokens + fees for this group tip.`);
+        }
+
+        // Charge user for group tip (after confirming balance within transaction)
         await debitTokenTx(tx, data.userId, token.id, atomic + feeAtomic, "TIP", { guildId: data.guildId });
 
         // Create the group tip (using current schema)
@@ -370,7 +368,19 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
         }
 
         return groupTip;
-      });
+        });
+      } catch (error: any) {
+        // Handle balance and transaction errors gracefully
+        if (error?.message?.includes("Insufficient balance")) {
+          return {
+            success: false,
+            message: "Insufficient balance",
+            details: error.message.replace("Insufficient balance: ", "")
+          };
+        }
+        // Re-throw other transaction errors
+        throw error;
+      }
 
       // Create embed with ads
       const ad = await getActiveAd();

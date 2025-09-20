@@ -145,19 +145,20 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
       `**Amount:** ${data.amount} ${token.symbol}\n` +
       `**Type:** Group Tip\n` +
       (data.note ? `**Note:** ${data.note}\n` : "") +
-      `\n🎉 **Select how long people can claim this tip:**`
+      `\n🎉 **Select how long people can claim this tip:**\n` +
+      `💡 *Choose from quick options (top row) or extended durations (bottom row)*`
     )
     .setColor(0xFFD700)
     .setFooter({ text: "Everyone in the channel can claim until it expires" })
     .setTimestamp();
 
   const durationButtons = [
-    { label: "5 min", value: 5, emoji: "⚡" },
-    { label: "10 min", value: 10, emoji: "🔥" },
-    { label: "15 min", value: 15, emoji: "⏰" },
-    { label: "30 min", value: 30, emoji: "🕕" },
-    { label: "60 min", value: 60, emoji: "🕐" }
-  ].map(d => 
+    { label: "1 min", value: 1, emoji: "⚡" },
+    { label: "3 min", value: 3, emoji: "💨" },
+    { label: "5 min", value: 5, emoji: "🔥" },
+    { label: "10 min", value: 10, emoji: "⏰" },
+    { label: "15 min", value: 15, emoji: "🕐" }
+  ].map(d =>
     new ButtonBuilder()
       .setCustomId(`pip:select_duration:${data.amount}:${encodeURIComponent(data.note)}:${data.tokenId}:${d.value}`)
       .setLabel(d.label)
@@ -165,7 +166,22 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
       .setEmoji(d.emoji)
   );
 
-  const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(durationButtons);
+  const extendedDurationButtons = [
+    { label: "30 min", value: 30, emoji: "🕕" },
+    { label: "1 hour", value: 60, emoji: "🕒" },
+    { label: "2 hours", value: 120, emoji: "🕓" },
+    { label: "6 hours", value: 360, emoji: "🕕" },
+    { label: "24 hours", value: 1440, emoji: "📅" }
+  ].map(d =>
+    new ButtonBuilder()
+      .setCustomId(`pip:select_duration:${data.amount}:${encodeURIComponent(data.note)}:${data.tokenId}:${d.value}`)
+      .setLabel(d.label)
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji(d.emoji)
+  );
+
+  const actionRow1 = new ActionRowBuilder<ButtonBuilder>().addComponents(durationButtons);
+  const actionRow2 = new ActionRowBuilder<ButtonBuilder>().addComponents(extendedDurationButtons);
   
   const cancelRow = new ActionRowBuilder<ButtonBuilder>()
     .addComponents(
@@ -178,7 +194,7 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
 
   await i.editReply({
     embeds: [embed],
-    components: [actionRow, cancelRow]
+    components: [actionRow1, actionRow2, cancelRow]
   });
 }
 
@@ -223,7 +239,10 @@ export async function showTipConfirmation(i: ButtonInteraction, data: {
       `**Fee:** ${feeAmount.toFixed(8)} ${token.symbol} ${taxFree ? "(Tax-free tier)" : `(${feePercent}%)`}\n` +
       `**Total Cost:** ${totalCost.toFixed(8)} ${token.symbol}\n` +
       (data.tipType === "direct" && data.targetUserId ? `**Recipient:** <@${data.targetUserId}>\n` : "") +
-      (data.tipType === "group" && data.duration ? `**Duration:** ${data.duration} minutes\n` : "") +
+      (data.tipType === "group" && data.duration ?
+        `**Duration:** ${data.duration >= 60 ?
+          `${(data.duration / 60).toFixed(data.duration % 60 === 0 ? 0 : 1)} ${data.duration >= 60 ? 'hour' + (data.duration === 60 ? '' : 's') : 'minutes'}` :
+          `${data.duration} minute${data.duration === 1 ? '' : 's'}`}\n` : "") +
       (data.note ? `**Note:** ${data.note}\n` : "") +
       `\n${data.tipType === "direct" ? "💰 Send tip directly to user" : "🎉 Create group tip for everyone"}`
     )
