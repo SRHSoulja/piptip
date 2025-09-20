@@ -11,6 +11,7 @@ import { getActiveAd } from "../../services/ads.js";
 import { RoleRakeReductionService, type RoleRakeBenefit } from "../../services/role_rake_benefits.js";
 import { getDiscordClient } from "../../services/discord_users.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { awardMatchXP } from "../../services/xp_integration.js";
 
 // payout helper uses dynamic house fee (bps) from AppConfig
 function rpsPayout(wagerAtomic: bigint, houseFeeBps: bigint) {
@@ -350,7 +351,7 @@ const final = await tx.match.update({
       return final;
     }, { timeout: 15000, maxWait: 15000 });
 
-    // Process streak updates after successful transaction
+    // Process streak updates and award XP after successful transaction
     const streakResults = [];
     for (const update of streakUpdates) {
       try {
@@ -363,10 +364,18 @@ const final = await tx.match.update({
             newStreak: result.newStreak
           });
         }
+
+        // Award XP for match result (only wins/losses, not ties to prevent gaming)
+        if (update.won !== null) {
+          const matchResult = update.won ? 'win' : 'loss';
+          await awardMatchXP(update.discordId, matchResult);
+        }
+
       } catch (error) {
-        console.error("Failed to update streak:", error);
+        console.error("Failed to update streak or award XP:", error);
       }
     }
+
 
     // Update the public match message (AFTER COMMIT)
     try {

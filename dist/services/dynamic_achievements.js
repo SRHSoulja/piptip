@@ -1,6 +1,7 @@
 // src/services/dynamic_achievements.ts - Netflix-style dynamic achievement engine
 import { prisma } from "./db.js";
 import { startTimer, endTimer } from "./performance.js";
+import { awardAchievementXP } from "./xp_integration.js";
 // Global definition cache with invalidation
 let definitionCache = null;
 let cacheLastUpdated = 0;
@@ -375,6 +376,19 @@ async function unlockAchievement(userId, definition, currentProgress, eventData)
                 achievementCount: { increment: 1 }
             }
         });
+        // Award XP for achievement unlock
+        try {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { discordId: true }
+            });
+            if (user?.discordId) {
+                await awardAchievementXP(user.discordId, definition.name);
+            }
+        }
+        catch (xpError) {
+            console.warn('Failed to award XP for achievement:', xpError);
+        }
         console.log(`🏆 Achievement unlocked: ${definition.name} for user ${userId} (progress: ${currentProgress}/${definition.threshold})`);
         return true;
     }

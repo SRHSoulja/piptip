@@ -3,6 +3,7 @@
 import { prisma } from "./db.js";
 import { cacheWithMetrics, CacheKeys, CacheTTL, getCache } from "./cache.js";
 import { startTimer, endTimer } from "./performance.js";
+import { awardAchievementXP } from "./xp_integration.js";
 
 // Achievement criteria types
 export type CriteriaType = 'count' | 'sum' | 'streak' | 'unique' | 'custom';
@@ -485,6 +486,20 @@ async function unlockAchievement(
         achievementCount: { increment: 1 }
       }
     });
+
+    // Award XP for achievement unlock
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { discordId: true }
+      });
+
+      if (user?.discordId) {
+        await awardAchievementXP(user.discordId, definition.name);
+      }
+    } catch (xpError) {
+      console.warn('Failed to award XP for achievement:', xpError);
+    }
 
     console.log(`🏆 Achievement unlocked: ${definition.name} for user ${userId} (progress: ${currentProgress}/${definition.threshold})`);
     return true;
