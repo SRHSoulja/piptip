@@ -212,9 +212,9 @@ export default async function pipPenguBook(i: ChatInputCommandInteraction) {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setURL(`${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/pengubook`)
-        .setLabel("🌐 Open in Browser")
+        .setLabel("Open in Browser")
         .setStyle(ButtonStyle.Link)
-        .setEmoji("💻"),
+        .setEmoji("<a:NerdPengu:1415469352660107324>"),
       new ButtonBuilder()
         .setCustomId("pip:pengubook_modes")
         .setLabel("Browse Modes")
