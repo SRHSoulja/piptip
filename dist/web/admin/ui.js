@@ -89,7 +89,7 @@ const createServerTableRow = (server) => {
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td>${server.id}</td>
-    <td><strong>${escapeHtml(server.serverName || server.guildId || 'Unknown Server')}</strong></td>
+    <td><strong>${escapeHtml(server.servername || server.guildId || 'Unknown Server')}</strong></td>
     <td><code>${escapeHtml(server.guildId)}</code></td>
     <td><input value="${escapeHtml(server.note || '')}" data-field="note" type="text" style="width:200px"/></td>
     <td>
@@ -2211,7 +2211,7 @@ function updateServerStats(servers) {
     
     const serverNameCell = createElement('td');
     const serverName = createElement('strong', {
-      textContent: escapeHtml(server.serverName || server.guildId || 'Unknown Server')
+      textContent: escapeHtml(server.servername || server.guildId || 'Unknown Server')
     });
     const lineBreak = createElement('br');
     const guildIdSmall = createElement('small', {
