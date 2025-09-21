@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "npx prisma generate && tsc && cp -r src/web/admin/js dist/web/admin/ && cp src/web/admin/ui.js dist/web/admin/ && cp -r src/web/static dist/web/ 2>/dev/null || true",
-    "start": "timeout 30s npx prisma db push || echo 'DB push timed out, continuing...' && npx prisma generate && node dist/index.js",
+    "start": "npx prisma generate && node dist/index.js",
     "test": "tsx --test tests/*.test.js",
     "test:group-claim": "tsx --test tests/group-claim.test.js",
     "prisma:push": "prisma db push",
