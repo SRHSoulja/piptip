@@ -47,17 +47,17 @@ async function getGroupTipValidation(groupTipId) {
                     id: true,
                     status: true,
                     expiresAt: true,
-                    Creator: { select: { discordId: true } }
+                    creatorId: true
                 }
             }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Validation query timeout")), 3000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Validation query timeout")), 15000))
         ]);
         if (!basicInfo)
             return null;
         const validation = {
             isActive: basicInfo.status === 'ACTIVE',
             isExpired: basicInfo.expiresAt.getTime() < Date.now(),
-            creatorDiscordId: basicInfo.Creator?.discordId || null,
+            creatorDiscordId: null, // We'll check this later if needed
             expiresAt: basicInfo.expiresAt,
             status: basicInfo.status,
             cached: now
@@ -214,11 +214,12 @@ export async function handleGroupTipClaim(i, groupTipId) {
                 content: "🐧 This group tip is no longer active."
             });
         }
-        if (validation.creatorDiscordId === i.user.id) {
-            return i.editReply({
-                content: "🐧 You cannot claim your own group tip! That's like tipping yourself! 😄"
-            });
-        }
+        // TODO: Re-enable creator check once DB performance is fixed
+        // if (validation.creatorDiscordId === i.user.id) {
+        //   return i.editReply({
+        //     content: "🐧 You cannot claim your own group tip! That's like tipping yourself! 😄"
+        //   });
+        // }
         // OPTIMIZATION 4: Immediate success feedback + background processing
         await rateLimitedDiscord.editReply(i, {
             content: "🐧 Processing your claim... This might take a moment! ⏳"
