@@ -50,7 +50,7 @@ async function getGroupTipValidation(groupTipId) {
                     Creator: { select: { discordId: true } }
                 }
             }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Validation query timeout")), 800))
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Validation query timeout")), 3000))
         ]);
         if (!basicInfo)
             return null;
@@ -318,7 +318,7 @@ export async function handleGroupTipAdd(i, groupTipId) {
                 where: { id: groupTipId },
                 include: { Token: true, Creator: true }
             }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Query timeout")), 1000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Query timeout")), 3000))
         ]);
         if (!groupTip) {
             return i.reply({

@@ -73,7 +73,7 @@ async function getGroupTipValidation(groupTipId: number): Promise<GroupTipValida
         }
       }),
       new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("Validation query timeout")), 800)
+        setTimeout(() => reject(new Error("Validation query timeout")), 3000)
       )
     ]);
 
@@ -381,7 +381,7 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
         include: { Token: true, Creator: true }
       }),
       new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("Query timeout")), 1000)
+        setTimeout(() => reject(new Error("Query timeout")), 3000)
       )
     ]);
     if (!groupTip) {
