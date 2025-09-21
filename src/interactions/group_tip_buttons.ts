@@ -226,12 +226,32 @@ export async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: numb
       content: "🐧 Checking group tip... ⚡"
     });
 
-    // OPTIMIZATION 2: Fast validation check with caching
-    const validation = await getGroupTipValidation(groupTipId);
+    // EMERGENCY: Skip validation cache completely due to XP system performance issues
+    let validation;
+    try {
+      const basicInfo = await prisma.groupTip.findUnique({
+        where: { id: groupTipId },
+        select: { id: true, status: true, expiresAt: true }
+      });
 
-    if (!validation) {
+      if (!basicInfo) {
+        return i.editReply({
+          content: "🐧 Group tip not found! It might have expired or been removed."
+        });
+      }
+
+      validation = {
+        isActive: basicInfo.status === 'ACTIVE',
+        isExpired: basicInfo.expiresAt.getTime() < Date.now(),
+        creatorDiscordId: null,
+        expiresAt: basicInfo.expiresAt,
+        status: basicInfo.status,
+        cached: Date.now()
+      };
+    } catch (error) {
+      console.error('Emergency validation failed:', error);
       return i.editReply({
-        content: "🐧 Group tip not found! It might have expired or been removed."
+        content: "🐧 Unable to check group tip status. Please try again!"
       });
     }
 
