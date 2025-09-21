@@ -283,7 +283,11 @@ export function groupTipEmbed(data) {
         .setColor(0x38d9a9) // Teal
         .addFields({ name: "🐧 Colony Members", value: `${data.claimCount} penguins`, inline: true }, {
         name: data.isExpired ? "⏰ Status" : "⏰ Timer",
-        value: data.isExpired ? "🚫 Fish sharing ended" : `⏳ Ends <t:${timestamp}:R>`,
+        value: data.isExpired
+            ? (data.isFinalized
+                ? `✅ Fish distributed!${data.payoutPerUser ? `\n💰 Each penguin got: ${data.payoutPerUser}` : ''}`
+                : "🚫 Fish sharing ended")
+            : `⏳ Ends <t:${timestamp}:R>`,
         inline: true,
     }, {
         name: "🎣 Fish Claimed By",

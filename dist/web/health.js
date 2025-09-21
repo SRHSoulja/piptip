@@ -2,6 +2,7 @@
 import express from 'express';
 import { healthCheckQuery } from '../services/prisma_logger.js';
 import { getMetricsSummary } from '../services/metrics.js';
+import { healthEndpoint } from '../services/health_monitor.js';
 export const healthRouter = express.Router();
 // Basic health check - fast response for load balancers
 healthRouter.get('/healthz', async (req, res) => {
@@ -93,7 +94,9 @@ healthRouter.get('/healthz/detailed', async (req, res) => {
         });
     }
 });
-// Legacy endpoint for backward compatibility  
+// Production health monitoring with circuit breaker status
+healthRouter.get('/monitoring', healthEndpoint);
+// Legacy endpoint for backward compatibility
 healthRouter.get("/", (_req, res) => {
     res.json({ ok: true, service: "piptip", status: "healthy" });
 });

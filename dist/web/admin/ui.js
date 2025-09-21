@@ -978,9 +978,32 @@ async function loadTopUsers() {
 }
 
 async function addTokenToUser(discordId, buttonElement) {
+  console.log(`🔍 addTokenToUser called for user ${discordId}`);
+
+  // Immediate button disable to prevent double-clicking
+  if (buttonElement.disabled) {
+    console.log('⚠️ Button already disabled, ignoring click');
+    return;
+  }
+  buttonElement.disabled = true;
+
   // Create inline add form
   const container = buttonElement.closest('.add-token-container');
-  
+
+  // More robust prevention of multiple forms
+  if (container && container.querySelector('.add-token-form')) {
+    console.log('⚠️ Form already exists in container, aborting');
+    buttonElement.disabled = false;
+    return; // Form already exists, don't create another
+  }
+
+  // Also check if any form is already open globally for this user
+  if (document.querySelector(`.add-token-form[data-discord-id="${discordId}"]`)) {
+    console.log('⚠️ Form already exists globally for this user, aborting');
+    buttonElement.disabled = false;
+    return; // Another form is already open for this user
+  }
+
   // Get all active tokens for dropdown
   const tokensResponse = await API("/admin/tokens");
   const tokensData = await tokensResponse.json();
@@ -993,6 +1016,8 @@ async function addTokenToUser(discordId, buttonElement) {
   
   // Create add form
   const addForm = document.createElement('div');
+  addForm.className = 'add-token-form'; // Add class for detection
+  addForm.setAttribute('data-discord-id', discordId); // Add discord ID for global tracking
   addForm.style.cssText = 'display:block; background:#2a2a2a; padding:12px; border-radius:6px; border:1px solid #444; margin-top:8px;';
   // Create secure form elements
   const titleDiv = createElement('div', {
@@ -1069,6 +1094,8 @@ async function addTokenToUser(discordId, buttonElement) {
   
   // Add event handlers
   addForm.querySelector('.cancel-token').onclick = () => {
+    console.log('🚫 Form cancelled, re-enabling button');
+    buttonElement.disabled = false;
     buttonElement.style.display = 'inline-block';
     addForm.remove();
   };

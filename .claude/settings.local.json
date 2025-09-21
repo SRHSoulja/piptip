@@ -36,7 +36,11 @@
       "Bash(npx prisma generate:*)",
       "Bash(NODE_ENV=test npx prisma migrate reset --force --skip-generate)",
       "Bash(DATABASE_URL=\"file:./test_security.db\" npx prisma db push --force-reset)",
-      "Bash(timeout 10s npm run dev)"
+      "Bash(timeout 10s npm run dev)",
+      "Bash(git checkout:*)",
+      "Bash(xargs kill:*)",
+      "Bash(kill:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,138 +1,345 @@
 import type { ButtonInteraction } from "discord.js";
-import { prisma } from "../services/db.js";
+import { resilientDb } from "../services/resilient_db.js";
 import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { finalizeExpiredGroupTip } from "../features/finalizeExpiredGroupTip.js";
-import { addGroupTipContribution } from "../services/group_tip_contributions.js";
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
-import { PENGUIN_LOADING } from "../utils/penguin_messages.js";
+import { rateLimitedDiscord } from "../services/discord_rate_limiter.js";
+import { prisma } from "../services/db.js";
 
-export async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
-  await i.deferReply({ ephemeral: true });
+// Concurrent protection for viral scenarios with timestamps for cleanup
+const pendingClaims = new Map<string, number>(); // claimKey -> timestamp
+const pendingContributions = new Set<string>();
 
+// Fast cache for group tip validation (5 second TTL for active tips)
+interface GroupTipValidationCache {
+  isActive: boolean;
+  isExpired: boolean;
+  creatorDiscordId: string | null;
+  expiresAt: Date;
+  status: string;
+  cached: number;
+}
+
+const validationCache = new Map<number, GroupTipValidationCache>();
+const VALIDATION_CACHE_TTL = 5000; // 5 seconds
+
+// Clear expired cache entries and stuck pending claims every 30 seconds
+setInterval(() => {
+  const now = Date.now();
+
+  // Clean validation cache
+  for (const [id, entry] of validationCache.entries()) {
+    if (now - entry.cached > VALIDATION_CACHE_TTL) {
+      validationCache.delete(id);
+    }
+  }
+
+  // Clean stuck pending claims (anything older than 60 seconds)
+  let cleanedClaims = 0;
+  for (const [claimKey, timestamp] of pendingClaims.entries()) {
+    if (now - timestamp > 60000) { // 60 seconds
+      pendingClaims.delete(claimKey);
+      cleanedClaims++;
+    }
+  }
+
+  if (cleanedClaims > 0) {
+    console.log(`🧹 Cleaned ${cleanedClaims} stuck pending claims (${pendingClaims.size} remaining)`);
+  }
+}, 30000);
+
+/**
+ * Fast validation check with caching for group tip status
+ */
+async function getGroupTipValidation(groupTipId: number): Promise<GroupTipValidationCache | null> {
+  const now = Date.now();
+  const cached = validationCache.get(groupTipId);
+
+  // Return cached result if still valid
+  if (cached && (now - cached.cached) < VALIDATION_CACHE_TTL) {
+    return cached;
+  }
+
+  // Fast basic query with minimal data
   try {
-    // Add retry mechanism for read-after-write consistency
-    let groupTipData = null;
-    let attempts = 0;
-    const maxAttempts = 3;
-
-    while (!groupTipData && attempts < maxAttempts) {
-      attempts++;
-      groupTipData = await prisma.groupTip.findUnique({
+    const basicInfo = await Promise.race([
+      prisma.groupTip.findUnique({
         where: { id: groupTipId },
-        include: {
-          Creator: true,
-          Token: true,
-        },
-      });
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          Creator: { select: { discordId: true } }
+        }
+      }),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("Validation query timeout")), 800)
+      )
+    ]);
 
-      if (!groupTipData && attempts < maxAttempts) {
-        console.log(`Group tip ${groupTipId} not found, retrying... (attempt ${attempts}/${maxAttempts})`);
-        await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
+    if (!basicInfo) return null;
+
+    const validation: GroupTipValidationCache = {
+      isActive: basicInfo.status === 'ACTIVE',
+      isExpired: basicInfo.expiresAt.getTime() < Date.now(),
+      creatorDiscordId: basicInfo.Creator?.discordId || null,
+      expiresAt: basicInfo.expiresAt,
+      status: basicInfo.status,
+      cached: now
+    };
+
+    validationCache.set(groupTipId, validation);
+    return validation;
+  } catch (error) {
+    console.error(`Validation query failed for tip ${groupTipId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Background claim processor - runs after user gets immediate feedback
+ */
+async function processClaimInBackground(groupTipId: number, discordId: string, interaction: ButtonInteraction) {
+  try {
+    console.log(`🔄 Background claim processing for tip ${groupTipId}, user ${discordId}`);
+
+    // Use resilient database service for background processing
+    const result = await resilientDb.processGroupTipClaim(groupTipId, discordId);
+
+    if (result.expired) {
+      // Handle expired tip in background
+      try {
+        await resilientDb.finalizeGroupTipFast(groupTipId);
+        await resilientDb.updateGroupTipMessage(interaction.client, groupTipId);
+
+        // Try to update user with expiry info if possible
+        await rateLimitedDiscord.editReply(interaction, {
+          content: "⏰ This group tip expired while processing your claim. Rewards are being distributed to existing claimers!"
+        });
+      } catch (finalizeError) {
+        console.error(`Background finalization failed for tip ${groupTipId}:`, finalizeError);
       }
+      return;
     }
 
-    if (!groupTipData) {
+    // Success - update message and notify user
+    await resilientDb.updateGroupTipMessage(interaction.client, groupTipId);
+
+    // Try to update user with success message
+    await rateLimitedDiscord.editReply(interaction, {
+      content: `✅ You're in! You'll receive your share when the timer expires. (${'newClaimCount' in result ? result.newClaimCount : 'Some'} people claimed so far)`
+    });
+
+    console.log(`✅ Background claim successful for tip ${groupTipId}, user ${discordId}`);
+
+  } catch (error: any) {
+    console.error(`Background claim failed for tip ${groupTipId}, user ${discordId}:`, error);
+
+    // Try to notify user of the error
+    try {
+      const message = error.message.includes('already claimed')
+        ? "🐧 You've already claimed this tip!"
+        : error.message.includes('already contributed')
+        ? "🐧 You've already contributed to this tip! Contributors can't also claim!"
+        : "🐧 Claim failed. Please try again!";
+
+      await rateLimitedDiscord.editReply(interaction, { content: message });
+    } catch (updateError) {
+      console.error(`Failed to update user about background claim error:`, updateError);
+    }
+  }
+}
+
+export async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
+  console.log(`🔥 CLAIM ATTEMPT: tip ${groupTipId}, user ${i.user.id}`);
+  await i.deferReply({ ephemeral: true });
+
+  // EMERGENCY: Check if tip exists and is not expired FIRST
+  try {
+    const basicTip = await Promise.race([
+      prisma.groupTip.findUnique({
+        where: { id: groupTipId },
+        select: { id: true, expiresAt: true, status: true }
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Initial tip check timeout")), 2000))
+    ]) as any;
+
+    if (!basicTip) {
+      console.log(`❌ EXPIRED CLAIM: tip ${groupTipId} not found`);
+      return i.editReply({
+        content: "🐧 This group tip no longer exists! It may have expired or been removed."
+      });
+    }
+
+    if (basicTip.expiresAt.getTime() < Date.now()) {
+      console.log(`❌ EXPIRED CLAIM: tip ${groupTipId} expired at ${basicTip.expiresAt.toISOString()}`);
+      return i.editReply({
+        content: "⏰ This group tip has expired! Rewards have been distributed to claimers."
+      });
+    }
+
+    if (basicTip.status !== 'ACTIVE') {
+      console.log(`❌ INACTIVE CLAIM: tip ${groupTipId} status is ${basicTip.status}`);
+      return i.editReply({
+        content: "🏁 This group tip has been finalized! Rewards have been distributed."
+      });
+    }
+  } catch (error: any) {
+    console.error(`❌ TIP CHECK ERROR: ${error}`);
+    const isTimeout = error?.message?.includes('timeout');
+    return i.editReply({
+      content: isTimeout
+        ? "🐧 Database is busy right now. This tip might be finalizing. Please wait a moment and try again!"
+        : "🐧 Unable to check group tip status. Please try again!"
+    });
+  }
+
+  // Concurrent protection - prevent double claims during viral scenarios
+  const claimKey = `${groupTipId}:${i.user.id}`;
+  console.log(`🔍 Checking pending claims: key=${claimKey}, pending=${pendingClaims.size}, has=${pendingClaims.has(claimKey)}`);
+
+  if (pendingClaims.has(claimKey)) {
+    const timestamp = pendingClaims.get(claimKey);
+    const age = Date.now() - timestamp!;
+
+    // If claim is older than 5 seconds, allow retry (probably stuck)
+    if (age > 5000) {
+      console.log(`🔧 RETRY ALLOWED: claim ${claimKey} was stuck for ${age}ms, allowing retry`);
+      pendingClaims.delete(claimKey);
+    } else {
+      console.log(`❌ BLOCKED: claim ${claimKey} already pending for ${age}ms`);
+      return i.editReply({
+        content: "🐧 Hold your penguins! Your claim is already being processed... 🐟"
+      });
+    }
+  }
+
+  pendingClaims.set(claimKey, Date.now());
+
+  try {
+    // OPTIMIZATION 1: Immediate positive feedback while doing fast validation
+    await rateLimitedDiscord.editReply(i, {
+      content: "🐧 Checking group tip... ⚡"
+    });
+
+    // OPTIMIZATION 2: Fast validation check with caching
+    const validation = await getGroupTipValidation(groupTipId);
+
+    if (!validation) {
       return i.editReply({
         content: "🐧 Group tip not found! It might have expired or been removed."
       });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const tip = await tx.groupTip.findUnique({
-        where: { id: groupTipId },
-        include: {
-          Creator: true,
-          Token: true,
-        },
+    // OPTIMIZATION 3: Fast checks before heavy database work
+    if (validation.status === 'FINALIZED') {
+      return i.editReply({
+        content: "🏁 This group tip has already been finalized. Rewards have been distributed!"
       });
-      if (!tip) throw new Error("Group tip not found");
-
-      const now = new Date();
-      const isExpired = tip.expiresAt.getTime() < now.getTime();
-
-      // If expired, short-circuit: do NOT finalize inside this tx
-      if (isExpired) {
-        return { expired: true, status: tip.status, groupTipId: tip.id };
-      }
-
-      if (tip.status !== "ACTIVE") {
-        throw new Error("This group tip is no longer active");
-      }
-
-      // Don't let creator claim
-      if (tip.Creator && tip.Creator.discordId === i.user.id) {
-        throw new Error("You cannot claim your own group tip");
-      }
-
-      // Ensure user exists first
-      const user = await tx.user.upsert({
-        where: { discordId: i.user.id },
-        update: {},
-        create: { discordId: i.user.id },
-      });
-
-      // Check if user has already contributed to this group tip
-      const existingContribution = await tx.groupTipContribution.findUnique({
-        where: {
-          groupTipId_contributorId: {
-            groupTipId: tip.id,
-            contributorId: user.id
-          }
-        }
-      });
-
-      if (existingContribution) {
-        throw new Error("You've already contributed to this group tip! Contributors can't also claim! 🐟");
-      }
-
-      // Skip preloaded claims check - rely on DB unique constraint below
-
-// Record claim (catch duplicate if they spam-click)
-try {
-  await tx.groupTipClaim.create({
-    data: { groupTipId: tip.id, userId: user.id },
-  });
-} catch (err: any) {
-  // Prisma unique constraint on @@unique([groupTipId, userId])
-  if (err?.code === "P2002") {
-    // Track unique violation for monitoring
-    const { incrementUniqueViolationClaims } = await import("../services/metrics.js");
-    incrementUniqueViolationClaims();
-    throw new Error("You have already claimed this group tip");
-  }
-  throw err;
-}
-
-
-      // Get current claim count after successful insert
-      const claimCount = await tx.groupTipClaim.count({
-        where: { groupTipId: tip.id },
-      });
-
-      return {
-        expired: false,
-        groupTipId: tip.id,
-        newClaimCount: claimCount,
-      };
-    });
-
-    // If the tip had already expired, finalize now (idempotent) and refresh
-    if (result.expired) {
-      if (result.status === "ACTIVE") {
-        await i.editReply({ content: "⏳ Finalizing this group tip…" });
-        await finalizeExpiredGroupTip(result.groupTipId);
-      }
-      await updateGroupTipMessage(i.client, result.groupTipId);
-      return i.editReply({ content: "<a:PenguNo:1415469218681585674> This group tip has expired — claims are closed." });
     }
 
-    // Normal path: update card and confirm claim
-    await updateGroupTipMessage(i.client, result.groupTipId);
-    await i.editReply({
-      content: `✅ You're in! You'll receive your share when the timer expires. (${result.newClaimCount} people claimed so far)`,
+    if (validation.isExpired) {
+      // Trigger finalization in background
+      setImmediate(() => {
+        resilientDb.finalizeGroupTipFast(groupTipId)
+          .then(() => resilientDb.updateGroupTipMessage(i.client, groupTipId))
+          .catch(error => console.error(`Background finalization failed:`, error));
+      });
+
+      return i.editReply({
+        content: "⏰ This group tip has expired and is being finalized. Rewards are being distributed to existing claimers!"
+      });
+    }
+
+    if (!validation.isActive) {
+      return i.editReply({
+        content: "🐧 This group tip is no longer active."
+      });
+    }
+
+    if (validation.creatorDiscordId === i.user.id) {
+      return i.editReply({
+        content: "🐧 You cannot claim your own group tip! That's like tipping yourself! 😄"
+      });
+    }
+
+    // OPTIMIZATION 4: Immediate success feedback + background processing
+    await rateLimitedDiscord.editReply(i, {
+      content: "🐧 Processing your claim... This might take a moment! ⏳"
     });
+
+    // OPTIMIZATION 5: Try fast claim first with short timeout
+    let fastClaimSucceeded = false;
+    try {
+      const fastResult = await Promise.race([
+        resilientDb.processGroupTipClaim(groupTipId, i.user.id),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Fast claim timeout")), 1200)
+        )
+      ]);
+
+      if (fastResult.expired) {
+        // Handle expired case
+        setImmediate(() => {
+          resilientDb.finalizeGroupTipFast(groupTipId)
+            .then(() => resilientDb.updateGroupTipMessage(i.client, groupTipId))
+            .catch(error => console.error(`Background finalization failed:`, error));
+        });
+
+        return i.editReply({
+          content: "⏰ This group tip expired while processing your claim. Rewards are being distributed to existing claimers!"
+        });
+      }
+
+      // Fast success!
+      fastClaimSucceeded = true;
+
+      // Update message and give success feedback
+      await resilientDb.updateGroupTipMessage(i.client, groupTipId);
+      await i.editReply({
+        content: `✅ You're in! You'll receive your share when the timer expires. (${'newClaimCount' in fastResult ? fastResult.newClaimCount : 'Some'} people claimed so far)`
+      });
+
+    } catch (fastError: any) {
+      console.log(`Fast claim failed for ${groupTipId}:${i.user.id}, trying background processing:`, fastError.message);
+
+      // Fast claim failed - handle common errors immediately or go to background
+      if (fastError.message.includes('already claimed')) {
+        return i.editReply({
+          content: "🐧 You've already claimed this group tip! You're all set! 🎯"
+        });
+      }
+
+      if (fastError.message.includes('already contributed')) {
+        return i.editReply({
+          content: "🐧 You've already contributed to this group tip! Contributors can't also claim! 🐟"
+        });
+      }
+
+      // OPTIMIZATION 6: Background processing for complex cases
+      await i.editReply({
+        content: "🐧 Your claim is being processed in the background! We'll update you shortly... ⚡"
+      });
+
+      // Process in background with full resilience
+      setImmediate(() => processClaimInBackground(groupTipId, i.user.id, i));
+    }
+
   } catch (error: any) {
-    await i.editReply({ content: `${error?.message || String(error)}` });
+    console.error(`Claim error for ${groupTipId}:${i.user.id}:`, error);
+    const errorMessage = error?.message || String(error);
+
+    // Handle specific timeout errors more gracefully
+    if (errorMessage.includes('timeout') || errorMessage.includes('exceeded')) {
+      await i.editReply({
+        content: "🐧 Database is busy right now. Please try again in a moment! 🐟"
+      });
+    } else {
+      await i.editReply({ content: `🐧 Something went wrong: ${errorMessage}` });
+    }
+  } finally {
+    // Clean up after a delay to allow background processing
+    setTimeout(() => pendingClaims.delete(claimKey), 3000);
   }
 }
 
@@ -148,18 +355,35 @@ export async function handleGroupTipButton(i: ButtonInteraction) {
 
   if (action === "claim") return handleGroupTipClaim(i, groupTipId);
   if (action === "add") return handleGroupTipAdd(i, groupTipId);
+
   return i.reply({ content: "Unknown group tip action.", ephemeral: true });
 }
 
 // NEW: Handle adding to group tip
 export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number) {
+  // Concurrent protection - prevent double contributions during viral scenarios
+  const contributionKey = `${groupTipId}:${i.user.id}:add`;
+  if (pendingContributions.has(contributionKey)) {
+    return i.reply({
+      content: "🐧 Hold your penguins! Your contribution is already being processed... 🐟",
+      ephemeral: true
+    });
+  }
+
+  pendingContributions.add(contributionKey);
+
   try {
     // Get group tip info for context
-    const groupTip = await prisma.groupTip.findUnique({
-      where: { id: groupTipId },
-      include: { Token: true, Creator: true }
-    });
-
+    const { prisma } = await import("../services/db.js");
+    const groupTip = await Promise.race([
+      prisma.groupTip.findUnique({
+        where: { id: groupTipId },
+        include: { Token: true, Creator: true }
+      }),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("Query timeout")), 1000)
+      )
+    ]);
     if (!groupTip) {
       return i.reply({
         content: "🐧 Group tip not found! It might have expired or been removed.",
@@ -170,7 +394,7 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
     // Check if expired
     if (groupTip.expiresAt.getTime() < Date.now()) {
       return i.reply({
-        content: "🐧 This group tip has expired! You can no longer add to it.",
+        content: "🐧 This group tip has expired! You can't contribute anymore. 🕒",
         ephemeral: true
       });
     }
@@ -188,12 +412,15 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
       where: { discordId: i.user.id }
     });
 
+    let hasContribution = false;
+    let hasClaim = false;
+
     if (user) {
       const [existingContribution, existingClaim] = await Promise.all([
         prisma.groupTipContribution.findUnique({
           where: {
             groupTipId_contributorId: {
-              groupTipId: groupTipId,
+              groupTipId,
               contributorId: user.id
             }
           }
@@ -201,26 +428,30 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
         prisma.groupTipClaim.findUnique({
           where: {
             groupTipId_userId: {
-              groupTipId: groupTipId,
+              groupTipId,
               userId: user.id
             }
           }
         })
       ]);
 
-      if (existingContribution) {
-        return i.reply({
-          content: "🐧 You've already contributed to this group tip! One contribution per penguin! 🐟",
-          ephemeral: true
-        });
-      }
+      hasContribution = !!existingContribution;
+      hasClaim = !!existingClaim;
+    }
 
-      if (existingClaim) {
-        return i.reply({
-          content: "🐧 You've already claimed this group tip! You can't contribute after claiming! 🎯",
-          ephemeral: true
-        });
-      }
+    const userStatus = { hasContribution, hasClaim };
+    if (userStatus.hasContribution) {
+      return i.reply({
+        content: "🐧 You've already contributed to this group tip! One contribution per penguin! 🐟",
+        ephemeral: true
+      });
+    }
+
+    if (userStatus.hasClaim) {
+      return i.reply({
+        content: "🐧 You've already claimed this group tip! You can't contribute after claiming! 🎯",
+        ephemeral: true
+      });
     }
 
     // Create modal for contribution amount
@@ -232,8 +463,9 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
       .setCustomId('contribution_amount')
       .setLabel(`Amount to contribute (${groupTip.Token.symbol})`)
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('e.g., 50')
+      .setPlaceholder('Enter amount...')
       .setRequired(true)
+      .setMinLength(1)
       .setMaxLength(20);
 
     const row = new ActionRowBuilder<TextInputBuilder>().addComponents(amountInput);
@@ -247,5 +479,7 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
       content: `🐧 Oops! Something went wrong: ${error?.message || String(error)}`,
       ephemeral: true
     });
+  } finally {
+    pendingContributions.delete(contributionKey);
   }
 }

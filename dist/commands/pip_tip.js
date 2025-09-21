@@ -118,12 +118,8 @@ export default async function pipTip(i) {
     }
     catch (error) {
         console.error("Enhanced tip command error:", error);
-        const errorMessage = PENGUIN_ERRORS.genericError("tip");
-        if (i.deferred || i.replied) {
-            await i.editReply({ content: errorMessage, embeds: [], components: [] }).catch(() => { });
-        }
-        else {
-            await i.reply({ content: errorMessage, flags: MessageFlags.Ephemeral }).catch(() => { });
-        }
+        // Let the wrapper handle the error reply to avoid race conditions
+        // Just rethrow the error so the main wrapper can handle it properly
+        throw error;
     }
 }

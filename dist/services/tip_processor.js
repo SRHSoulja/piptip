@@ -97,7 +97,44 @@ export async function processTip(data, client) {
                 update: {},
                 create: { discordId: data.targetUserId },
             });
-            // Process the transfer
+            // ATOMIC: Check balance before transfer to prevent insufficient balance errors
+            const fromUser = await ensureUser(data.userId);
+            const totalNeeded = atomic + feeAtomic;
+            let result;
+            try {
+                result = await prisma.$transaction(async (tx) => {
+                    // Check balance within transaction to prevent race conditions
+                    const currentBalance = await tx.userBalance.findUnique({
+                        where: { userId_tokenId: { userId: fromUser.id, tokenId: token.id } }
+                    });
+                    const balanceAtomic = currentBalance ? decToBigDirect(currentBalance.amount, token.decimals) : 0n;
+                    // DEBUG: Log the actual values for direct tips
+                    console.log('DEBUG Direct Tip Balance Check:', {
+                        currentBalance: currentBalance?.amount.toString(),
+                        balanceAtomic: balanceAtomic.toString(),
+                        atomic: atomic.toString(),
+                        feeAtomic: feeAtomic.toString(),
+                        totalNeeded: totalNeeded.toString(),
+                        hasEnough: balanceAtomic >= totalNeeded
+                    });
+                    if (balanceAtomic < totalNeeded) {
+                        throw new Error(`Insufficient balance: You need ${formatAmount(totalNeeded, token)} but only have ${formatAmount(balanceAtomic, token)}.`);
+                    }
+                    // If balance check passes, return success
+                    return { success: true };
+                });
+            }
+            catch (error) {
+                if (error?.message?.includes("Insufficient balance")) {
+                    return {
+                        success: false,
+                        message: "Insufficient balance",
+                        details: error.message.replace("Insufficient balance: ", "")
+                    };
+                }
+                throw error;
+            }
+            // Process the transfer (balance was already validated)
             await transferToken(data.userId, data.targetUserId, token.id, atomic, "TIP", {
                 guildId: data.guildId,
                 feeAtomic,
@@ -267,6 +304,15 @@ export async function processTip(data, client) {
                         where: { userId_tokenId: { userId: fromUser.id, tokenId: token.id } }
                     });
                     const balanceAtomic = currentBalance ? decToBigDirect(currentBalance.amount, token.decimals) : 0n;
+                    // DEBUG: Log the actual values
+                    console.log('DEBUG Balance Check:', {
+                        currentBalance: currentBalance?.amount.toString(),
+                        balanceAtomic: balanceAtomic.toString(),
+                        atomic: atomic.toString(),
+                        feeAtomic: feeAtomic.toString(),
+                        totalNeeded: (atomic + feeAtomic).toString(),
+                        hasEnough: balanceAtomic >= (atomic + feeAtomic)
+                    });
                     if (balanceAtomic < atomic + feeAtomic) {
                         throw new Error(`Insufficient balance: You don't have enough ${data.amount} tokens + fees for this group tip.`);
                     }
@@ -338,8 +384,34 @@ export async function processTip(data, client) {
                         channelId: msg.channelId
                     },
                 });
-                // Schedule expiry
-                await scheduleGroupTipExpiry(client, result.id);
+                // Schedule expiry with enhanced debugging
+                console.log(`🎯 ATTEMPTING TO SCHEDULE TIMER for group tip ${result.id}...`);
+                console.log(`   📊 Tip details: expires=${result.expiresAt.toISOString()}, status=${result.status}`);
+                console.log(`   🤖 Client available: ${!!client}, clientReady: ${client?.isReady()}`);
+                try {
+                    await scheduleGroupTipExpiry(client, result.id);
+                    console.log(`✅ TIMER SCHEDULING COMPLETED for group tip ${result.id}`);
+                }
+                catch (scheduleError) {
+                    console.error(`❌ TIMER SCHEDULING FAILED for group tip ${result.id}:`, scheduleError.message);
+                    console.error(`   📋 Stack trace:`, scheduleError.stack);
+                    // Don't fail the entire tip creation for timer scheduling errors
+                }
+                // Schedule Redis timer for second-precise expiration
+                try {
+                    const { redisTimers } = await import("../services/redis_timers.js");
+                    const redisSuccess = await redisTimers.scheduleGroupTipExpiry(result.id, result.expiresAt);
+                    if (redisSuccess) {
+                        console.log(`⚡ REDIS TIMER SCHEDULED for group tip ${result.id} (expires: ${result.expiresAt.toISOString()})`);
+                    }
+                    else {
+                        console.log(`⚠️ Redis timer unavailable for tip ${result.id}, using fallback timers`);
+                    }
+                }
+                catch (redisError) {
+                    console.error(`❌ REDIS TIMER FAILED for group tip ${result.id}:`, redisError.message);
+                    // Don't fail the entire tip creation for Redis errors
+                }
                 const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
                 // Add role benefit notification for group tip creator
                 let successMessage = "Group tip created successfully!";

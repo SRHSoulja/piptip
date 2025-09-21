@@ -101,7 +101,14 @@ export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
       guildId: i.guildId,
       channelId: i.channelId
     };
-    
+
+    // Optimistic UI update - show immediate processing feedback
+    await i.editReply({
+      content: `🐧 Processing your ${tipType} tip... This may take a moment! ⚡`,
+      embeds: [],
+      components: []
+    });
+
     const result = await processTip(tipData, i.client);
 
     const statusEmoji = result.success ? "✅" : "❌";

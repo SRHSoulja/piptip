@@ -2,6 +2,7 @@
 import express, { Request, Response } from 'express';
 import { healthCheckQuery } from '../services/prisma_logger.js';
 import { getMetricsSummary } from '../services/metrics.js';
+import { healthEndpoint } from '../services/health_monitor.js';
 
 export const healthRouter = express.Router();
 
@@ -103,7 +104,10 @@ healthRouter.get('/healthz/detailed', async (req: Request, res: Response) => {
   }
 });
 
-// Legacy endpoint for backward compatibility  
+// Production health monitoring with circuit breaker status
+healthRouter.get('/monitoring', healthEndpoint);
+
+// Legacy endpoint for backward compatibility
 healthRouter.get("/", (_req: Request, res: Response) => {
   res.json({ ok: true, service: "piptip", status: "healthy" });
 });

@@ -369,6 +369,8 @@ export function groupTipEmbed(data: {
   ad?: { text: string; url?: string };
   contributors?: Array<{ name: string; amount: string }>; // New: track who added to the tip
   totalAmount?: string; // New: total amount including contributions
+  isFinalized?: boolean; // New: shows if tip was finalized
+  payoutPerUser?: string; // New: amount each user received
 }) {
   let description = `🐧 **${data.creator}** is sharing fish with the colony!`;
 
@@ -392,7 +394,11 @@ export function groupTipEmbed(data: {
       { name: "🐧 Colony Members", value: `${data.claimCount} penguins`, inline: true },
       {
         name: data.isExpired ? "⏰ Status" : "⏰ Timer",
-        value: data.isExpired ? "🚫 Fish sharing ended" : `⏳ Ends <t:${timestamp}:R>`,
+        value: data.isExpired
+          ? (data.isFinalized
+              ? `✅ Fish distributed!${data.payoutPerUser ? `\n💰 Each penguin got: ${data.payoutPerUser}` : ''}`
+              : "🚫 Fish sharing ended")
+          : `⏳ Ends <t:${timestamp}:R>`,
         inline: true,
       },
       {

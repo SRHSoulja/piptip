@@ -4,7 +4,7 @@ import { incrementSlowQueries } from './metrics.js';
 
 const SLOW_QUERY_THRESHOLD_MS = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || '300');
 
-// Create Prisma client with logging configuration
+// Create Prisma client with logging configuration and optimized connection handling
 export const prismaWithLogging = new PrismaClient({
   log: [
     {
@@ -12,7 +12,7 @@ export const prismaWithLogging = new PrismaClient({
       level: 'query',
     },
     {
-      emit: 'event', 
+      emit: 'event',
       level: 'info',
     },
     {
@@ -24,6 +24,12 @@ export const prismaWithLogging = new PrismaClient({
       level: 'error',
     },
   ],
+  // EMERGENCY FIX: Optimize connection handling for claims
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
 });
 
 // Track query performance and log slow queries

@@ -461,8 +461,33 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
           },
         });
 
-        // Schedule expiry
-        await scheduleGroupTipExpiry(client, result.id);
+        // Schedule expiry with enhanced debugging
+        console.log(`🎯 ATTEMPTING TO SCHEDULE TIMER for group tip ${result.id}...`);
+        console.log(`   📊 Tip details: expires=${result.expiresAt.toISOString()}, status=${result.status}`);
+        console.log(`   🤖 Client available: ${!!client}, clientReady: ${client?.isReady()}`);
+
+        try {
+          await scheduleGroupTipExpiry(client, result.id);
+          console.log(`✅ TIMER SCHEDULING COMPLETED for group tip ${result.id}`);
+        } catch (scheduleError: any) {
+          console.error(`❌ TIMER SCHEDULING FAILED for group tip ${result.id}:`, scheduleError.message);
+          console.error(`   📋 Stack trace:`, scheduleError.stack);
+          // Don't fail the entire tip creation for timer scheduling errors
+        }
+
+        // Schedule Redis timer for second-precise expiration
+        try {
+          const { redisTimers } = await import("../services/redis_timers.js");
+          const redisSuccess = await redisTimers.scheduleGroupTipExpiry(result.id, result.expiresAt);
+          if (redisSuccess) {
+            console.log(`⚡ REDIS TIMER SCHEDULED for group tip ${result.id} (expires: ${result.expiresAt.toISOString()})`);
+          } else {
+            console.log(`⚠️ Redis timer unavailable for tip ${result.id}, using fallback timers`);
+          }
+        } catch (redisError: any) {
+          console.error(`❌ REDIS TIMER FAILED for group tip ${result.id}:`, redisError.message);
+          // Don't fail the entire tip creation for Redis errors
+        }
 
         const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
 

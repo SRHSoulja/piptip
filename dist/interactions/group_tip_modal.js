@@ -17,6 +17,13 @@ export async function handleGroupTipContributeModal(i, groupTipId) {
         }
         // Convert to atomic units (assuming 18 decimals like most tokens)
         const atomicAmount = Math.floor(contributionAmount * Math.pow(10, 18));
+        console.log('DEBUG: Modal contribution conversion', {
+            userInput: amountInput,
+            sanitizedInput,
+            contributionAmount,
+            atomicAmount,
+            atomicAmountString: atomicAmount.toString()
+        });
         // Show loading message
         await i.editReply({
             content: PENGUIN_LOADING.tip() + "\n*Calculating tax and processing your contribution...*"

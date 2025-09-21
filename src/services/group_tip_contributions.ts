@@ -1,7 +1,7 @@
 // src/services/group_tip_contributions.ts - Secure group tip contribution system
 import { prisma } from "./db.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
-import { formatDecimal } from "./token.js";
+import { formatDecimal, decToBigDirect, formatAmount } from "./token.js";
 import { PENGUIN_ERRORS, createPenguinSuccess } from "../utils/penguin_messages.js";
 
 // Rate limiting: Track recent contribution attempts
@@ -87,9 +87,20 @@ export async function addGroupTipContribution(
       }
 
       // 5. CONTRIBUTION LIMITS
-      const originalAmount = Number(groupTip.totalAmount);
-      if (contributionAmount > originalAmount * MAX_CONTRIBUTION_RATIO) {
-        throw new Error(`Maximum contribution is ${formatDecimal(originalAmount * MAX_CONTRIBUTION_RATIO, groupTip.Token.symbol)}`);
+      const originalAmountAtomic = decToBigDirect(Number(groupTip.totalAmount), groupTip.Token.decimals);
+      const maxContributionAtomic = originalAmountAtomic * BigInt(MAX_CONTRIBUTION_RATIO);
+
+      console.log('DEBUG: Contribution validation', {
+        contributionAmount,
+        contributionAmountBigInt: BigInt(contributionAmount),
+        originalAmountAtomic: originalAmountAtomic.toString(),
+        maxContributionAtomic: maxContributionAtomic.toString(),
+        MAX_CONTRIBUTION_RATIO,
+        isValid: BigInt(contributionAmount) <= maxContributionAtomic
+      });
+
+      if (BigInt(contributionAmount) > maxContributionAtomic) {
+        throw new Error(`Maximum contribution is ${formatAmount(maxContributionAtomic, groupTip.Token)}`);
       }
 
       // 6. USER SETUP

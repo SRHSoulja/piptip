@@ -3,6 +3,9 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 import { getSyncMonitor } from "../../services/sync_monitor.js";
 import { withdrawalLimiter } from "../../services/withdrawal_limiter.js";
+import { resilientDiscordUpdates } from "../../services/resilient_discord_updates.js";
+import { discordRateLimiter } from "../../services/discord_rate_limiter.js";
+import { getTimerStatus } from "../../features/group_tip_expiry.js";
 
 export const systemRouter = Router();
 
@@ -217,7 +220,16 @@ systemRouter.post("/system/grand-reset", async (req: Request, res: Response) => 
     }
 
     console.log("🚨 GRAND RESET INITIATED: Wiping all user and financial data...");
-    
+
+    // Clear any active group tip timers before deleting data
+    try {
+      const { clearAllTimers } = await import("../../features/group_tip_expiry.js");
+      clearAllTimers();
+      console.log("🧹 Cleared active group tip timers before reset");
+    } catch (error) {
+      console.warn("⚠️ Could not clear group tip timers:", error);
+    }
+
     // Delete in proper order to respect foreign key constraints
     const deletions = await prisma.$transaction(async (tx) => {
       // Delete dependent records first
@@ -515,5 +527,78 @@ systemRouter.post("/withdrawals/clear-cooldowns", async (req: Request, res: Resp
   } catch (error: any) {
     console.error("Failed to clear withdrawal cooldowns:", error);
     res.status(500).json({ ok: false, error: `Failed to clear cooldowns: ${error.message}` });
+  }
+});
+
+// DISCORD RELIABILITY MONITORING
+systemRouter.get("/discord/status", async (req: Request, res: Response) => {
+  try {
+    const discordQueueStatus = resilientDiscordUpdates.getQueueStatus();
+    const rateLimiterStatus = discordRateLimiter.getStatus();
+    const timerStatus = getTimerStatus();
+
+    res.json({
+      ok: true,
+      discord: {
+        reliabilityQueue: {
+          queueSize: discordQueueStatus.queueSize,
+          pendingUpdates: discordQueueStatus.updates,
+          healthy: discordQueueStatus.queueSize < 50 // Alert if more than 50 failed updates
+        },
+        rateLimiter: {
+          endpointQueues: rateLimiterStatus,
+          totalQueued: Object.values(rateLimiterStatus).reduce((sum, endpoint: any) => sum + endpoint.queueLength, 0),
+          processing: Object.values(rateLimiterStatus).filter((endpoint: any) => endpoint.processing).length
+        },
+        groupTipTimers: {
+          activeTimers: timerStatus.active,
+          timers: timerStatus.timers
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error("Failed to get Discord status:", error);
+    res.status(500).json({ ok: false, error: `Failed to get Discord status: ${error.message}` });
+  }
+});
+
+systemRouter.post("/discord/retry-failed", async (req: Request, res: Response) => {
+  try {
+    await resilientDiscordUpdates.forceRetryAll();
+    console.log("🔄 Admin triggered retry of all failed Discord updates");
+
+    res.json({
+      ok: true,
+      message: "All failed Discord updates queued for immediate retry"
+    });
+  } catch (error: any) {
+    console.error("Failed to retry Discord updates:", error);
+    res.status(500).json({ ok: false, error: `Failed to retry updates: ${error.message}` });
+  }
+});
+
+systemRouter.post("/discord/clear-queue", async (req: Request, res: Response) => {
+  try {
+    const { confirmToken } = req.body;
+
+    // Require confirmation for safety
+    if (confirmToken !== "CLEAR_DISCORD_QUEUE") {
+      return res.status(400).json({
+        ok: false,
+        error: "Confirmation required: { \"confirmToken\": \"CLEAR_DISCORD_QUEUE\" }"
+      });
+    }
+
+    resilientDiscordUpdates.clearQueue();
+    console.log("🗑️ Admin cleared Discord update queue");
+
+    res.json({
+      ok: true,
+      message: "Discord update queue cleared",
+      warning: "Pending Discord updates have been discarded"
+    });
+  } catch (error: any) {
+    console.error("Failed to clear Discord queue:", error);
+    res.status(500).json({ ok: false, error: `Failed to clear queue: ${error.message}` });
   }
 });

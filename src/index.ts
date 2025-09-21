@@ -75,6 +75,10 @@ app.get("/favicon.ico", (_req: Request, res: Response) => {
 
 app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
+
+// Replit-optimized cron webhook for reliable finalization
+import cronWebhookRouter from "./web/cron_webhook.js";
+app.use("/cron", cronWebhookRouter);
 app.use("/admin", adminRouter);
 app.use("/auth", authRouter);
 app.use("/pengubook", pengubookModularRouter);
@@ -288,22 +292,9 @@ bot.on(Events.InteractionCreate, async (i: Interaction) => {
   }
 
   try {
-    const tokens = await getActiveTokens(); // [{ symbol, address, decimals, active: true }, ...]
-    const q = String(focused.value || "").toLowerCase();
-
-    const filtered = tokens
-      .filter(t =>
-        t.symbol.toLowerCase().includes(q) ||
-        t.address.toLowerCase().includes(q)
-      )
-      .slice(0, 25); // Discord limit
-
-    await i.respond(
-      filtered.map(t => ({
-        name: `${t.symbol} (${t.address.slice(0, 8)}...)`,
-        value: t.address, // handler will receive address in options.getString("token")
-      }))
-    );
+    const { tokenCache } = await import("./services/token_cache.js");
+    const filtered = await tokenCache.getFilteredTokens(String(focused.value || ""));
+    await i.respond(filtered);
   } catch (err) {
     console.error("Autocomplete error (token):", err);
     await i.respond([]).catch(() => {});
@@ -338,6 +329,18 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
       }
       return;
     }
+  }
+
+  // ↓↓↓ REPLIT FIX: Check for expired tips on every interaction ↓↓↓
+  // Self-healing: ensure expired tips get processed even if external cron fails
+  try {
+    const { checkAndFinalizeExpiredTips } = await import("./services/replit_finalization.js");
+    // Fire and forget - don't block the interaction
+    checkAndFinalizeExpiredTips(bot).catch(err =>
+      console.warn("Self-healing check failed:", err.message)
+    );
+  } catch (err) {
+    // Ignore import errors in case service isn't ready
   }
 
   // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓
@@ -401,6 +404,34 @@ bot.once(Events.ClientReady, async () => {
     console.error("Failed to restore group tip timers:", error);
   }
 
+  // Initialize resilient Discord update service for reliable message updates
+  try {
+    const { initializeResilientDiscordUpdates } = await import("./services/resilient_discord_updates.js");
+    await initializeResilientDiscordUpdates(bot);
+    console.log("Resilient Discord update service initialized");
+  } catch (error) {
+    console.error("Failed to initialize resilient Discord update service:", error);
+  }
+
+  // Initialize Redis timers for second-precise expiration
+  try {
+    const { redisTimers } = await import("./services/redis_timers.js");
+    await redisTimers.initialize(bot);
+    await redisTimers.restoreActiveTimers();
+    console.log("Redis timer service initialized");
+  } catch (error) {
+    console.error("Failed to initialize Redis timers:", error);
+  }
+
+  // Start periodic health monitoring
+  try {
+    const { healthMonitor } = await import("./services/health_monitor.js");
+    healthMonitor.startPeriodicHealthChecks();
+    console.log("Health monitoring started");
+  } catch (error) {
+    console.error("Failed to start health monitoring:", error);
+  }
+
   // Start tier role management and membership expiry services
   try {
     TierRoleSyncService.startPeriodicSync();
@@ -408,6 +439,15 @@ bot.once(Events.ClientReady, async () => {
     console.log("Tier management services started");
   } catch (error) {
     console.error("Failed to start tier management services:", error);
+  }
+
+  // Start group tip cleanup service to prevent stuck tips
+  try {
+    const { startCleanupService } = await import("./services/group_tip_cleanup.js");
+    startCleanupService();
+    console.log("✅ Group tip cleanup service started");
+  } catch (error) {
+    console.error("Failed to start group tip cleanup service:", error);
   }
 });
 
@@ -446,11 +486,53 @@ async function main() {
       console.log("Shutting down...");
       // await backupService.stop(); // Disabled - using external cron job
 
+      // Clean up group tip timers
+      try {
+        const { clearAllTimers } = await import("./features/group_tip_expiry.js");
+        clearAllTimers();
+      } catch (error) {
+        console.error("Error clearing group tip timers:", error);
+      }
+
+      // Clean up rate limiter
+      try {
+        const { discordRateLimiter } = await import("./services/discord_rate_limiter.js");
+        discordRateLimiter.shutdown();
+        console.log("🛑 Discord rate limiter shutdown");
+      } catch (error) {
+        console.error("Error shutting down rate limiter:", error);
+      }
+
+      // Clean up resilient Discord update service
+      try {
+        const { shutdownResilientDiscordUpdates } = await import("./services/resilient_discord_updates.js");
+        await shutdownResilientDiscordUpdates();
+        console.log("🛑 Resilient Discord update service shutdown");
+      } catch (error) {
+        console.error("Error shutting down resilient Discord update service:", error);
+      }
+
+      // Clean up token cache
+      try {
+        const { tokenCache } = await import("./services/token_cache.js");
+        tokenCache.shutdown();
+      } catch (error) {
+        console.error("Error shutting down token cache:", error);
+      }
+
+      // Stop group tip cleanup service
+      try {
+        const { stopCleanupService } = await import("./services/group_tip_cleanup.js");
+        stopCleanupService();
+      } catch (error) {
+        console.error("Error stopping group tip cleanup service:", error);
+      }
+
       // Stop tier management services
       try {
         TierRoleSyncService.stopPeriodicSync();
         MembershipExpiryService.stopPeriodicCleanup();
-        console.log("Tier management services stopped");
+        console.log("🛑 Tier management services stopped");
       } catch (error) {
         console.error("Error stopping tier management services:", error);
       }

@@ -4,6 +4,7 @@ import { prisma } from "../services/db.js";
 import { decToBigDirect, formatAmount } from "../services/token.js";
 import { groupTipEmbed } from "../ui/embeds.js";
 import { groupTipClaimRow } from "../ui/components.js";
+import { rateLimitedDiscord } from "../services/discord_rate_limiter.js";
 
 export async function updateGroupTipMessage(client: Client, groupTipId: number) {
   const tip = await prisma.groupTip.findUnique({
@@ -18,7 +19,7 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
   if (!tip || !tip.channelId || !tip.messageId) return;
 
   const now = new Date();
-  const expired = !!tip.expiresAt && now >= tip.expiresAt;
+  const expired = (!!tip.expiresAt && now >= tip.expiresAt) || tip.status === 'FINALIZED';
 
   const claimCount = tip.claims.length;
   const claimedBy = tip.claims
@@ -34,6 +35,18 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
     decimals: tip.Token.decimals,
   } as any);
 
+  // Calculate payout per user if finalized
+  let payoutPerUser: string | undefined;
+  if (tip.status === 'FINALIZED' && claimCount > 0) {
+    const totalPayout = decToBigDirect(tip.totalAmount, tip.Token.decimals);
+    const perUser = totalPayout / BigInt(claimCount);
+    payoutPerUser = formatAmount(perUser, {
+      address: tip.Token.address,
+      symbol: tip.Token.symbol,
+      decimals: tip.Token.decimals,
+    } as any);
+  }
+
   const embed = groupTipEmbed({
     creator: creatorDisplay,
     amount: amountStr,
@@ -41,16 +54,19 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
     claimCount,
     claimedBy,
     isExpired: expired,         // 👈 tell the embed it's expired
+    isFinalized: tip.status === 'FINALIZED',
+    payoutPerUser,
     // note: (omit, since GroupTip has no note column)
   });
 
   const components = [groupTipClaimRow(tip.id, expired || tip.status !== "ACTIVE")];
 
-  const channel = await client.channels.fetch(tip.channelId).catch(() => null);
-  if (!channel || !channel.isTextBased()) return;
+  const channel = await rateLimitedDiscord.fetchChannel(client, tip.channelId).catch(() => null);
+  if (!channel || typeof channel !== 'object' || !('isTextBased' in channel) || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) return;
 
   const msg = await (channel as TextBasedChannel).messages.fetch(tip.messageId).catch(() => null);
   if (!msg) return;
 
-  await msg.edit({ embeds: [embed], components });
+  // Use rate limiter for message editing to prevent Discord API issues
+  await rateLimitedDiscord.editMessage(msg, { embeds: [embed], components });
 }
