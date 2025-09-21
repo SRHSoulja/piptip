@@ -1,7 +1,7 @@
 // src/web/admin/transactions.ts
 import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
-import { fetchMultipleUsernames, getDiscordClient } from "../../services/discord_users.js";
+import { fetchMultipleUsernames, fetchMultipleServernames, getDiscordClient } from "../../services/discord_users.js";
 
 export const transactionsRouter = Router();
 
@@ -64,9 +64,24 @@ transactionsRouter.get("/transactions/export", async (req: Request, res: Respons
       orderBy: { createdAt: 'desc' }
     });
 
-    let csv = "id,type,userId,amount,token,fee,createdAt,guildId,metadata\\n";
+    // Fetch server names for guild IDs
+    const client = getDiscordClient();
+    const guildIds = [...new Set(transactions.map(tx => tx.guildId).filter(Boolean) as string[])];
+    let servernames = new Map<string, string>();
+
+    if (client && guildIds.length > 0) {
+      try {
+        servernames = await fetchMultipleServernames(client, guildIds);
+        console.log(`Fetched ${servernames.size} server names for transaction export`);
+      } catch (error) {
+        console.error("Failed to fetch server names for export:", error);
+      }
+    }
+
+    let csv = "id,type,userId,amount,token,fee,createdAt,serverName,guildId,metadata\\n";
     transactions.forEach(tx => {
-      csv += `${tx.id},"${tx.type}","${tx.userId || ''}","${tx.amount}","${tx.tokenId || ''}","${tx.fee || ''}","${tx.createdAt.toISOString()}","${tx.guildId || ''}","${tx.metadata || ''}"\\n`;
+      const serverName = tx.guildId ? (servernames.get(tx.guildId) || `Server#${tx.guildId.slice(-4)}`) : '';
+      csv += `${tx.id},"${tx.type}","${tx.userId || ''}","${tx.amount}","${tx.tokenId || ''}","${tx.fee || ''}","${tx.createdAt.toISOString()}","${serverName}","${tx.guildId || ''}","${tx.metadata || ''}"\\n`;
     });
 
     res.setHeader("Content-Type", "text/csv");
@@ -158,10 +173,12 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req: Reque
     const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
     const tokenMap = new Map(tokens.map(t => [t.id, t.symbol]));
 
+    // Get Discord client once for both username and server name fetching
+    const client = getDiscordClient();
+
     // Fetch Discord username for the user
     let username = `User ${user.discordId.slice(0, 8)}...`;
     try {
-      const client = getDiscordClient();
       if (client) {
         const usernames = await fetchMultipleUsernames(client, [user.discordId]);
         username = usernames.get(user.discordId) || username;
@@ -170,7 +187,26 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req: Reque
       console.warn("Failed to fetch username for export:", error);
     }
 
-    let csv = "username,user_discord_id,timestamp,activity_type,direction,tip_amount,token,tax_paid,total_deducted,tax_rate_bps,exemption_applied,exemption_rate,tax_saved,counterpart,guild_id,status,details\n";
+    // Fetch server names for guild IDs
+    const allGuildIds = [
+      ...transactions.map(tx => tx.guildId),
+      ...tips.map(tip => tip.guildId),
+      ...groupTips.created.map(gt => gt.guildId),
+      ...groupTips.claimed.map(claim => claim.GroupTip.guildId)
+    ].filter(Boolean) as string[];
+    const uniqueGuildIds = [...new Set(allGuildIds)];
+    let servernames = new Map<string, string>();
+
+    if (client && uniqueGuildIds.length > 0) {
+      try {
+        servernames = await fetchMultipleServernames(client, uniqueGuildIds);
+        console.log(`Fetched ${servernames.size} server names for user activity export`);
+      } catch (error) {
+        console.error("Failed to fetch server names for user export:", error);
+      }
+    }
+
+    let csv = "username,user_discord_id,timestamp,activity_type,direction,tip_amount,token,tax_paid,total_deducted,tax_rate_bps,exemption_applied,exemption_rate,tax_saved,counterpart,server_name,guild_id,status,details\n";
 
     // Add transactions
     transactions.forEach(tx => {
@@ -209,7 +245,8 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req: Reque
       }
       
       // Non-tip transactions - use basic format without tax breakdown
-      csv += `"${username}","${user.discordId}","${tx.createdAt.toISOString()}","${activityType}","${direction}","${tx.amount}","${token}","${tx.fee}","${tx.amount}","0","","0","0","${counterpart}","${tx.guildId || ''}","${status}","${details}"\n`;
+      const serverName = tx.guildId ? (servernames.get(tx.guildId) || `Server#${tx.guildId.slice(-4)}`) : '';
+      csv += `"${username}","${user.discordId}","${tx.createdAt.toISOString()}","${activityType}","${direction}","${tx.amount}","${token}","${tx.fee}","${tx.amount}","0","","0","0","${counterpart}","${serverName}","${tx.guildId || ''}","${status}","${details}"\n`;
     });
 
     // Add tips with comprehensive tax transparency
@@ -217,32 +254,35 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req: Reque
       const direction = tip.fromUserId === user.id ? 'sent' : 'received';
       const counterpart = direction === 'sent' ? `user_${tip.toUserId}` : `user_${tip.fromUserId}`;
 
+      const serverName = tip.guildId ? (servernames.get(tip.guildId) || `Server#${tip.guildId.slice(-4)}`) : '';
       // For sent tips, show full tax breakdown; for received tips, show recipient perspective
       if (direction === 'sent') {
-        csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","${tip.feeAtomic || 0}","${tip.totalDeductedAtomic || Number(tip.amountAtomic) + Number(tip.feeAtomic || 0)}","${tip.taxRateAppliedBps || 0}","${tip.roleBenefitUsed || ''}","${tip.exemptionRateBps || 0}","${tip.taxSavedAtomic || 0}","${counterpart}","${tip.guildId || ''}","${tip.status}","${tip.note || ''}"\n`;
+        csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","${tip.feeAtomic || 0}","${tip.totalDeductedAtomic || Number(tip.amountAtomic) + Number(tip.feeAtomic || 0)}","${tip.taxRateAppliedBps || 0}","${tip.roleBenefitUsed || ''}","${tip.exemptionRateBps || 0}","${tip.taxSavedAtomic || 0}","${counterpart}","${serverName}","${tip.guildId || ''}","${tip.status}","${tip.note || ''}"\n`;
       } else {
         // Received tips don't show tax details (recipient gets full amount)
-        csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","0","${tip.amountAtomic}","0","","0","0","${counterpart}","${tip.guildId || ''}","${tip.status}","${tip.note || ''}"\n`;
+        csv += `"${username}","${user.discordId}","${tip.createdAt.toISOString()}","tip","${direction}","${tip.amountAtomic}","${tip.Token?.symbol || 'Unknown'}","0","${tip.amountAtomic}","0","","0","0","${counterpart}","${serverName}","${tip.guildId || ''}","${tip.status}","${tip.note || ''}"\n`;
       }
     });
 
     // Add group tips created
     groupTips.created.forEach(gt => {
       const totalWithTax = Number(gt.totalAmount) + Number(gt.taxAtomic || 0);
-      csv += `"${username}","${user.discordId}","${gt.createdAt.toISOString()}","group_tip","created","${gt.totalAmount}","${gt.Token?.symbol || 'Unknown'}","${gt.taxAtomic || 0}","${totalWithTax}","0","","0","0","group","${gt.guildId || ''}","${gt.status}","Duration: ${gt.duration}h"\n`;
+      const serverName = gt.guildId ? (servernames.get(gt.guildId) || `Server#${gt.guildId.slice(-4)}`) : '';
+      csv += `"${username}","${user.discordId}","${gt.createdAt.toISOString()}","group_tip","created","${gt.totalAmount}","${gt.Token?.symbol || 'Unknown'}","${gt.taxAtomic || 0}","${totalWithTax}","0","","0","0","group","${serverName}","${gt.guildId || ''}","${gt.status}","Duration: ${gt.duration}h"\n`;
     });
 
     // Add group tips claimed
     groupTips.claimed.forEach(claim => {
       const claimTime = claim.claimedAt?.toISOString() || claim.createdAt.toISOString();
-      csv += `"${username}","${user.discordId}","${claimTime}","group_tip","claimed","estimated_share","${claim.GroupTip.Token?.symbol || 'Unknown'}","0","estimated_share","0","","0","0","group_${claim.groupTipId}","${claim.GroupTip.guildId || ''}","${claim.status}","Group tip claim"\n`;
+      const serverName = claim.GroupTip.guildId ? (servernames.get(claim.GroupTip.guildId) || `Server#${claim.GroupTip.guildId.slice(-4)}`) : '';
+      csv += `"${username}","${user.discordId}","${claimTime}","group_tip","claimed","estimated_share","${claim.GroupTip.Token?.symbol || 'Unknown'}","0","estimated_share","0","","0","0","group_${claim.groupTipId}","${serverName}","${claim.GroupTip.guildId || ''}","${claim.status}","Group tip claim"\n`;
     });
 
     // Add matches
     matches.forEach(match => {
       const role = match.challengerId === user.id ? 'challenger' : 'joiner';
       const result = match.winnerUserId === user.id ? 'won' : (match.winnerUserId ? 'lost' : 'pending');
-      csv += `"${username}","${user.discordId}","${match.createdAt.toISOString()}","match","${role}","${match.wagerAtomic}","${match.Token?.symbol || 'Unknown'}","${match.rakeAtomic || 0}","${match.wagerAtomic}","0","","0","0","opponent","","${match.status}","${result}"\n`;
+      csv += `"${username}","${user.discordId}","${match.createdAt.toISOString()}","match","${role}","${match.wagerAtomic}","${match.Token?.symbol || 'Unknown'}","${match.rakeAtomic || 0}","${match.wagerAtomic}","0","","0","0","opponent","","","${match.status}","${result}"\n`;
     });
 
     const filename = `user_${discordId}_activity_${new Date().toISOString().split('T')[0]}.csv`;
