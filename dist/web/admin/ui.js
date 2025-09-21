@@ -2211,7 +2211,7 @@ function updateServerStats(servers) {
     
     const serverNameCell = createElement('td');
     const serverName = createElement('strong', {
-      textContent: escapeHtml(server.servername || server.guildId || 'Unknown Server')
+      textContent: escapeHtml(server.serverName || server.guildId || 'Unknown Server')
     });
     const lineBreak = createElement('br');
     const guildIdSmall = createElement('small', {
