@@ -219,12 +219,12 @@ export async function handleGroupTipClaim(i, groupTipId) {
         await rateLimitedDiscord.editReply(i, {
             content: "🐧 Processing your claim... This might take a moment! ⏳"
         });
-        // OPTIMIZATION 5: Try fast claim first with short timeout
+        // Try claim with reasonable timeout
         let fastClaimSucceeded = false;
         try {
             const fastResult = await Promise.race([
                 resilientDb.processGroupTipClaim(groupTipId, i.user.id),
-                new Promise((_, reject) => setTimeout(() => reject(new Error("Fast claim timeout")), 1200))
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Claim timeout")), 8000))
             ]);
             if (fastResult.expired) {
                 // Handle expired case

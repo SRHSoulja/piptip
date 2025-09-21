@@ -268,13 +268,13 @@ export async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: numb
       content: "🐧 Processing your claim... This might take a moment! ⏳"
     });
 
-    // OPTIMIZATION 5: Try fast claim first with short timeout
+    // Try claim with reasonable timeout
     let fastClaimSucceeded = false;
     try {
       const fastResult = await Promise.race([
         resilientDb.processGroupTipClaim(groupTipId, i.user.id),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Fast claim timeout")), 1200)
+          setTimeout(() => reject(new Error("Claim timeout")), 8000)
         )
       ]);
 

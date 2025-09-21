@@ -266,7 +266,7 @@ export const resilientDb = {
     return Promise.race([
       withRetry(
       async () => {
-        // EMERGENCY OPTIMIZATION: Pre-validate outside transaction for speed
+        // Pre-validate outside transaction for speed
         const quickValidation = await Promise.race([
           prisma.groupTip.findUnique({
             where: { id: groupTipId },
@@ -278,7 +278,7 @@ export const resilientDb = {
             }
           }),
           new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error("Pre-validation timeout")), 600)
+            setTimeout(() => reject(new Error("Pre-validation timeout")), 3000)
           )
         ]);
 
@@ -297,7 +297,7 @@ export const resilientDb = {
           throw new Error("You cannot claim your own group tip");
         }
 
-        // OPTIMIZATION: Super fast user lookup/creation
+        // User lookup/creation
         const user = await Promise.race([
           prisma.user.upsert({
             where: { discordId },
@@ -305,11 +305,11 @@ export const resilientDb = {
             create: { discordId },
           }),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("User upsert timeout")), 500)
+            setTimeout(() => reject(new Error("User upsert timeout")), 2500)
           )
         ]);
 
-        // OPTIMIZATION: Check existing participation with minimal timeout
+        // Check existing participation
         const [existingContribution, existingClaim] = await Promise.race([
           Promise.all([
             prisma.groupTipContribution.findUnique({
@@ -330,7 +330,7 @@ export const resilientDb = {
             })
           ]),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Participation check timeout")), 700)
+            setTimeout(() => reject(new Error("Participation check timeout")), 3000)
           )
         ]);
 
@@ -342,7 +342,7 @@ export const resilientDb = {
           throw new Error("You have already claimed this group tip");
         }
 
-        // CRITICAL FIX: Super fast transaction with tight timeouts
+        // Create claim transaction with reasonable timeouts
         const result = await Promise.race([
           prisma.$transaction(async (tx) => {
             // Record claim
@@ -361,11 +361,11 @@ export const resilientDb = {
               newClaimCount: claimCount,
             };
           }, {
-            maxWait: 800,   // Very tight limits for fast response
-            timeout: 1000,  // 1 second max for transaction
+            maxWait: 3000,   // More reasonable limits
+            timeout: 5000,   // 5 seconds max for transaction
           }),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Transaction timeout: Database operation exceeded 1 second")), 1000)
+            setTimeout(() => reject(new Error("Transaction timeout: Database operation exceeded 5 seconds")), 5000)
           )
         ]);
 
@@ -379,9 +379,9 @@ export const resilientDb = {
       `processGroupTipClaim(${groupTipId}, ${discordId})`,
       { maxAttempts: 2, baseDelayMs: 50, maxDelayMs: 100, exponentialBackoff: false } // Minimal retries for speed
     ),
-    // Ultimate timeout - force reject after 1.8 seconds max
+    // Ultimate timeout - force reject after 10 seconds max
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Claim timeout: Database operation exceeded 1.8 seconds")), 1800)
+      setTimeout(() => reject(new Error("Claim timeout: Database operation exceeded 10 seconds")), 10000)
     )
     ]).catch(error => {
       // Track failed claim performance too
