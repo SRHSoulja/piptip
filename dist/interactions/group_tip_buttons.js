@@ -93,11 +93,15 @@ async function processClaimInBackground(groupTipId, discordId, interaction) {
             }
             return;
         }
-        // Success - update message and notify user
-        await resilientDb.updateGroupTipMessage(interaction.client, groupTipId);
+        // Success - notify user first, then update Discord message
         // Try to update user with success message
         await rateLimitedDiscord.editReply(interaction, {
             content: `✅ You're in! You'll receive your share when the timer expires. (${'newClaimCount' in result ? result.newClaimCount : 'Some'} people claimed so far)`
+        });
+        // Update Discord message in background to avoid blocking user feedback
+        setImmediate(() => {
+            resilientDb.updateGroupTipMessage(interaction.client, groupTipId)
+                .catch(error => console.error(`Failed to update group tip message in background:`, error));
         });
         console.log(`✅ Background claim successful for tip ${groupTipId}, user ${discordId}`);
     }
@@ -239,10 +243,14 @@ export async function handleGroupTipClaim(i, groupTipId) {
             }
             // Fast success!
             fastClaimSucceeded = true;
-            // Update message and give success feedback
-            await resilientDb.updateGroupTipMessage(i.client, groupTipId);
+            // Give immediate success feedback first
             await i.editReply({
                 content: `✅ You're in! You'll receive your share when the timer expires. (${'newClaimCount' in fastResult ? fastResult.newClaimCount : 'Some'} people claimed so far)`
+            });
+            // Update Discord message in the background to avoid blocking user feedback
+            setImmediate(() => {
+                resilientDb.updateGroupTipMessage(i.client, groupTipId)
+                    .catch(error => console.error(`Failed to update group tip message after claim:`, error));
             });
         }
         catch (fastError) {

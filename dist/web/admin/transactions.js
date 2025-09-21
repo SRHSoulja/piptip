@@ -25,11 +25,27 @@ transactionsRouter.get("/transactions", async (req, res) => {
         }
         if (since)
             where.createdAt = { gte: new Date(since) };
-        const transactions = await prisma.transaction.findMany({
+        const allTransactions = await prisma.transaction.findMany({
             where,
             orderBy: { createdAt: 'desc' },
-            take: parseInt(limit)
+            take: parseInt(limit) * 2 // Fetch more to handle filtering
         });
+        // Filter out GROUP_TIP_CREATE transactions that are fee-only records
+        const transactions = allTransactions.filter(tx => {
+            try {
+                if (tx.metadata) {
+                    const metadata = JSON.parse(tx.metadata);
+                    // Skip fee-only group tip creation records
+                    if (metadata.kind === "GROUP_TIP_CREATE" && !tx.otherUserId && Number(tx.amount) === 0) {
+                        return false;
+                    }
+                }
+            }
+            catch (e) {
+                // Invalid JSON, keep the transaction
+            }
+            return true;
+        }).slice(0, parseInt(limit));
         res.json({ ok: true, transactions });
     }
     catch {
@@ -58,9 +74,25 @@ transactionsRouter.get("/transactions/export", async (req, res) => {
         }
         if (since)
             where.createdAt = { gte: new Date(since) };
-        const transactions = await prisma.transaction.findMany({
+        const allTransactions = await prisma.transaction.findMany({
             where,
             orderBy: { createdAt: 'desc' }
+        });
+        // Filter out GROUP_TIP_CREATE transactions that are fee-only records
+        const transactions = allTransactions.filter(tx => {
+            try {
+                if (tx.metadata) {
+                    const metadata = JSON.parse(tx.metadata);
+                    // Skip fee-only group tip creation records
+                    if (metadata.kind === "GROUP_TIP_CREATE" && !tx.otherUserId && Number(tx.amount) === 0) {
+                        return false;
+                    }
+                }
+            }
+            catch (e) {
+                // Invalid JSON, keep the transaction
+            }
+            return true;
         });
         // Fetch server names for guild IDs
         const client = getDiscordClient();
@@ -106,7 +138,7 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req, res) 
         if (until)
             dateFilter.lte = new Date(until);
         // Get all user activity in parallel
-        const [transactions, tips, groupTips, matches, balances] = await Promise.all([
+        const [allTransactions, tips, groupTips, matches, balances] = await Promise.all([
             // Direct transactions
             prisma.transaction.findMany({
                 where: {
@@ -158,6 +190,22 @@ transactionsRouter.get("/transactions/export/user/:discordId", async (req, res) 
                 include: { Token: true }
             })
         ]);
+        // Filter out GROUP_TIP_CREATE transactions that are fee-only records
+        const transactions = allTransactions.filter(tx => {
+            try {
+                if (tx.metadata) {
+                    const metadata = JSON.parse(tx.metadata);
+                    // Skip fee-only group tip creation records
+                    if (metadata.kind === "GROUP_TIP_CREATE" && !tx.otherUserId && Number(tx.amount) === 0) {
+                        return false;
+                    }
+                }
+            }
+            catch (e) {
+                // Invalid JSON, keep the transaction
+            }
+            return true;
+        });
         // Get token map for reference
         const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
         const tokenMap = new Map(tokens.map(t => [t.id, t.symbol]));
@@ -282,7 +330,7 @@ transactionsRouter.get("/transactions/export/guild/:guildId", async (req, res) =
         if (until)
             dateFilter.lte = new Date(until);
         // Get all guild activity
-        const [transactions, tips, groupTips, matches] = await Promise.all([
+        const [allTransactions, tips, groupTips, matches] = await Promise.all([
             // Guild transactions
             prisma.transaction.findMany({
                 where: {
@@ -320,6 +368,22 @@ transactionsRouter.get("/transactions/export/guild/:guildId", async (req, res) =
                 take: 1000
             })
         ]);
+        // Filter out GROUP_TIP_CREATE transactions that are fee-only records
+        const transactions = allTransactions.filter(tx => {
+            try {
+                if (tx.metadata) {
+                    const metadata = JSON.parse(tx.metadata);
+                    // Skip fee-only group tip creation records
+                    if (metadata.kind === "GROUP_TIP_CREATE" && !tx.otherUserId && Number(tx.amount) === 0) {
+                        return false;
+                    }
+                }
+            }
+            catch (e) {
+                // Invalid JSON, keep the transaction
+            }
+            return true;
+        });
         // Get token map
         const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
         const tokenMap = new Map(tokens.map(t => [t.id, t.symbol]));

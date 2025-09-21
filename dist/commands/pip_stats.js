@@ -112,6 +112,20 @@ export default async function pipStats(i) {
                 for (const tx of transactions) {
                     if (seen.has(tx.id))
                         continue;
+                    // Parse metadata to check transaction details
+                    let metadata = {};
+                    try {
+                        if (tx.metadata) {
+                            metadata = JSON.parse(tx.metadata);
+                        }
+                    }
+                    catch (e) {
+                        // Invalid JSON, treat as regular transaction
+                    }
+                    // Skip fee-only group tip creation records
+                    if (metadata.kind === "GROUP_TIP_CREATE" && !tx.otherUserId && Number(tx.amount) === 0) {
+                        continue;
+                    }
                     // For tip transactions, ensure we only show one entry per unique tip
                     if (tx.type === 'TIP') {
                         const tipKey = `TIP-${tx.amount}-${tx.tokenId}-${Math.floor(tx.createdAt.getTime() / 1000)}`;
