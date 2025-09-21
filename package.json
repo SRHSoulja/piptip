@@ -6,8 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "npx prisma db push && tsc && cp -r src/web/admin/js dist/web/admin/ && cp src/web/admin/ui.js dist/web/admin/ && cp -r src/web/static dist/web/ 2>/dev/null || true",
-    "start": "node dist/index.js",
+    "build": "npx prisma generate && tsc && cp -r src/web/admin/js dist/web/admin/ && cp src/web/admin/ui.js dist/web/admin/ && cp -r src/web/static dist/web/ 2>/dev/null || true",
+    "start": "npx prisma db push && node dist/index.js",
     "test": "tsx --test tests/*.test.js",
     "test:group-claim": "tsx --test tests/group-claim.test.js",
     "prisma:push": "prisma db push",
