@@ -433,18 +433,8 @@ export async function userTipHandler(req: Request, res: Response) {
     const result = await processTip(tipData, client);
 
     if (result.success) {
-      // Create a PenguBook message record for the tip
-      const senderUser = await findOrCreateUser(currentUser.discordId);
-      const recipientUser = await findOrCreateUser(targetDiscordId);
-
-      await prisma.penguBookMessage.create({
-        data: {
-          fromUserId: senderUser.id,
-          toUserId: recipientUser.id,
-          message: message || `Received a tip of ${amount} tokens`,
-          read: false
-        }
-      });
+      // Note: PenguBook message is automatically created by tip processor
+      // when fromPenguBook: true is set in tipData above
 
       return res.json({
         success: true,

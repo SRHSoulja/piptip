@@ -691,13 +691,13 @@ export async function handlePenguBookInbox(i: ButtonInteraction) {
     const buttons = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId("pip:pengubook_inbox_refresh")
-          .setLabel("🔄 Refresh")
+          .setCustomId("pip:refresh_profile")
+          .setLabel("🔄 Back to Profile")
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
-          .setCustomId("pip:pengubook_browse")
-          .setLabel("📖 Browse PenguBook")
-          .setStyle(ButtonStyle.Primary)
+          .setCustomId("pip:dismiss_profile")
+          .setLabel("❌ Dismiss")
+          .setStyle(ButtonStyle.Secondary)
       );
 
     return i.editReply({
