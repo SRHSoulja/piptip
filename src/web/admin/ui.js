@@ -109,6 +109,26 @@ const createTreasuryRow = (token) => createTableRow([
   { textContent: token.human }
 ]);
 
+const createAdTableRow = (ad) => {
+  const tr = document.createElement('tr');
+  tr.dataset.id = ad.id;
+  tr.innerHTML = `
+    <td>${ad.id}</td>
+    <td><input value="${escapeHtml(ad.text || '')}" data-field="text" maxlength="500" style="width:420px"/></td>
+    <td><input value="${escapeHtml(ad.url || '')}" data-field="url" placeholder="https://..." style="width:320px"/></td>
+    <td><input value="${escapeHtml(String(ad.weight))}" data-field="weight" type="number" min="1" max="100" style="width:80px"/></td>
+    <td>
+      <div class="status-indicator ${ad.active ? 'online' : 'offline'}"></div>
+      <input type="checkbox" ${ad.active ? 'checked' : ''} data-field="active"/>
+    </td>
+    <td>
+      <button class="saveAd">Save</button>
+      <button class="deleteAd" style="background:#ef4444;">Delete</button>
+    </td>
+  `;
+  return tr;
+};
+
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);
 const API = async (path, opts = {}) => {
