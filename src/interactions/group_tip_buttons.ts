@@ -78,12 +78,9 @@ try {
       };
     });
 
-    // If the tip had already expired, finalize now (idempotent) and refresh
+    // If the tip had already expired, just update message (let native timer handle finalization)
     if (result.expired) {
-      if (result.status === "ACTIVE") {
-        await i.editReply({ content: "⏳ Finalizing this group tip…" });
-        await finalizeExpiredGroupTip(result.groupTipId);
-      }
+      // Don't call finalizeExpiredGroupTip here - let the native timer handle it to avoid race conditions
       await updateGroupTipMessage(i.client, result.groupTipId);
       return i.editReply({ content: "<a:PenguNo:1415469218681585674> This group tip has expired — claims are closed." });
     }

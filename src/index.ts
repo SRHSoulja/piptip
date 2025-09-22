@@ -332,16 +332,16 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
   }
 
   // ↓↓↓ REPLIT FIX: Check for expired tips on every interaction ↓↓↓
-  // Self-healing: ensure expired tips get processed even if external cron fails
-  try {
-    const { checkAndFinalizeExpiredTips } = await import("./services/replit_finalization.js");
-    // Fire and forget - don't block the interaction
-    checkAndFinalizeExpiredTips(bot).catch(err =>
-      console.warn("Self-healing check failed:", err.message)
-    );
-  } catch (err) {
-    // Ignore import errors in case service isn't ready
-  }
+  // DISABLED - conflicts with native timer system causing duplicate payouts
+  // try {
+  //   const { checkAndFinalizeExpiredTips } = await import("./services/replit_finalization.js");
+  //   // Fire and forget - don't block the interaction
+  //   checkAndFinalizeExpiredTips(bot).catch(err =>
+  //     console.warn("Self-healing check failed:", err.message)
+  //   );
+  // } catch (err) {
+  //   // Ignore import errors in case service isn't ready
+  // }
 
   // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓
   if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
@@ -414,14 +414,15 @@ bot.once(Events.ClientReady, async () => {
   }
 
   // Initialize Redis timers for second-precise expiration
-  try {
-    const { redisTimers } = await import("./services/redis_timers.js");
-    await redisTimers.initialize(bot);
-    await redisTimers.restoreActiveTimers();
-    console.log("Redis timer service initialized");
-  } catch (error) {
-    console.error("Failed to initialize Redis timers:", error);
-  }
+  // DISABLED - conflicts with native timer system causing duplicate payouts
+  // try {
+  //   const { redisTimers } = await import("./services/redis_timers.js");
+  //   await redisTimers.initialize(bot);
+  //   await redisTimers.restoreActiveTimers();
+  //   console.log("Redis timer service initialized");
+  // } catch (error) {
+  //   console.error("Failed to initialize Redis timers:", error);
+  // }
 
   // Start periodic health monitoring
   try {
