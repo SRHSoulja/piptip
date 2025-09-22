@@ -59,6 +59,11 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
     // note: (omit, since GroupTip has no note column)
   });
 
+  // Force Discord cache refresh by setting a new timestamp for finalized tips
+  if (tip.status === 'FINALIZED') {
+    embed.setTimestamp(new Date());
+  }
+
   const components = [groupTipClaimRow(tip.id, expired || tip.status !== "ACTIVE")];
 
   const channel = await rateLimitedDiscord.fetchChannel(client, tip.channelId).catch(() => null);
@@ -68,5 +73,24 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
   if (!msg) return;
 
   // Use rate limiter for message editing to prevent Discord API issues
-  await rateLimitedDiscord.editMessage(msg, { embeds: [embed], components });
+  console.log(`🔧 updateGroupTipMessage: Editing message for tip ${groupTipId}`, {
+    expired,
+    isFinalized: tip.status === 'FINALIZED',
+    status: tip.status,
+    messageId: tip.messageId,
+    embedFields: embed.data.fields?.map(f => ({ name: f.name, value: f.value }))
+  });
+
+  try {
+    await rateLimitedDiscord.editMessage(msg, { embeds: [embed], components });
+    console.log(`✅ updateGroupTipMessage: Successfully edited message for tip ${groupTipId}`);
+  } catch (error: any) {
+    console.error(`❌ updateGroupTipMessage: Failed to edit message for tip ${groupTipId}:`, {
+      error: error.message,
+      name: error.name,
+      code: error.code,
+      status: error.status
+    });
+    throw error;
+  }
 }

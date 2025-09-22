@@ -387,9 +387,9 @@ export function groupTipEmbed(data: {
   const timestamp = Math.floor(data.expiresAt.getTime() / 1000);
 
   const e = new EmbedBuilder()
-    .setTitle("🎉🐧 Colony Fish Sharing!")
+    .setTitle(data.isFinalized ? "🎉✅ Colony Fish Distributed!" : "🎉🐧 Colony Fish Sharing!")
     .setDescription(description)
-    .setColor(0x38d9a9) // Teal
+    .setColor(data.isFinalized ? 0x00ff00 : 0x38d9a9) // Green for finalized, Teal for active
     .addFields(
       { name: "🐧 Colony Members", value: `${data.claimCount} penguins`, inline: true },
       {
