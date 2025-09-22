@@ -4,6 +4,7 @@ import { prisma } from "../services/db.js";
 import { addGroupTipContribution } from "../services/group_tip_contributions.js";
 import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { PENGUIN_LOADING } from "../utils/penguin_messages.js";
+import { decToBigDirect } from "../services/token.js";
 
 export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, groupTipId: number) {
   // Manual defer for modal interactions
@@ -44,30 +45,22 @@ export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, g
       });
     }
 
-    // Convert to atomic units safely - use a simple approach for common decimals
+    // Convert to atomic units using the existing codebase logic
     const decimals = groupTip.Token.decimals;
     let atomicAmount: number;
 
     try {
-      if (decimals <= 6) {
-        // Safe for tokens with 6 or fewer decimals
-        atomicAmount = Math.floor(contributionAmount * Math.pow(10, decimals));
-      } else {
-        // For tokens with more decimals, use string manipulation to avoid overflow
-        const parts = contributionAmount.toFixed(decimals).split('.');
-        const wholePart = parts[0] || '0';
-        const decimalPart = (parts[1] || '').padEnd(decimals, '0').substring(0, decimals);
-        const atomicString = wholePart + decimalPart;
-        const cleanedString = atomicString.replace(/^0+/, '') || '0';
+      // Use the same conversion logic as the rest of the codebase
+      const atomicBigInt = decToBigDirect(contributionAmount, decimals);
 
-        if (cleanedString.length > 15) {
-          return i.editReply({
-            content: `❌ Amount results in a number too large for processing. Please use a smaller amount.`
-          });
-        }
-
-        atomicAmount = parseInt(cleanedString, 10);
+      // Check if the result fits in a safe JavaScript number
+      if (atomicBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+        return i.editReply({
+          content: `❌ Amount too large for processing. Please use a smaller amount (max ~9 quadrillion atomic units).`
+        });
       }
+
+      atomicAmount = Number(atomicBigInt);
     } catch (conversionError) {
       console.error('Conversion error:', conversionError);
       return i.editReply({
