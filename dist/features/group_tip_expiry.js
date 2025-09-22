@@ -165,10 +165,12 @@ async function announceResult(client, tipId) {
     console.log(`🔄 TIMER CONTEXT: Attempting Discord message update in same context as announcement...`);
     console.log(`🔍 TIMER CONTEXT: Client state: ready=${client.isReady()}, user=${client.user?.username}, uptime=${client.uptime}ms`);
     console.log(`🚨 TIMER CONTEXT: THIS LOG PROVES THE TIMER IS CALLING DISCORD UPDATE FOR TIP ${tipId}`);
+    console.log(`🔧 TIMER CONTEXT: About to call updateGroupTipMessage(client, ${tipId})`);
     try {
         // First try the normal way
+        console.log(`🔧 TIMER CONTEXT: Calling updateGroupTipMessage NOW...`);
         await updateGroupTipMessage(client, tipId);
-        console.log(`✅ Discord message update succeeded for tip ${tipId}!`);
+        console.log(`✅ TIMER CONTEXT: Discord message update succeeded for tip ${tipId}!`);
     }
     catch (error) {
         console.error(`❌ Primary Discord message update failed for tip ${tipId}:`, error.message);
