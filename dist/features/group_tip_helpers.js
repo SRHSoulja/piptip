@@ -26,19 +26,25 @@ export async function updateGroupTipMessage(client, groupTipId) {
             console.log(`❌ updateGroupTipMessage: Missing required data for tip ${groupTipId}`);
             return;
         }
+        console.log(`🔍 Processing tip data for tip ${groupTipId}...`);
         const now = new Date();
         const expired = (!!tip.expiresAt && now >= tip.expiresAt) || tip.status === 'FINALIZED';
+        console.log(`🔍 Calculated expired=${expired} for tip ${groupTipId}`);
         const claimCount = tip.claims.length;
         const claimedBy = tip.claims
             .map(c => (c.User?.discordId ? `<@${c.User.discordId}>` : null))
             .filter(Boolean);
+        console.log(`🔍 Claims processed: ${claimCount} claims, ${claimedBy.length} with Discord IDs`);
         const creatorDisplay = tip.Creator?.discordId ? `<@${tip.Creator.discordId}>` : "Unknown";
+        console.log(`🔍 Creator display: ${creatorDisplay}`);
         const atomicTotal = decToBigDirect(tip.totalAmount, tip.Token.decimals);
+        console.log(`🔍 Calculated atomicTotal: ${atomicTotal}`);
         const amountStr = formatAmount(atomicTotal, {
             address: tip.Token.address,
             symbol: tip.Token.symbol,
             decimals: tip.Token.decimals,
         });
+        console.log(`🔍 Formatted amount: ${amountStr}`);
         // Calculate payout per user if finalized
         let payoutPerUser;
         if (tip.status === 'FINALIZED' && claimCount > 0) {
