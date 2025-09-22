@@ -404,6 +404,7 @@ bot.once(Events.ClientReady, async () => {
     console.error("Failed to restore group tip timers:", error);
   }
 
+
   // Initialize resilient Discord update service for reliable message updates
   try {
     const { initializeResilientDiscordUpdates } = await import("./services/resilient_discord_updates.js");
