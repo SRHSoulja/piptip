@@ -1,7 +1,7 @@
 // src/services/group_tip_contributions.ts - Secure group tip contribution system
 import { prisma } from "./db.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
-import { formatDecimal, decToBigDirect, formatAmount, toAtomicDirect } from "./token.js";
+import { formatDecimal, decToBigDirect, formatAmount, toAtomicDirect, bigToDecDirect } from "./token.js";
 import { PENGUIN_ERRORS, createPenguinSuccess } from "../utils/penguin_messages.js";
 import { getConfig } from "../config.js";
 import { RoleTaxBenefitService } from "./role_tax_benefits.js";
@@ -166,7 +166,7 @@ export async function addGroupTipContribution(
 
       const feeBps = BigInt(feeBpsNum);
       const feeAtomic = (atomic * feeBps) / 10000n;
-      const taxAmount = Number(feeAtomic);
+      const taxAmount = Number(bigToDecDirect(feeAtomic, groupTip.Token.decimals));
       const totalCost = contributionAmount + taxAmount;
 
       console.log('DEBUG: Group tip contribution tax calculation', {
