@@ -6,7 +6,8 @@ import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { PENGUIN_LOADING } from "../utils/penguin_messages.js";
 
 export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, groupTipId: number) {
-  // No manual defer - let the auto-defer wrapper handle it
+  // Manual defer for modal interactions
+  await i.deferReply({ ephemeral: true });
   console.log(`🐟 handleGroupTipContributeModal: Processing contribution for tip ${groupTipId}`);
 
   try {
