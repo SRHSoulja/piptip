@@ -66,6 +66,58 @@ async function updateGroupTipMessageSimple(client: Client, tipId: number, forceE
   }
 }
 
+/** Update Discord message to final distributed state after finalization */
+async function updateGroupTipMessageToFinalState(client: Client, tipId: number) {
+  console.log(`🔧 updateGroupTipMessageToFinalState called for tip ${tipId}`);
+
+  const tip = await prisma.groupTip.findUnique({
+    where: { id: tipId },
+    include: {
+      Creator: true,
+      Token: true,
+      claims: { include: { User: true } }
+    }
+  });
+
+  if (!tip || !tip.channelId || !tip.messageId) {
+    console.log(`❌ updateGroupTipMessageToFinalState: tip data incomplete for ${tipId}`);
+    return;
+  }
+
+  const claimCount = tip.claims.length;
+  const claimedBy = tip.claims
+    .filter(c => c.User?.discordId)
+    .map(c => `<@${c.User!.discordId}>`)
+    .join(', ') || 'No one';
+
+  const creatorDisplay = tip.Creator?.discordId ? `<@${tip.Creator.discordId}>` : "Unknown";
+
+  try {
+    const channel = await client.channels.fetch(tip.channelId);
+    if (channel && 'messages' in channel) {
+      const message = await channel.messages.fetch(tip.messageId);
+
+      await message.edit({
+        embeds: [{
+          title: '🎉✅ Colony Fish Distributed!',
+          description: `🐧 **${creatorDisplay}** shared **${tip.totalAmount} ${tip.Token.symbol}** with the colony!\\n\\n✅ **Fish distributed successfully!**`,
+          color: 0x00ff00,
+          fields: [
+            { name: '🐧 Colony Members', value: `${claimCount} penguins`, inline: true },
+            { name: '⏰ Status', value: '✅ Fish distributed!', inline: true },
+            { name: '🎣 Fish Claimed By', value: claimedBy, inline: false }
+          ],
+          timestamp: new Date().toISOString()
+        }],
+        components: []
+      });
+      console.log(`✅ updateGroupTipMessageToFinalState: Updated tip ${tipId} to final distributed state`);
+    }
+  } catch (error: any) {
+    console.error(`❌ updateGroupTipMessageToFinalState failed for tip ${tipId}:`, error.message);
+  }
+}
+
 /** Direct Discord message update bypassing rate limiter for timer context */
 async function updateGroupTipMessageDirect(client: Client, groupTipId: number) {
   console.log(`🔧 updateGroupTipMessageDirect called for tip ${groupTipId}`);
@@ -209,33 +261,9 @@ async function announceResult(client: Client, tipId: number) {
   const summary = await finalizeExpiredGroupTip(tipId);
   console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
 
-  // SIMPLE Discord message update - bypass complex updateGroupTipMessage function
-  console.log(`📝 SIMPLE Discord message update for tip ${tipId}...`);
-  try {
-    if (tip.channelId && tip.messageId) {
-      const channel = await client.channels.fetch(tip.channelId);
-      if (channel && 'messages' in channel) {
-        const message = await channel.messages.fetch(tip.messageId);
-        await message.edit({
-          embeds: [{
-            title: '🎉✅ Colony Fish Distributed!',
-            description: `Fish has been distributed to ${summary.payouts.length} penguin(s)!`,
-            color: 0x00ff00,
-            fields: [
-              { name: '💰 Amount', value: summary.totalText, inline: true },
-              { name: '🐧 Per Penguin', value: summary.perShareText, inline: true },
-              { name: '🎣 Claimed By', value: summary.payouts.map(p => `<@${p.discordId}>`).join(', '), inline: false }
-            ],
-            timestamp: new Date().toISOString()
-          }],
-          components: []
-        });
-        console.log(`✅ SIMPLE Discord update completed for tip ${tipId}`);
-      }
-    }
-  } catch (error: any) {
-    console.error(`❌ SIMPLE Discord update failed for tip ${tipId}:`, error.message);
-  }
+  // Skip Discord embed update here - it's now handled by the dual timer system
+  console.log(`📝 Skipping Discord embed update - handled by dual timer system for tip ${tipId}`);
+  // The embedUpdateTimer already shows expired state, and finalizationTimer will show final state
 
   console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
   const chan = await client.channels.fetch(tip.channelId).catch((error) => {
@@ -312,6 +340,11 @@ export async function scheduleGroupTipExpiry(client: Client, tipId: number) {
     try {
       console.log(`🔥 FINALIZATION timer fired for tip ${tipId}! Processing now...`);
       await announceResult(client, tipId);
+
+      // Update Discord embed to final distributed state
+      console.log(`📝 Updating embed to final distributed state for tip ${tipId}...`);
+      await updateGroupTipMessageToFinalState(client, tipId);
+
       console.log(`✅ Timer processing completed for tip ${tipId}`);
     } catch (error: any) {
       console.error(`❌ Timer processing failed for tip ${tipId}:`, error.message);
