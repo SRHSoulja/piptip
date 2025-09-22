@@ -109,6 +109,37 @@ export async function finalizeExpiredGroupTip(groupTipId) {
         }
         await tx.groupTip.update({ where: { id: tip.id }, data: { status: "FINALIZED" } });
     });
+    // Award XP and social points ONLY for successful group tips (after payouts complete)
+    try {
+        const { awardXPForGroupTipClaim, awardXPForGroupTipContribution } = await import("../services/xp_integration.js");
+        // Award XP to all successful claimers
+        for (const claim of claimedClaims) {
+            if (claim.User?.discordId) {
+                try {
+                    await awardXPForGroupTipClaim(claim.User.discordId);
+                }
+                catch (xpError) {
+                    console.error(`Failed to award claim XP to ${claim.User.discordId}:`, xpError);
+                }
+            }
+        }
+        // Award XP to all contributors (only if tip was successfully claimed)
+        const contributors = await prisma.groupTipContribution.findMany({
+            where: { groupTipId: tip.id, status: 'COMPLETED' },
+            include: { contributor: true }
+        });
+        for (const contrib of contributors) {
+            try {
+                await awardXPForGroupTipContribution(contrib.contributor.discordId);
+            }
+            catch (xpError) {
+                console.error(`Failed to award contribution XP to ${contrib.contributor.discordId}:`, xpError);
+            }
+        }
+    }
+    catch (importError) {
+        console.error("Failed to import XP functions:", importError);
+    }
     return {
         kind: "FINALIZED",
         totalText: formatAmount(totalAtomic, tip.Token),

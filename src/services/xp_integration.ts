@@ -171,6 +171,34 @@ export async function awardXPForGroupTipContribution(discordId: string): Promise
   };
 }
 
+// Award XP for group tip claims
+export async function awardXPForGroupTipClaim(discordId: string): Promise<{
+  xpAwarded: number;
+  levelUp?: boolean;
+  newLevel?: any;
+  message?: string;
+}> {
+  const xpResult = await awardXP(discordId, XP_SOURCES.GROUP_TIP_CLAIM, "Group Tip Claim");
+
+  let message = "";
+  if (xpResult.levelUp && xpResult.newLevel) {
+    message = createPenguinSuccess(
+      "🎣 LEVEL UP FROM COLONY FISH! 🎣",
+      `Your claim earned you a LEVEL UP! You've reached **${xpResult.newLevel.title}**!\n${xpResult.newLevel.unlockMessage}`,
+      { personality: 'excited', emoji: xpResult.newLevel.emoji }
+    );
+  } else {
+    message = `🎣 **+${XP_SOURCES.GROUP_TIP_CLAIM} XP** for claiming colony fish!`;
+  }
+
+  return {
+    xpAwarded: XP_SOURCES.GROUP_TIP_CLAIM,
+    levelUp: xpResult.levelUp,
+    newLevel: xpResult.newLevel,
+    message
+  };
+}
+
 // Award XP for achievements
 export async function awardAchievementXP(
   discordId: string,

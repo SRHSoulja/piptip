@@ -216,15 +216,8 @@ export async function addGroupTipContribution(groupTipId, contributorDiscordId, 
         if (taxPaidFormatted) {
             successMessage += `\n\n💰 Tax paid: ${taxPaidFormatted}`;
         }
-        // 14. AWARD XP FOR CONTRIBUTION
-        try {
-            const { awardXPForGroupTipContribution } = await import("../services/xp_integration.js");
-            await awardXPForGroupTipContribution(contributorDiscordId);
-        }
-        catch (xpError) {
-            console.error("Failed to award XP for group tip contribution:", xpError);
-            // Don't fail the whole operation for XP issues
-        }
+        // Note: XP/social points are awarded only during finalization to prevent gaming
+        // (contributors get rewards only if the tip is successfully claimed)
         return {
             success: true,
             message: successMessage,
