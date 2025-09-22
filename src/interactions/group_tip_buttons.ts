@@ -201,9 +201,69 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
   }
 }
 
+async function handleGroupTipConfirm(i: ButtonInteraction, groupTipId: number, contributionAmount: number) {
+  await i.deferReply({ ephemeral: true });
+  console.log(`✅ handleGroupTipConfirm: Processing confirmed contribution for tip ${groupTipId}`);
+
+  try {
+    const { addGroupTipContribution } = await import("../services/group_tip_contributions.js");
+    const { updateGroupTipMessage } = await import("../features/group_tip_helpers.js");
+    const { PENGUIN_LOADING } = await import("../utils/penguin_messages.js");
+
+    // Show processing message
+    await i.editReply({
+      content: `${PENGUIN_LOADING.tip()} *Processing your contribution...*`
+    });
+
+    // Process the contribution with timeout
+    const contributionPromise = addGroupTipContribution(groupTipId, i.user.id, contributionAmount);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Contribution timeout - database may be overloaded')), 30000)
+    );
+
+    const result = await Promise.race([contributionPromise, timeoutPromise]) as any;
+
+    if (result.success) {
+      // Update the group tip message to show new total and contributors
+      try {
+        console.log(`🔄 Updating group tip message for tip ${groupTipId} after contribution`);
+        await updateGroupTipMessage(i.client, groupTipId);
+        console.log(`✅ Successfully updated group tip message for tip ${groupTipId}`);
+      } catch (updateError) {
+        console.error("Failed to update group tip message:", updateError);
+        // Don't fail the entire operation if message update fails
+      }
+
+      // Success response
+      await i.editReply({
+        content: result.message
+      });
+    } else {
+      // Error response
+      await i.editReply({
+        content: result.message
+      });
+    }
+
+  } catch (error: any) {
+    console.error("Group tip confirmation error:", error);
+    await i.editReply({
+      content: `🐧 Something went wrong while processing your contribution: ${error?.message || String(error)}\n\nDon't worry, your fish are safe! Please try again. 🐟`
+    });
+  }
+}
+
+async function handleGroupTipCancel(i: ButtonInteraction, groupTipId: number) {
+  console.log(`❌ handleGroupTipCancel: User cancelled contribution for tip ${groupTipId}`);
+  await i.reply({
+    content: "❌ Contribution cancelled. No payment was processed.",
+    ephemeral: true
+  });
+}
+
 /** Router for group tip button customIds: grouptip:<action>:<groupTipId> */
 export async function handleGroupTipButton(i: ButtonInteraction) {
-  const [ns, action, id] = i.customId.split(":");
+  const [ns, action, id, ...params] = i.customId.split(":");
   if (ns !== "grouptip") return;
 
   const groupTipId = Number(id);
@@ -213,5 +273,14 @@ export async function handleGroupTipButton(i: ButtonInteraction) {
 
   if (action === "claim") return handleGroupTipClaim(i, groupTipId);
   if (action === "add") return handleGroupTipAdd(i, groupTipId);
+  if (action === "confirm") {
+    const contributionAmount = Number(params[0]);
+    if (!Number.isFinite(contributionAmount) || contributionAmount <= 0) {
+      return i.reply({ content: "Invalid contribution amount.", ephemeral: true });
+    }
+    return handleGroupTipConfirm(i, groupTipId, contributionAmount);
+  }
+  if (action === "cancel") return handleGroupTipCancel(i, groupTipId);
+
   return i.reply({ content: "Unknown group tip action.", ephemeral: true });
 }

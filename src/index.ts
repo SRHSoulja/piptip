@@ -196,7 +196,8 @@ function withAutoAck(fn: (i: Interaction) => Promise<any>) {
 
     // Skip auto-defer for interactions that might show modals
     const skipAutoDefer = isButtonInteraction(i) &&
-      (i.customId.includes("grouptip:add") || i.customId.includes("_add"));
+      (i.customId.includes("grouptip:add") || i.customId.includes("_add") ||
+       i.customId.includes("grouptip:confirm") || i.customId.includes("grouptip:cancel"));
 
     // auto-defer after 1.5s if nothing replied yet (optimized for faster perceived response)
     const timer = skipAutoDefer ? null : setTimeout(async () => {

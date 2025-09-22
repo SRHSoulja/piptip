@@ -1,7 +1,6 @@
 import { prisma } from "../services/db.js";
 import { addGroupTipContribution } from "../services/group_tip_contributions.js";
 import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
-import { PENGUIN_LOADING } from "../utils/penguin_messages.js";
 export async function handleGroupTipContributeModal(i, groupTipId) {
     // Manual defer for modal interactions
     await i.deferReply({ ephemeral: true });
@@ -71,14 +70,25 @@ export async function handleGroupTipContributeModal(i, groupTipId) {
         const feeAtomic = (atomic * feeBps) / 10000n;
         const taxAmount = Number(bigToDecDirect(feeAtomic, groupTip.Token.decimals));
         const totalCost = contributionAmount + taxAmount;
-        // Show tax preview and confirm
+        // Show tax preview and ask for confirmation
+        const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import("discord.js");
+        const confirmButton = new ButtonBuilder()
+            .setCustomId(`grouptip:confirm:${groupTipId}:${contributionAmount}`)
+            .setLabel('✅ Confirm Payment')
+            .setStyle(ButtonStyle.Success);
+        const cancelButton = new ButtonBuilder()
+            .setCustomId(`grouptip:cancel:${groupTipId}`)
+            .setLabel('❌ Cancel')
+            .setStyle(ButtonStyle.Secondary);
+        const actionRow = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
         if (taxAmount > 0) {
             await i.editReply({
                 content: `💰 **Tax Calculation**\n\n` +
                     `🐟 Contribution: ${contributionAmount} ${groupTip.Token.symbol}\n` +
                     `💸 Tax (${(feeBpsNum / 100).toFixed(1)}%): ${taxAmount.toFixed(4)} ${groupTip.Token.symbol}\n` +
                     `💳 **Total Cost: ${totalCost.toFixed(4)} ${groupTip.Token.symbol}**\n\n` +
-                    `${PENGUIN_LOADING.tip()} *Processing your contribution...*`
+                    `Do you want to proceed with this payment?`,
+                components: [actionRow]
             });
         }
         else {
@@ -87,9 +97,12 @@ export async function handleGroupTipContributeModal(i, groupTipId) {
                     `🐟 Contribution: ${contributionAmount} ${groupTip.Token.symbol}\n` +
                     `💸 Tax: FREE! 🎉\n` +
                     `💳 **Total Cost: ${contributionAmount} ${groupTip.Token.symbol}**\n\n` +
-                    `${PENGUIN_LOADING.tip()} *Processing your contribution...*`
+                    `Do you want to proceed with this payment?`,
+                components: [actionRow]
             });
         }
+        // Don't process the contribution here - wait for button confirmation
+        return;
         // Process the contribution with timeout
         const contributionPromise = addGroupTipContribution(groupTipId, i.user.id, contributionAmount);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Contribution timeout - database may be overloaded')), 30000));
