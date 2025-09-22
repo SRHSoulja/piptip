@@ -9,6 +9,63 @@ import { groupTipClaimRow } from "../ui/components.js";
 const timers = new Map<number, NodeJS.Timeout>();
 const pendingDiscordUpdates = new Set<number>();
 
+/** Simple Discord message update for expired state without finalization */
+async function updateGroupTipMessageSimple(client: Client, tipId: number, forceExpired = false) {
+  console.log(`🔧 updateGroupTipMessageSimple called for tip ${tipId}, forceExpired: ${forceExpired}`);
+
+  const tip = await prisma.groupTip.findUnique({
+    where: { id: tipId },
+    include: {
+      Creator: true,
+      Token: true,
+      claims: { include: { User: true } }
+    }
+  });
+
+  if (!tip || !tip.channelId || !tip.messageId) {
+    console.log(`❌ updateGroupTipMessageSimple: tip data incomplete for ${tipId}`);
+    return;
+  }
+
+  const now = new Date();
+  const expired = forceExpired || now >= tip.expiresAt;
+  const claimCount = tip.claims.length;
+  const claimedBy = tip.claims
+    .filter(c => c.User?.discordId)
+    .map(c => `<@${c.User!.discordId}>`)
+    .join(', ') || 'No one';
+
+  const creatorDisplay = tip.Creator?.discordId ? `<@${tip.Creator.discordId}>` : "Unknown";
+
+  try {
+    const channel = await client.channels.fetch(tip.channelId);
+    if (channel && 'messages' in channel) {
+      const message = await channel.messages.fetch(tip.messageId);
+
+      if (expired) {
+        // Show expired state
+        await message.edit({
+          embeds: [{
+            title: '⏰ Colony Fish Expired!',
+            description: `🐧 **${creatorDisplay}** shared **${tip.totalAmount} ${tip.Token.symbol}** with the colony!\\n\\n⏰ **Timer expired!** Processing payouts...`,
+            color: 0xff9900,
+            fields: [
+              { name: '🐧 Colony Members', value: `${claimCount} penguins`, inline: true },
+              { name: '⏰ Status', value: '⏰ Expired - Processing payouts...', inline: true },
+              { name: '🎣 Fish Claimed By', value: claimedBy, inline: false }
+            ],
+            timestamp: new Date().toISOString()
+          }],
+          components: [] // Remove claim button
+        });
+        console.log(`✅ updateGroupTipMessageSimple: Updated tip ${tipId} to expired state`);
+      }
+    }
+  } catch (error: any) {
+    console.error(`❌ updateGroupTipMessageSimple failed for tip ${tipId}:`, error.message);
+  }
+}
+
 /** Direct Discord message update bypassing rate limiter for timer context */
 async function updateGroupTipMessageDirect(client: Client, groupTipId: number) {
   console.log(`🔧 updateGroupTipMessageDirect called for tip ${groupTipId}`);
@@ -235,12 +292,25 @@ export async function scheduleGroupTipExpiry(client: Client, tipId: number) {
   const delay = Math.max(0, row.expiresAt.getTime() - Date.now());
   const expiryTime = new Date(row.expiresAt).toISOString();
 
-  console.log(`⏱️ Scheduling timer for tip ${tipId}: expires at ${expiryTime} (in ${Math.round(delay/1000)}s)`);
+  console.log(`⏱️ Scheduling dual timers for tip ${tipId}: expires at ${expiryTime} (in ${Math.round(delay/1000)}s)`);
 
   clearGroupTipExpiry(tipId);
-  const t = setTimeout(async () => {
+
+  // Schedule immediate embed update at expiry time
+  const embedUpdateTimer = setTimeout(async () => {
     try {
-      console.log(`🔥 Timer FIRED for tip ${tipId}! Processing now...`);
+      console.log(`⚡ EMBED UPDATE timer fired for tip ${tipId} - updating to expired state`);
+      await updateGroupTipMessageSimple(client, tipId, true); // Mark as expired
+      console.log(`✅ Embed updated to expired state for tip ${tipId}`);
+    } catch (error: any) {
+      console.error(`❌ Embed update failed for tip ${tipId}:`, error.message);
+    }
+  }, delay);
+
+  // Schedule finalization processing 3 seconds after expiry
+  const finalizationTimer = setTimeout(async () => {
+    try {
+      console.log(`🔥 FINALIZATION timer fired for tip ${tipId}! Processing now...`);
       await announceResult(client, tipId);
       console.log(`✅ Timer processing completed for tip ${tipId}`);
     } catch (error: any) {
@@ -249,8 +319,9 @@ export async function scheduleGroupTipExpiry(client: Client, tipId: number) {
       timers.delete(tipId);
       console.log(`🗑️ Timer removed for tip ${tipId}`);
     }
-  }, delay);
-  timers.set(tipId, t);
+  }, delay + 3000); // 3 seconds after expiry
+
+  timers.set(tipId, finalizationTimer);
 
   console.log(`✅ Timer scheduled successfully for tip ${tipId}, will fire in ${Math.round(delay/1000)} seconds`);
 }
