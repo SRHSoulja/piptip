@@ -135,7 +135,6 @@ export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
 
 /** Show duration selection for group tips */
 export async function showDurationSelection(i: ButtonInteraction, data: { amount: number; note: string; tokenId: number }) {
-  await i.deferUpdate().catch(() => {});
   console.log('🔍 DEBUG: showDurationSelection called with data:', data);
 
   const { getActiveTokens } = await import("../../services/token.js");
@@ -224,7 +223,6 @@ export async function showTipConfirmation(i: ButtonInteraction, data: {
   tokenId: number;
   duration?: number;
 }) {
-  await i.deferUpdate().catch(() => {});
   const { getActiveTokens } = await import("../../services/token.js");
   const { userHasActiveTaxFreeTier } = await import("../../services/tiers.js");
 
