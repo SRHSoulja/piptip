@@ -149,6 +149,21 @@ export async function handleGroupTipAdd(i, groupTipId) {
                 ephemeral: true
             });
         }
+        // Check if user has already contributed - only one contribution allowed per user
+        const existingContribution = await prisma.groupTipContribution.findUnique({
+            where: {
+                groupTipId_contributorId: {
+                    groupTipId: groupTipId,
+                    contributorId: user.id
+                }
+            }
+        });
+        if (existingContribution) {
+            return i.reply({
+                content: "❌ You have already added fish to this group tip! Only one contribution per penguin is allowed. 🐧",
+                ephemeral: true
+            });
+        }
         // Show modal immediately to avoid timeout - tax will be calculated during submission
         const modal = new ModalBuilder()
             .setCustomId(`grouptip_contribute:${groupTipId}`)
