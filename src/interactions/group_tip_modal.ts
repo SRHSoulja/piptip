@@ -4,7 +4,6 @@ import { prisma } from "../services/db.js";
 import { addGroupTipContribution } from "../services/group_tip_contributions.js";
 import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { PENGUIN_LOADING } from "../utils/penguin_messages.js";
-import { decToBigDirect } from "../services/token.js";
 
 export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, groupTipId: number) {
   // Manual defer for modal interactions
@@ -45,36 +44,15 @@ export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, g
       });
     }
 
-    // Convert to atomic units using the existing codebase logic
-    const decimals = groupTip.Token.decimals;
-    let atomicAmount: number;
-
-    try {
-      // Use the same conversion logic as the rest of the codebase
-      const atomicBigInt = decToBigDirect(contributionAmount, decimals);
-
-      // Check if the result fits in a safe JavaScript number
-      if (atomicBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
-        return i.editReply({
-          content: `❌ Amount too large for processing. Please use a smaller amount (max ~9 quadrillion atomic units).`
-        });
-      }
-
-      atomicAmount = Number(atomicBigInt);
-    } catch (conversionError) {
-      console.error('Conversion error:', conversionError);
-      return i.editReply({
-        content: `❌ Failed to convert amount. Please enter a valid number like '50' or '25.5'.`
-      });
-    }
+    // No conversion needed - addGroupTipContribution expects human-readable amount
+    // The function will handle the internal conversion to atomic units as needed
 
     console.log('DEBUG: Modal contribution conversion', {
       userInput: amountInput,
       sanitizedInput,
       contributionAmount,
       tokenSymbol: groupTip.Token.symbol,
-      tokenDecimals: decimals,
-      atomicAmount: atomicAmount.toString()
+      tokenDecimals: groupTip.Token.decimals
     });
 
     // Show loading message
@@ -83,7 +61,7 @@ export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, g
     });
 
     // Process the contribution
-    const result = await addGroupTipContribution(groupTipId, i.user.id, atomicAmount);
+    const result = await addGroupTipContribution(groupTipId, i.user.id, contributionAmount);
 
     if (result.success) {
       // Update the group tip message to show new total and contributors
