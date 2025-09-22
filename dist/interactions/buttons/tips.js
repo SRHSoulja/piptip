@@ -10,9 +10,8 @@ export async function handleSelectToken(i, parts) {
         }
     }
     catch (error) {
-        if (!i.deferred && !i.replied) {
-            await i.deferReply({ ephemeral: true });
-        }
+        // Interaction was likely already acknowledged by auto-ack wrapper
+        console.log('Interaction already acknowledged, continuing...');
     }
     try {
         // Parse button data: pip:select_token:amount:tipType:target:note:tokenId
@@ -55,9 +54,8 @@ export async function handleCancelTip(i) {
         }
     }
     catch (error) {
-        if (!i.deferred && !i.replied) {
-            await i.deferReply({ ephemeral: true });
-        }
+        // Interaction was likely already acknowledged by auto-ack wrapper
+        console.log('Interaction already acknowledged, continuing...');
     }
     await i.editReply({
         content: "❌ **Tip cancelled**\n*Use `/pip_tip` to start a new tip.*",
@@ -74,9 +72,8 @@ export async function handleSelectDuration(i, parts) {
         }
     }
     catch (error) {
-        if (!i.deferred && !i.replied) {
-            await i.deferReply({ ephemeral: true });
-        }
+        // Interaction was likely already acknowledged by auto-ack wrapper
+        console.log('Interaction already acknowledged, continuing...');
     }
     try {
         // Parse: pip:select_duration:amount:note:tokenId:duration
@@ -108,16 +105,8 @@ export async function handleConfirmTip(i, parts) {
         }
     }
     catch (error) {
-        console.error('Failed to defer update, trying deferReply:', error);
-        try {
-            if (!i.deferred && !i.replied) {
-                await i.deferReply({ ephemeral: true });
-            }
-        }
-        catch (fallbackError) {
-            console.error('All interaction acknowledgment methods failed:', fallbackError);
-            return;
-        }
+        // Interaction was likely already acknowledged by auto-ack wrapper
+        console.log('Interaction already acknowledged, continuing...');
     }
     try {
         // Parse: pip:confirm_tip:amount:tipType:target:note:tokenId:duration?

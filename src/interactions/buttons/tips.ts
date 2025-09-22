@@ -13,9 +13,8 @@ export async function handleSelectToken(i: ButtonInteraction, parts: string[]) {
       await i.deferUpdate();
     }
   } catch (error) {
-    if (!i.deferred && !i.replied) {
-      await i.deferReply({ ephemeral: true });
-    }
+    // Interaction was likely already acknowledged by auto-ack wrapper
+    console.log('Interaction already acknowledged, continuing...');
   }
   
   try {
@@ -58,9 +57,8 @@ export async function handleCancelTip(i: ButtonInteraction) {
       await i.deferUpdate();
     }
   } catch (error) {
-    if (!i.deferred && !i.replied) {
-      await i.deferReply({ ephemeral: true });
-    }
+    // Interaction was likely already acknowledged by auto-ack wrapper
+    console.log('Interaction already acknowledged, continuing...');
   }
   
   await i.editReply({
@@ -78,9 +76,8 @@ export async function handleSelectDuration(i: ButtonInteraction, parts: string[]
       await i.deferUpdate();
     }
   } catch (error) {
-    if (!i.deferred && !i.replied) {
-      await i.deferReply({ ephemeral: true });
-    }
+    // Interaction was likely already acknowledged by auto-ack wrapper
+    console.log('Interaction already acknowledged, continuing...');
   }
   
   try {
@@ -113,15 +110,8 @@ export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
       await i.deferUpdate();
     }
   } catch (error) {
-    console.error('Failed to defer update, trying deferReply:', error);
-    try {
-      if (!i.deferred && !i.replied) {
-        await i.deferReply({ ephemeral: true });
-      }
-    } catch (fallbackError) {
-      console.error('All interaction acknowledgment methods failed:', fallbackError);
-      return;
-    }
+    // Interaction was likely already acknowledged by auto-ack wrapper
+    console.log('Interaction already acknowledged, continuing...');
   }
 
   try {
