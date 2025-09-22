@@ -95,13 +95,13 @@ export async function updateGroupTipMessage(client, groupTipId) {
             embedFields: embed.data.fields?.map(f => ({ name: f.name, value: f.value }))
         });
         try {
-            console.log(`🔧 updateGroupTipMessage: About to call rateLimitedDiscord.editMessage for tip ${groupTipId}`);
-            const result = await rateLimitedDiscord.editMessage(msg, { embeds: [embed], components });
-            console.log(`✅ updateGroupTipMessage: Discord API returned:`, {
-                messageId: result?.id,
-                editedTimestamp: result?.editedTimestamp,
-                embedsLength: result?.embeds?.length,
-                embedTitle: result?.embeds?.[0]?.title
+            console.log(`🔧 updateGroupTipMessage: Making DIRECT Discord API call for tip ${groupTipId}`);
+            const result = await msg.edit({ embeds: [embed], components });
+            console.log(`✅ updateGroupTipMessage: DIRECT Discord API success:`, {
+                messageId: result.id,
+                editedTimestamp: result.editedTimestamp,
+                embedsLength: result.embeds?.length,
+                embedTitle: result.embeds?.[0]?.title
             });
             console.log(`✅ updateGroupTipMessage: Successfully edited message for tip ${groupTipId}`);
         }
