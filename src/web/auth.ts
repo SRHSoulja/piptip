@@ -30,24 +30,42 @@ declare module "express-session" {
 }
 
 // Discord OAuth URLs and scopes
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
-const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
-const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI!;
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
+const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI;
 const SCOPES = "identify guilds";
+
+// Check if Discord OAuth is properly configured
+const isDiscordOAuthConfigured = () => {
+  return DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && REDIRECT_URI;
+};
 
 // GET /auth/discord - Initiate Discord OAuth
 authRouter.get("/discord", (req: Request, res: Response) => {
+  if (!isDiscordOAuthConfigured()) {
+    return res.status(500).send(`
+      <h2>PenguBook Authentication Not Configured</h2>
+      <p>Discord OAuth is not properly configured. Missing environment variables:</p>
+      <ul>
+        ${!DISCORD_CLIENT_ID ? '<li>DISCORD_CLIENT_ID</li>' : ''}
+        ${!DISCORD_CLIENT_SECRET ? '<li>DISCORD_CLIENT_SECRET</li>' : ''}
+        ${!REDIRECT_URI ? '<li>DISCORD_REDIRECT_URI</li>' : ''}
+      </ul>
+      <p><a href="/">← Back to Home</a></p>
+    `);
+  }
+
   const state = randomBytes(32).toString("hex");
   const redirectTo = req.query.redirect as string;
-  
-  oauthStates.set(state, { 
+
+  oauthStates.set(state, {
     timestamp: Date.now(),
     redirectTo: redirectTo || "/pengubook"
   });
 
   const authUrl = new URL("https://discord.com/api/oauth2/authorize");
-  authUrl.searchParams.set("client_id", DISCORD_CLIENT_ID);
-  authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+  authUrl.searchParams.set("client_id", DISCORD_CLIENT_ID!);
+  authUrl.searchParams.set("redirect_uri", REDIRECT_URI!);
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("scope", SCOPES);
   authUrl.searchParams.set("state", state);
@@ -57,6 +75,10 @@ authRouter.get("/discord", (req: Request, res: Response) => {
 
 // GET /auth/discord/callback - Handle Discord OAuth callback
 authRouter.get("/discord/callback", async (req: Request, res: Response) => {
+  if (!isDiscordOAuthConfigured()) {
+    return res.status(500).send("Discord OAuth is not properly configured");
+  }
+
   try {
     const { code, state } = req.query;
 
@@ -76,11 +98,11 @@ authRouter.get("/discord/callback", async (req: Request, res: Response) => {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: DISCORD_CLIENT_ID,
-        client_secret: DISCORD_CLIENT_SECRET,
+        client_id: DISCORD_CLIENT_ID!,
+        client_secret: DISCORD_CLIENT_SECRET!,
         grant_type: "authorization_code",
         code,
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: REDIRECT_URI!,
       }),
     });
 
