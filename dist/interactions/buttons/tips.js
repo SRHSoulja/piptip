@@ -119,6 +119,10 @@ export async function handleConfirmTip(i, parts) {
 /** Show duration selection for group tips */
 export async function showDurationSelection(i, data) {
     console.log('🔍 DEBUG: showDurationSelection called with data:', data);
+    // Ensure interaction is acknowledged
+    if (!i.deferred && !i.replied) {
+        await i.deferReply({ ephemeral: true });
+    }
     const { getActiveTokens } = await import("../../services/token.js");
     const tokens = await getActiveTokens();
     const token = tokens.find(t => t.id === data.tokenId);
