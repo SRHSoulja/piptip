@@ -285,6 +285,9 @@ export async function restoreGroupTipExpiryTimers(client: Client) {
   for (const g of upcoming) {
     await scheduleGroupTipExpiry(client, g.id);
   }
+
+  // Clear any stale pending Discord updates from previous runs
+  clearPendingDiscordUpdates();
 }
 
 /** Clear all timers - call during shutdown to prevent memory leaks */
@@ -295,6 +298,16 @@ export function clearAllTimers(): void {
   }
   timers.clear();
   console.log("✅ All group tip timers cleared");
+}
+
+/** Clear pending Discord updates - call during startup to prevent stale updates */
+export function clearPendingDiscordUpdates(): void {
+  const count = pendingDiscordUpdates.size;
+  if (count > 0) {
+    console.log(`🧹 Clearing ${count} stale pending Discord updates: ${Array.from(pendingDiscordUpdates).join(', ')}`);
+    pendingDiscordUpdates.clear();
+    console.log("✅ Stale pending Discord updates cleared");
+  }
 }
 
 /** Get current timer status for monitoring */
@@ -317,6 +330,7 @@ export async function processPendingDiscordUpdates(client: Client) {
   if (pendingDiscordUpdates.size === 0) return;
 
   console.log(`🔄 Processing ${pendingDiscordUpdates.size} pending Discord updates...`);
+  console.log(`📋 Pending tip IDs: ${Array.from(pendingDiscordUpdates).join(', ')}`);
 
   const updates = Array.from(pendingDiscordUpdates);
   pendingDiscordUpdates.clear();
