@@ -152,14 +152,8 @@ async function announceResult(client: Client, tipId: number) {
   const summary = await finalizeExpiredGroupTip(tipId);
   console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
 
-  // Update Discord message IMMEDIATELY after finalization (like working version)
-  console.log(`📝 Updating Discord message after finalization...`);
-  try {
-    await updateGroupTipMessage(client, tipId);
-    console.log(`✅ Discord message updated for tip ${tipId}`);
-  } catch (error: any) {
-    console.error(`❌ Failed to update Discord message for tip ${tipId}:`, error.message);
-  }
+  // Update Discord message IMMEDIATELY after finalization (simple working version)
+  await updateGroupTipMessage(client, tipId).catch(() => {});
 
   console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
   const chan = await client.channels.fetch(tip.channelId).catch((error) => {
