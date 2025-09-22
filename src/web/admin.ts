@@ -130,8 +130,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
 
   <section>
     <div class="row">
-      <label>Admin Secret</label>
-      <input id="secret" type="password" placeholder="Paste ADMIN_SECRET"/>
+      <label for="secret">Admin Secret</label>
+      <input id="secret" name="secret" type="password" placeholder="Paste ADMIN_SECRET"/>
       <button id="saveSecret">Save & Connect</button>
       <span id="authStatus"></span>
     </div>
@@ -193,7 +193,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
     <div style="margin-top: 20px;">
       <div class="row">
         <h3 style="margin: 0; color: #fff;">🖥️ Server Activity</h3>
-        <select id="serverSort" style="margin-left: auto;">
+        <label for="serverSort" style="margin-left: auto; margin-right: 8px;">Sort:</label>
+        <select id="serverSort" name="serverSort">
           <option value="activity">Sort by Total Activity</option>
           <option value="tips">Sort by Tips</option>
           <option value="games">Sort by Games</option>
@@ -216,7 +217,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
     <div style="margin-top: 20px;">
       <div class="row">
         <h3 style="margin: 0; color: #fff;">🪙 Token Performance</h3>
-        <select id="tokenSort" style="margin-left: auto;">
+        <label for="tokenSort" style="margin-left: auto; margin-right: 8px;">Sort:</label>
+        <select id="tokenSort" name="tokenSort">
           <option value="volume">Sort by Volume</option>
           <option value="count">Sort by Tip Count</option>
           <option value="avg">Sort by Average Size</option>
@@ -238,14 +240,14 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>⚙️ Configuration</h2>
     <div id="cfgForm" class="row">
-      <label>Min Deposit</label>
-      <input id="minDeposit" type="number" min="0" step="0.0000000001"/>
-      <label>Min Withdraw</label>
-      <input id="minWithdraw" type="number" min="0" step="0.0000000001"/>
-      <label>Max Withdraw / tx (0 = none)</label>
-      <input id="withdrawMaxPerTx" type="number" min="0" step="0.0000000001"/>
-      <label>Daily Withdraw Cap (0 = none)</label>
-      <input id="withdrawDailyCap" type="number" min="0" step="0.0000000001"/>
+      <label for="minDeposit">Min Deposit</label>
+      <input id="minDeposit" name="minDeposit" type="number" min="0" step="0.0000000001"/>
+      <label for="minWithdraw">Min Withdraw</label>
+      <input id="minWithdraw" name="minWithdraw" type="number" min="0" step="0.0000000001"/>
+      <label for="withdrawMaxPerTx">Max Withdraw / tx (0 = none)</label>
+      <input id="withdrawMaxPerTx" name="withdrawMaxPerTx" type="number" min="0" step="0.0000000001"/>
+      <label for="withdrawDailyCap">Daily Withdraw Cap (0 = none)</label>
+      <input id="withdrawDailyCap" name="withdrawDailyCap" type="number" min="0" step="0.0000000001"/>
       <button id="saveCfg">Save Config</button>
       <button id="reloadCfg">Reload Cache</button>
       <span id="cfgMsg"></span>
@@ -255,12 +257,17 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>🏷️ Tiers</h2>
     <div class="row">
-      <input id="tierName" placeholder="Name" style="width:180px"/>
-      <input id="tierDesc" placeholder="Description" style="width:260px"/>
-      <select id="tierToken"></select>
-      <input id="tierPrice" type="number" step="0.00000001" placeholder="Price"/>
-      <input id="tierDays" type="number" min="1" placeholder="Days" style="width:100px"/>
-      <label style="min-width:auto"><input id="tierTaxFree" type="checkbox"/> Tip Tax Free</label>
+      <label for="tierName">Name</label>
+      <input id="tierName" name="tierName" placeholder="Name" style="width:180px"/>
+      <label for="tierDesc">Description</label>
+      <input id="tierDesc" name="tierDesc" placeholder="Description" style="width:260px"/>
+      <label for="tierToken">Token</label>
+      <select id="tierToken" name="tierToken"></select>
+      <label for="tierPrice">Price</label>
+      <input id="tierPrice" name="tierPrice" type="number" step="0.00000001" placeholder="Price"/>
+      <label for="tierDays">Days</label>
+      <input id="tierDays" name="tierDays" type="number" min="1" placeholder="Days" style="width:100px"/>
+      <label style="min-width:auto"><input id="tierTaxFree" name="tierTaxFree" type="checkbox"/> Tip Tax Free</label>
       <button id="addTier">Add Tier</button>
       <button id="reloadTiers">Reload</button>
       <span id="tierMsg"></span>
@@ -279,7 +286,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>🪙 Tokens</h2>
     <div class="row">
-      <input id="newTokenAddress" placeholder="0x..." maxlength="42"/>
+      <label for="newTokenAddress">Token Address</label>
+      <input id="newTokenAddress" name="newTokenAddress" placeholder="0x..." maxlength="42"/>
       <button id="addToken">Add Token</button>
       <button id="refreshTokens">Refresh Cache</button>
       <span id="tokenMsg"></span>
@@ -300,8 +308,10 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>🖥️ Servers</h2>
     <div class="row">
-      <input id="newGuildId" placeholder="Guild ID" pattern="[0-9]+"/>
-      <input id="newGuildNote" placeholder="Server description"/>
+      <label for="newGuildId">Guild ID</label>
+      <input id="newGuildId" name="newGuildId" placeholder="Guild ID" pattern="[0-9]+"/>
+      <label for="newGuildNote">Description</label>
+      <input id="newGuildNote" name="newGuildNote" placeholder="Server description"/>
       <button id="addServer">Add Server</button>
     </div>
     <table id="serversTbl">
@@ -332,7 +342,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
     <div class="row">
       <button id="loadWithdrawalStats">🔄 Refresh Stats</button>
       <button id="clearCooldowns">⚡ Clear All Cooldowns</button>
-      <select id="withdrawalTimeframe">
+      <label for="withdrawalTimeframe">Timeframe:</label>
+      <select id="withdrawalTimeframe" name="withdrawalTimeframe">
         <option value="1">Last 1 Hour</option>
         <option value="6">Last 6 Hours</option>
         <option value="24" selected>Last 24 Hours</option>
@@ -390,10 +401,13 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>🪧 Ads</h2>
     <div class="row">
-      <input id="adText" placeholder="Ad text (max 500 chars)" style="width:420px" maxlength="500"/>
-      <input id="adUrl" placeholder="https://destination.example" style="width:320px"/>
-      <input id="adWeight" type="number" min="1" max="100" value="5" style="width:80px"/>
-      <label style="min-width:auto"><input id="adActive" type="checkbox" checked/> Active</label>
+      <label for="adText">Ad Text</label>
+      <input id="adText" name="adText" placeholder="Ad text (max 500 chars)" style="width:420px" maxlength="500"/>
+      <label for="adUrl">URL</label>
+      <input id="adUrl" name="adUrl" placeholder="https://destination.example" style="width:320px"/>
+      <label for="adWeight">Weight</label>
+      <input id="adWeight" name="adWeight" type="number" min="1" max="100" value="5" style="width:80px"/>
+      <label style="min-width:auto"><input id="adActive" name="adActive" type="checkbox" checked/> Active</label>
       <button id="addAd">Add Ad</button>
       <button id="reloadAds">Reload</button>
       <button id="refreshAdsCache">Refresh Cache</button>
@@ -415,7 +429,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
       <h3 style="margin: 0 0 12px 0; color: #fff;">🔍 Search Users</h3>
       <div class="row">
         <div style="position: relative; flex: 1; max-width: 400px;">
-          <input id="searchUser" placeholder="Start typing Discord ID..." style="width: 100%;"/>
+          <label for="searchUser" style="display: block; margin-bottom: 4px;">Search by Discord ID:</label>
+          <input id="searchUser" name="searchUser" placeholder="Start typing Discord ID..." style="width: 100%;"/>
           <div id="searchResults" style="position: absolute; top: 100%; left: 0; right: 0; background: #2a2a2a; border: 1px solid #444; border-top: none; border-radius: 0 0 8px 8px; max-height: 300px; overflow-y: auto; z-index: 1000; display: none;">
             <!-- Auto-complete results will appear here -->
           </div>
@@ -432,7 +447,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
       <div class="row">
         <button id="loadTopUsers">Load Top 100 Users</button>
         <button id="refreshUsers" style="background:#059669;">🔄 Refresh Users</button>
-        <select id="topUsersSort" style="margin-left: 12px;">
+        <label for="topUsersSort" style="margin-left: 12px; margin-right: 4px;">Sort:</label>
+        <select id="topUsersSort" name="topUsersSort">
           <option value="recent">Sort by Registration Date</option>
           <option value="tips_sent">Sort by Tips Sent</option>
           <option value="tips_received">Sort by Tips Received</option>
@@ -457,7 +473,8 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>💸 Transaction Monitor</h2>
     <div class="row">
-      <select id="txType">
+      <label for="txType">Type:</label>
+      <select id="txType" name="txType">
         <option value="">All Types</option>
         <option value="TIP">Tips</option>
         <option value="DEPOSIT">Deposits</option>
@@ -465,9 +482,12 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
         <option value="PURCHASE">Purchases</option>
         <option value="SYSTEM_BACKUP">System Backups</option>
       </select>
-      <input id="txUser" placeholder="Discord ID"/>
-      <input id="txSince" type="datetime-local"/>
-      <input id="txLimit" type="number" value="50" min="1" max="1000" style="width:80px"/>
+      <label for="txUser">User:</label>
+      <input id="txUser" name="txUser" placeholder="Discord ID"/>
+      <label for="txSince">Since:</label>
+      <input id="txSince" name="txSince" type="datetime-local"/>
+      <label for="txLimit">Limit:</label>
+      <input id="txLimit" name="txLimit" type="number" value="50" min="1" max="1000" style="width:80px"/>
       <button id="loadTransactions">Load Transactions</button>
       <button id="exportTransactions">Export CSV</button>
       <button id="exportGuildData">📊 Export Guild Data</button>
@@ -487,6 +507,7 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>🎯 Group Tips Monitor</h2>
     <div class="row">
+      <label for="gtStatus">Status Filter:</label>
       <select id="gtStatus">
         <option value="">All Status</option>
         <option value="ACTIVE">Active</option>
@@ -587,7 +608,7 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>🚨 Emergency Controls</h2>
     <div class="row" style="background:#2d1b1b; padding:16px; border-radius:8px; border:1px solid #ef4444;">
-      <label style="color:#ef4444; font-weight:bold;">⚠️ DANGER ZONE</label>
+      <span style="color:#ef4444; font-weight:bold;">⚠️ DANGER ZONE</span>
       <button id="pauseWithdrawals" style="background:#dc2626;">Pause All Withdrawals</button>
       <button id="pauseTipping" style="background:#dc2626;">Pause All Tipping</button>
       <button id="emergencyMode" style="background:#dc2626;">Emergency Mode</button>
@@ -596,7 +617,7 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
       <span id="emergencyMsg"></span>
     </div>
     <div class="row" style="margin-top:12px;">
-      <label>🔄 System Health</label>
+      <span>🔄 System Health</span>
       <button id="syncStatus">Check Sync Status</button>
       <button id="fixSync">Auto-Fix Sync</button>
       <button id="clearCaches">Clear Caches</button>
@@ -609,9 +630,12 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
     <h2>📊 House Earnings</h2>
     <p>Tip fees and match rake collected by the platform</p>
     <div class="row">
-      <label>From Date</label><input id="feesSince" type="date"/>
-      <label>To Date</label><input id="feesUntil" type="date"/>
-      <label>Guild (optional)</label><input id="feesGuild" placeholder="Guild ID"/>
+      <label for="feesSince">From Date</label>
+      <input id="feesSince" type="date"/>
+      <label for="feesUntil">To Date</label>
+      <input id="feesUntil" type="date"/>
+      <label for="feesGuild">Guild (optional)</label>
+      <input id="feesGuild" placeholder="Guild ID"/>
       <button id="loadFees">Load Summary</button>
       <button id="csvFees">Download CSV</button>
       <span id="feesMsg"></span>

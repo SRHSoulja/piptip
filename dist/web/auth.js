@@ -19,8 +19,24 @@ const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI;
 const SCOPES = "identify guilds";
+// Check if Discord OAuth is properly configured
+const isDiscordOAuthConfigured = () => {
+    return DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && REDIRECT_URI;
+};
 // GET /auth/discord - Initiate Discord OAuth
 authRouter.get("/discord", (req, res) => {
+    if (!isDiscordOAuthConfigured()) {
+        return res.status(500).send(`
+      <h2>PenguBook Authentication Not Configured</h2>
+      <p>Discord OAuth is not properly configured. Missing environment variables:</p>
+      <ul>
+        ${!DISCORD_CLIENT_ID ? '<li>DISCORD_CLIENT_ID</li>' : ''}
+        ${!DISCORD_CLIENT_SECRET ? '<li>DISCORD_CLIENT_SECRET</li>' : ''}
+        ${!REDIRECT_URI ? '<li>DISCORD_REDIRECT_URI</li>' : ''}
+      </ul>
+      <p><a href="/">← Back to Home</a></p>
+    `);
+    }
     const state = randomBytes(32).toString("hex");
     const redirectTo = req.query.redirect;
     oauthStates.set(state, {
@@ -37,6 +53,9 @@ authRouter.get("/discord", (req, res) => {
 });
 // GET /auth/discord/callback - Handle Discord OAuth callback
 authRouter.get("/discord/callback", async (req, res) => {
+    if (!isDiscordOAuthConfigured()) {
+        return res.status(500).send("Discord OAuth is not properly configured");
+    }
     try {
         const { code, state } = req.query;
         if (!code || !state || typeof code !== "string" || typeof state !== "string") {
@@ -75,6 +94,12 @@ authRouter.get("/discord/callback", async (req, res) => {
         const discordUser = await userResponse.json();
         // Create or find user in our database
         await findOrCreateUser(discordUser.id);
+        console.log("💾 Storing user session:", {
+            discordId: discordUser.id,
+            username: discordUser.username,
+            sessionId: req.sessionID,
+            sessionExists: !!req.session
+        });
         // Store user session
         req.session.discordId = discordUser.id;
         req.session.username = discordUser.username;
@@ -83,6 +108,7 @@ authRouter.get("/discord/callback", async (req, res) => {
             : `https://cdn.discordapp.com/embed/avatars/${parseInt(discordUser.id.slice(-1)) % 6}.png`;
         req.session.accessToken = access_token;
         req.session.refreshToken = refresh_token;
+        console.log("✅ Session stored successfully");
         // Redirect to intended destination
         const redirectUrl = stateData.redirectTo || "/pengubook";
         if (redirectUrl.startsWith("/")) {
@@ -108,9 +134,24 @@ authRouter.get("/logout", (req, res) => {
 });
 // Middleware to require authentication
 export function requireAuth(req, res, next) {
+    console.log("🔐 Auth check:", {
+        hasSession: !!req.session,
+        discordId: req.session?.discordId ? "SET" : "MISSING",
+        sessionId: req.sessionID,
+        url: req.originalUrl,
+        secure: req.secure,
+        cookies: Object.keys(req.cookies || {}),
+        headers: {
+            host: req.get('host'),
+            'x-forwarded-proto': req.get('x-forwarded-proto'),
+            'user-agent': req.get('user-agent')?.slice(0, 50)
+        }
+    });
     if (!req.session.discordId) {
+        console.log("❌ No Discord ID in session, redirecting to auth");
         return res.redirect(`/auth/discord?redirect=${encodeURIComponent(req.originalUrl)}`);
     }
+    console.log("✅ Auth check passed");
     next();
 }
 // Middleware to get current user info

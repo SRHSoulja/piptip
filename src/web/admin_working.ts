@@ -267,7 +267,7 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
   <section>
     <h2>🚨 Emergency Controls</h2>
     <div class="row" style="background:#2d1b1b; padding:16px; border-radius:8px; border:1px solid #ef4444;">
-      <label style="color:#ef4444; font-weight:bold;">⚠️ DANGER ZONE</label>
+      <span style="color:#ef4444; font-weight:bold;">⚠️ DANGER ZONE</span>
       <button id="pauseWithdrawals" style="background:#dc2626;">Pause All Withdrawals</button>
       <button id="pauseTipping" style="background:#dc2626;">Pause All Tipping</button>
       <button id="emergencyMode" style="background:#dc2626;">Emergency Mode</button>

@@ -70,13 +70,13 @@ const createTokenTableRow = (token) => {
     <td><strong>${escapeHtml(token.symbol)}</strong></td>
     <td><code>${escapeHtml(token.address)}</code></td>
     <td>${token.decimals}</td>
-    <td><input type="checkbox" ${token.active ? 'checked' : ''} data-field="active"/></td>
-    <td><input value="${token.minDeposit}" data-field="minDeposit" type="number" step="0.01" style="width:80px"/></td>
-    <td><input value="${token.minWithdraw}" data-field="minWithdraw" type="number" step="0.01" style="width:80px"/></td>
-    <td><input value="${token.tipFeeBps || ''}" placeholder="default" data-field="tipFeeBps" type="number" step="1" style="width:60px"/></td>
-    <td><input value="${token.houseFeeBps || ''}" placeholder="default" data-field="houseFeeBps" type="number" step="1" style="width:60px"/></td>
-    <td><input value="${token.withdrawMaxPerTx || ''}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px"/></td>
-    <td><input value="${token.withdrawDailyCap || ''}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px"/></td>
+    <td><input type="checkbox" ${token.active ? 'checked' : ''} data-field="active" aria-label="Token ${escapeHtml(token.symbol)} active status"/></td>
+    <td><input value="${token.minDeposit}" data-field="minDeposit" type="number" step="0.01" style="width:80px" aria-label="Token ${escapeHtml(token.symbol)} minimum deposit"/></td>
+    <td><input value="${token.minWithdraw}" data-field="minWithdraw" type="number" step="0.01" style="width:80px" aria-label="Token ${escapeHtml(token.symbol)} minimum withdrawal"/></td>
+    <td><input value="${token.tipFeeBps || ''}" placeholder="default" data-field="tipFeeBps" type="number" step="1" style="width:60px" aria-label="Token ${escapeHtml(token.symbol)} tip fee basis points"/></td>
+    <td><input value="${token.houseFeeBps || ''}" placeholder="default" data-field="houseFeeBps" type="number" step="1" style="width:60px" aria-label="Token ${escapeHtml(token.symbol)} house fee basis points"/></td>
+    <td><input value="${token.withdrawMaxPerTx || ''}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px" aria-label="Token ${escapeHtml(token.symbol)} maximum withdrawal per transaction"/></td>
+    <td><input value="${token.withdrawDailyCap || ''}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px" aria-label="Token ${escapeHtml(token.symbol)} daily withdrawal cap"/></td>
     <td>
       <button class="saveToken" data-id="${token.id}">Save</button>
       <button class="deleteToken" data-id="${token.id}">Delete</button>
@@ -91,10 +91,10 @@ const createServerTableRow = (server) => {
     <td>${server.id}</td>
     <td><strong>${escapeHtml(server.servername || server.guildId || 'Unknown Server')}</strong></td>
     <td><code>${escapeHtml(server.guildId)}</code></td>
-    <td><input value="${escapeHtml(server.note || '')}" data-field="note" type="text" style="width:200px"/></td>
+    <td><input value="${escapeHtml(server.note || '')}" data-field="note" type="text" style="width:200px" aria-label="Server ${escapeHtml(server.guildId)} note"/></td>
     <td>
       <div class="status-indicator ${server.enabled ? 'online' : 'offline'}"></div>
-      <input type="checkbox" ${server.enabled ? 'checked' : ''} data-field="enabled"/>
+      <input type="checkbox" ${server.enabled ? 'checked' : ''} data-field="enabled" aria-label="Server ${escapeHtml(server.guildId)} enabled status"/>
     </td>
     <td>
       <button class="saveServer" data-id="${server.id}">Save</button>
@@ -114,17 +114,67 @@ const createAdTableRow = (ad) => {
   tr.dataset.id = ad.id;
   tr.innerHTML = `
     <td>${ad.id}</td>
-    <td><input value="${escapeHtml(ad.text || '')}" data-field="text" maxlength="500" style="width:420px"/></td>
-    <td><input value="${escapeHtml(ad.url || '')}" data-field="url" placeholder="https://..." style="width:320px"/></td>
-    <td><input value="${escapeHtml(String(ad.weight))}" data-field="weight" type="number" min="1" max="100" style="width:80px"/></td>
+    <td><input value="${escapeHtml(ad.text || '')}" data-field="text" maxlength="500" style="width:420px" aria-label="Ad ${ad.id} text content"/></td>
+    <td><input value="${escapeHtml(ad.url || '')}" data-field="url" placeholder="https://..." style="width:320px" aria-label="Ad ${ad.id} URL"/></td>
+    <td><input value="${escapeHtml(String(ad.weight))}" data-field="weight" type="number" min="1" max="100" style="width:80px" aria-label="Ad ${ad.id} weight"/></td>
     <td>
       <div class="status-indicator ${ad.active ? 'online' : 'offline'}"></div>
-      <input type="checkbox" ${ad.active ? 'checked' : ''} data-field="active"/>
+      <input type="checkbox" ${ad.active ? 'checked' : ''} data-field="active" aria-label="Ad ${ad.id} active status"/>
     </td>
     <td>
       <button class="saveAd">Save</button>
       <button class="deleteAd" style="background:#ef4444;">Delete</button>
     </td>
+  `;
+  return tr;
+};
+
+const createTransactionTableRow = (transaction) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${transaction.id}</td>
+    <td>${escapeHtml(transaction.type)}</td>
+    <td>${escapeHtml(transaction.userId || 'System')}</td>
+    <td>${formatNumber(transaction.amount)}</td>
+    <td>${escapeHtml(transaction.tokenId || 'N/A')}</td>
+    <td>${formatNumber(transaction.fee)}</td>
+    <td>${new Date(transaction.createdAt).toLocaleString()}</td>
+    <td>${escapeHtml(transaction.guildId || 'N/A')}</td>
+    <td>${escapeHtml(transaction.metadata || '')}</td>
+    <td><button onclick="deleteTransaction(${transaction.id})" style="background:#dc2626; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:11px;">🗑️ Delete</button></td>
+  `;
+  return tr;
+};
+
+const createGroupTipTableRow = (groupTip) => {
+  const tr = document.createElement('tr');
+  const creatorId = groupTip.Creator?.discordId?.slice(0, 8) || groupTip.creatorId || 'Unknown';
+  tr.innerHTML = `
+    <td>${groupTip.id}</td>
+    <td>${escapeHtml(creatorId)}...</td>
+    <td>${formatNumber(groupTip.totalAmount)}</td>
+    <td>${escapeHtml(groupTip.Token?.symbol || 'Unknown')}</td>
+    <td>${escapeHtml(groupTip.status)}</td>
+    <td>${groupTip.claimCount || 0}</td>
+    <td>${new Date(groupTip.createdAt).toLocaleString()}</td>
+    <td>${new Date(groupTip.expiresAt).toLocaleString()}</td>
+    <td><button class="expireGroupTip" data-id="${groupTip.id}" style="background:#f59e0b; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:11px;">Expire</button></td>
+  `;
+  return tr;
+};
+
+const createTierTableRow = (tier) => {
+  const tr = document.createElement('tr');
+  tr.dataset.id = tier.id;
+  tr.innerHTML = `
+    <td>${tier.id}</td>
+    <td><input value="${escapeHtml(tier.name)}" data-field="name" style="width:160px"/></td>
+    <td>${escapeHtml(tier.token?.symbol || tier.tokenId)}</td>
+    <td><input value="${escapeHtml(String(tier.priceAmount))}" data-field="priceAmount" type="number" step="0.00000001" style="width:140px"/></td>
+    <td><input value="${escapeHtml(String(tier.durationDays))}" data-field="durationDays" type="number" min="1" style="width:90px"/></td>
+    <td><input type="checkbox" ${tier.tipTaxFree ? "checked" : ""} data-field="tipTaxFree"/></td>
+    <td><input type="checkbox" ${tier.active ? "checked" : ""} data-field="active"/></td>
+    <td><button class="saveTier">Save</button></td>
   `;
   return tr;
 };

@@ -37,7 +37,8 @@
         <div class="section">
             <h2>🔐 Authentication</h2>
             <form id="authForm" style="display: flex; align-items: center; gap: 10px;">
-                <input type="password" id="secret" placeholder="Admin Secret" style="width: 300px;" required>
+                <label for="secret" style="margin-right: 10px;">Admin Secret:</label>
+                <input type="password" id="secret" name="secret" placeholder="Admin Secret" style="width: 300px;" required>
                 <button type="submit" id="saveSecret">Connect</button>
             </form>
             <div id="authStatus" style="margin-top: 10px;"></div>
@@ -51,9 +52,12 @@
             <!-- Create Token Form -->
             <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
                 <h3 style="margin-top: 0;">➕ Create New Token</h3>
-                <input type="text" id="newTokenSymbol" placeholder="Symbol (e.g., ETH)" style="width: 100px;">
-                <input type="text" id="newTokenAddress" placeholder="Contract Address" style="width: 300px;">
-                <input type="number" id="newTokenDecimals" placeholder="Decimals" min="0" max="18" style="width: 80px;">
+                <label for="newTokenSymbol">Symbol:</label>
+                <input type="text" id="newTokenSymbol" name="newTokenSymbol" placeholder="Symbol (e.g., ETH)" style="width: 100px;">
+                <label for="newTokenAddress">Contract Address:</label>
+                <input type="text" id="newTokenAddress" name="newTokenAddress" placeholder="Contract Address" style="width: 300px;">
+                <label for="newTokenDecimals">Decimals:</label>
+                <input type="number" id="newTokenDecimals" name="newTokenDecimals" placeholder="Decimals" min="0" max="18" style="width: 80px;">
                 <button id="createToken">Create Token</button>
             </div>
 
@@ -84,9 +88,12 @@
             <div id="adsMsg"></div>
             <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
                 <h3 style="margin-top: 0;">➕ Create New Ad</h3>
-                <input type="text" id="newAdText" placeholder="Ad text" style="width: 300px;">
-                <input type="text" id="newAdUrl" placeholder="URL (optional)" style="width: 200px;">
-                <input type="number" id="newAdWeight" placeholder="Weight" min="1" max="100" value="5" style="width: 80px;">
+                <label for="newAdText">Ad text:</label>
+                <input type="text" id="newAdText" name="newAdText" placeholder="Ad text" style="width: 300px;">
+                <label for="newAdUrl">URL (optional):</label>
+                <input type="text" id="newAdUrl" name="newAdUrl" placeholder="URL (optional)" style="width: 200px;">
+                <label for="newAdWeight">Weight:</label>
+                <input type="number" id="newAdWeight" name="newAdWeight" placeholder="Weight" min="1" max="100" value="5" style="width: 80px;">
                 <button id="createAd">Create Ad</button>
                 <button id="refreshAdsCache">Refresh Cache</button>
             </div>
@@ -104,9 +111,12 @@
             <div id="tiersMsg"></div>
             <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
                 <h3 style="margin-top: 0;">➕ Create New Tier</h3>
-                <input type="text" id="newTierName" placeholder="Tier name" style="width: 150px;">
-                <input type="text" id="newTierDescription" placeholder="Description" style="width: 300px;">
-                <input type="number" id="newTierPrice" placeholder="Price" min="0" style="width: 100px;">
+                <label for="newTierName">Tier Name:</label>
+                <input type="text" id="newTierName" name="newTierName" placeholder="Tier name" style="width: 150px;">
+                <label for="newTierDescription">Description:</label>
+                <input type="text" id="newTierDescription" name="newTierDescription" placeholder="Description" style="width: 300px;">
+                <label for="newTierPrice">Price:</label>
+                <input type="number" id="newTierPrice" name="newTierPrice" placeholder="Price" min="0" style="width: 100px;">
                 <button id="createTier">Create Tier</button>
             </div>
             <table id="tiersTbl">
@@ -147,8 +157,13 @@
 
     <!-- Load the modular admin dashboard -->
     <script type="module">
-        import { initDashboard } from './js/dashboard.js';
-        // Dashboard auto-initializes via DOMContentLoaded
+        import { initDashboard } from '/admin/dashboard.js';
+        // Initialize dashboard when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initDashboard);
+        } else {
+            initDashboard();
+        }
     </script>
 </body>
 </html>

@@ -13,6 +13,8 @@ const ENV_CONFIG = {
     optional: [
         'DISCORD_APPLICATION_ID',
         'DISCORD_CLIENT_ID',
+        'DISCORD_CLIENT_SECRET',
+        'DISCORD_REDIRECT_URI',
         'DISCORD_WEBHOOK_URL',
         'GUILD_ID',
         'PORT',

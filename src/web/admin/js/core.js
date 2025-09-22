@@ -5,12 +5,19 @@ export const API = async (path, opts = {}) => {
   const secret = localStorage.getItem("pip_admin_secret") || "";
   const headers = { "Authorization": `Bearer ${secret}`, ...(opts.headers || {}) };
   console.log(`🌐 Making API call to: ${path}`);
+  console.log(`🔑 Using admin secret: ${secret ? 'SET' : 'NOT SET'} (length: ${secret.length})`);
+  console.log(`🔑 Full secret: "${secret}"`);
   try {
+    console.log(`🚀 About to fetch: ${path} with headers:`, headers);
     const response = await fetch(path, { ...opts, headers });
     console.log(`📡 API response status: ${response.status}`);
     return response;
   }
-  catch (error) { console.error("API request failed:", error); throw error; }
+  catch (error) {
+    console.error("🚨 API request failed:", error);
+    console.error("🚨 Error details:", error.message, error.stack);
+    throw error;
+  }
 };
 
 export const showMessage = (elementId, message, isError = false) => {
@@ -26,9 +33,13 @@ export const setLoading = (elementOrId, isLoading) => {
 export const formatNumber = (n) => Number(n ?? 0).toLocaleString(undefined,{maximumFractionDigits:8,minimumFractionDigits:0});
 
 export const setDefaultDates = () => {
-  const today = new Date(); const weekAgo = new Date(today.getTime() - 7*24*60*60*1000);
-  $("feesSince").value = weekAgo.toISOString().split('T')[0];
-  $("feesUntil").value = today.toISOString().split('T')[0];
+  const today = new Date();
+  const weekAgo = new Date(today.getTime() - 7*24*60*60*1000);
+  // Only set dates if the elements exist
+  const sinceEl = $("feesSince");
+  const untilEl = $("feesUntil");
+  if (sinceEl) sinceEl.value = weekAgo.toISOString().split('T')[0];
+  if (untilEl) untilEl.value = today.toISOString().split('T')[0];
 };
 
 // Auth functionality
@@ -59,4 +70,13 @@ export function initAuth() {
     localStorage.setItem("pip_admin_secret", secret);
     checkAuthAndLoad();
   };
+}
+
+// Export makeAuthenticatedRequest for other modules
+export async function makeAuthenticatedRequest(path, opts = {}) {
+  const response = await API(path, opts);
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json();
 }

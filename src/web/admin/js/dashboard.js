@@ -1,6 +1,6 @@
 // src/web/admin/js/dashboard.js - Main admin dashboard coordinator
-import { initAuth, checkAuthAndLoad, setDefaultDates } from './core.js';
-import { loadTokens, initTokensSection } from './tokens.js';
+import { initAuth, checkAuthAndLoad, setDefaultDates } from '/admin/core.js';
+import { loadTokens, initTokensSection } from '/admin/tokens.js';
 
 // Lazy load other modules to keep initial bundle small
 let modulesLoaded = false;
@@ -32,32 +32,32 @@ export async function loadAllData() {
 
 // Stub functions - these will be replaced when we import the actual modules
 async function loadConfig() {
-  const { loadConfig: loadConfigImpl } = await import('./config.js');
+  const { loadConfig: loadConfigImpl } = await import('/admin/config.js');
   return loadConfigImpl();
 }
 
 async function loadTiers() {
-  const { loadTiers: loadTiersImpl } = await import('./tiers.js');
+  const { loadTiers: loadTiersImpl } = await import('/admin/tiers.js');
   return loadTiersImpl();
 }
 
 async function loadServers() {
-  const { loadServers: loadServersImpl } = await import('./servers.js');
+  const { loadServers: loadServersImpl } = await import('/admin/servers.js');
   return loadServersImpl();
 }
 
 async function loadTreasury() {
-  const { loadTreasury: loadTreasuryImpl } = await import('./treasury.js');
+  const { loadTreasury: loadTreasuryImpl } = await import('/admin/treasury.js');
   return loadTreasuryImpl();
 }
 
 async function loadAds() {
-  const { loadAds: loadAdsImpl } = await import('./ads.js');
+  const { loadAds: loadAdsImpl } = await import('/admin/ads.js');
   return loadAdsImpl();
 }
 
 async function loadFees() {
-  const { loadFees: loadFeesImpl } = await import('./fees-data.js');
+  const { loadFees: loadFeesImpl } = await import('/admin/fees-data.js');
   return loadFeesImpl();
 }
 
@@ -73,22 +73,22 @@ export async function initDashboard() {
 
   // Lazy load and initialize other sections
   try {
-    const { initAdsSection } = await import('./ads.js');
+    const { initAdsSection } = await import('/admin/ads.js');
     initAdsSection();
 
-    const { initTiersSection } = await import('./tiers.js');
+    const { initTiersSection } = await import('/admin/tiers.js');
     initTiersSection();
 
-    const { initConfigSection } = await import('./config.js');
+    const { initConfigSection } = await import('/admin/config.js');
     initConfigSection();
 
-    const { initServersSection } = await import('./servers.js');
+    const { initServersSection } = await import('/admin/servers.js');
     initServersSection();
 
-    const { initTreasurySection } = await import('./treasury.js');
+    const { initTreasurySection } = await import('/admin/treasury.js');
     initTreasurySection();
 
-    const { initFeesSection } = await import('./fees-data.js');
+    const { initFeesSection } = await import('/admin/fees-data.js');
     initFeesSection();
 
     console.log("✅ All sections initialized");
