@@ -129,9 +129,15 @@ async function announceResult(client, tipId) {
     console.log(`⚡ Finalizing tip ${tipId}...`);
     const summary = await finalizeExpiredGroupTip(tipId);
     console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
-    // Don't add to pending updates - handle Discord update directly in timer context
-    console.log(`📝 Timer will handle Discord message update directly (not using pending queue)...`);
-    // Discord message update will be attempted after announcement
+    // Update Discord message IMMEDIATELY after finalization (like working version)
+    console.log(`📝 Updating Discord message after finalization...`);
+    try {
+        await updateGroupTipMessage(client, tipId);
+        console.log(`✅ Discord message updated for tip ${tipId}`);
+    }
+    catch (error) {
+        console.error(`❌ Failed to update Discord message for tip ${tipId}:`, error.message);
+    }
     console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
     const chan = await client.channels.fetch(tip.channelId).catch((error) => {
         console.error(`❌ Failed to fetch channel ${tip.channelId}:`, error.message);
@@ -161,39 +167,7 @@ async function announceResult(client, tipId) {
             `Per person: **${summary.perShareText}**${rem}\n` +
             `Payouts: ${list}${more}`).catch(() => { });
     }
-    // Now try to update the Discord message in the same context where the announcement worked
-    console.log(`🔄 TIMER CONTEXT: Attempting Discord message update in same context as announcement...`);
-    console.log(`🔍 TIMER CONTEXT: Client state: ready=${client.isReady()}, user=${client.user?.username}, uptime=${client.uptime}ms`);
-    console.log(`🚨 TIMER CONTEXT: THIS LOG PROVES THE TIMER IS CALLING DISCORD UPDATE FOR TIP ${tipId}`);
-    console.log(`🔧 TIMER CONTEXT: About to call updateGroupTipMessage(client, ${tipId})`);
-    try {
-        // First try the normal way
-        console.log(`🔧 TIMER CONTEXT: Calling updateGroupTipMessage NOW...`);
-        await updateGroupTipMessage(client, tipId);
-        console.log(`✅ TIMER CONTEXT: Discord message update succeeded for tip ${tipId}!`);
-    }
-    catch (error) {
-        console.error(`❌ Primary Discord message update failed for tip ${tipId}:`, error.message);
-        console.error(`Error details:`, {
-            name: error.name,
-            code: error.code,
-            status: error.status,
-            method: error.method,
-            url: error.url,
-            requestBody: error.requestBody
-        });
-        // Try a direct approach bypassing rate limiter
-        console.log(`🔄 Attempting direct Discord message update bypassing rate limiter...`);
-        try {
-            await updateGroupTipMessageDirect(client, tipId);
-            console.log(`✅ Direct Discord message update succeeded for tip ${tipId}!`);
-        }
-        catch (directError) {
-            console.error(`❌ Direct Discord message update also failed for tip ${tipId}:`, directError.message);
-            console.error(`Direct error stack:`, directError.stack);
-            console.log(`📋 Both Discord update attempts failed for tip ${tipId}`);
-        }
-    }
+    // Discord message already updated after finalization above
 }
 /** Schedule a one-shot timer to finalize and announce at expiry. */
 export async function scheduleGroupTipExpiry(client, tipId) {
