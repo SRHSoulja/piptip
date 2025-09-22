@@ -129,10 +129,8 @@ async function announceResult(client, tipId) {
     console.log(`⚡ Finalizing tip ${tipId}...`);
     const summary = await finalizeExpiredGroupTip(tipId);
     console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
-    // Mark tip for Discord message update - will be handled by interaction processor
-    console.log(`📝 Marking tip ${tipId} for Discord message update...`);
-    pendingDiscordUpdates.add(tipId);
-    console.log(`✅ Tip ${tipId} marked for Discord update (${pendingDiscordUpdates.size} pending)`);
+    // Don't add to pending updates - handle Discord update directly in timer context
+    console.log(`📝 Timer will handle Discord message update directly (not using pending queue)...`);
     // Discord message update will be attempted after announcement
     console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
     const chan = await client.channels.fetch(tip.channelId).catch((error) => {
@@ -171,7 +169,6 @@ async function announceResult(client, tipId) {
         // First try the normal way
         await updateGroupTipMessage(client, tipId);
         console.log(`✅ Discord message update succeeded for tip ${tipId}!`);
-        pendingDiscordUpdates.delete(tipId); // Remove from pending since it worked
     }
     catch (error) {
         console.error(`❌ Primary Discord message update failed for tip ${tipId}:`, error.message);
@@ -188,12 +185,11 @@ async function announceResult(client, tipId) {
         try {
             await updateGroupTipMessageDirect(client, tipId);
             console.log(`✅ Direct Discord message update succeeded for tip ${tipId}!`);
-            pendingDiscordUpdates.delete(tipId);
         }
         catch (directError) {
             console.error(`❌ Direct Discord message update also failed for tip ${tipId}:`, directError.message);
             console.error(`Direct error stack:`, directError.stack);
-            console.log(`📋 Tip ${tipId} will be retried via pending queue`);
+            console.log(`📋 Both Discord update attempts failed for tip ${tipId}`);
         }
     }
 }
