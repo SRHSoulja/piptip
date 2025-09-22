@@ -169,22 +169,27 @@ export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
 export async function showDurationSelection(i: ButtonInteraction, data: { amount: number; note: string; tokenId: number }) {
   console.log('🔍 DEBUG: showDurationSelection called with data:', data);
 
-  // Ensure interaction is acknowledged
-  try {
-    if (!i.deferred && !i.replied) {
+  // This function is always called from handlers that have already acknowledged
+  // If not acknowledged yet, acknowledge it now
+  if (!i.deferred && !i.replied) {
+    try {
       await i.deferUpdate();
+    } catch (error) {
+      // If deferUpdate fails, try reply directly (for cases where called without prior acknowledgment)
+      // This will be handled below with reply() instead of editReply()
+      console.log('Could not defer in showDurationSelection:', error);
     }
-  } catch (error) {
-    // Interaction was likely already acknowledged
-    console.log('Interaction already acknowledged in showDurationSelection, continuing...');
   }
 
   const { getActiveTokens } = await import("../../services/token.js");
   const tokens = await getActiveTokens();
   const token = tokens.find(t => t.id === data.tokenId);
 
+  // Use the appropriate reply method based on interaction state
+  const replyMethod = (i.deferred || i.replied) ? i.editReply.bind(i) : i.reply.bind(i);
+
   if (!token) {
-    return i.editReply({
+    return replyMethod({
       content: "❌ **Token not found**\nThe selected token is no longer available.",
       embeds: [],
       components: []
@@ -248,7 +253,7 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
 
   console.log('🔍 DEBUG: About to send', [actionRow1, actionRow2, cancelRow].length, 'action rows to Discord');
 
-  await i.editReply({
+  await replyMethod({
     embeds: [embed],
     components: [actionRow1, actionRow2, cancelRow]
   });
