@@ -456,8 +456,8 @@ async function main() {
                 secure: process.env.NODE_ENV === "production",
                 maxAge: 24 * 60 * 60 * 1000, // 24 hours
                 httpOnly: true,
-                sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax',
-                domain: process.env.NODE_ENV === "production" ? undefined : undefined // Let browser decide
+                sameSite: 'lax', // Use 'lax' for OAuth redirects to work properly
+                domain: undefined // Let browser decide
             }
         });
         app.use(sessionMiddleware);

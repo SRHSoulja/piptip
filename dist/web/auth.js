@@ -161,11 +161,9 @@ authRouter.get("/discord/callback", async (req, res) => {
         const redirectUrl = stateData.redirectTo || "/pengubook";
         console.log("🔄 Redirecting to:", redirectUrl);
         if (redirectUrl.startsWith("/")) {
-            // Direct redirect to ngrok URL
-            const baseUrl = req.get('host') ? `${req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http'}://${req.get('host')}` : 'http://localhost:3000';
-            const fullRedirectUrl = `${baseUrl}${redirectUrl}`;
-            console.log("📍 Full redirect URL:", fullRedirectUrl);
-            res.redirect(fullRedirectUrl);
+            // Use relative redirect to preserve session cookies
+            console.log("📍 Relative redirect URL:", redirectUrl);
+            res.redirect(redirectUrl);
         }
         else {
             console.log("📍 External redirect URL:", redirectUrl);
