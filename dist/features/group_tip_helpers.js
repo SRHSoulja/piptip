@@ -47,6 +47,7 @@ export async function updateGroupTipMessage(client, groupTipId) {
         console.log(`🔍 Formatted amount: ${amountStr}`);
         // Calculate payout per user if finalized
         let payoutPerUser;
+        console.log(`🔍 About to calculate payoutPerUser, tip.status=${tip.status}, claimCount=${claimCount}`);
         if (tip.status === 'FINALIZED' && claimCount > 0) {
             const totalPayout = decToBigDirect(tip.totalAmount, tip.Token.decimals);
             const perUser = totalPayout / BigInt(claimCount);
@@ -56,6 +57,11 @@ export async function updateGroupTipMessage(client, groupTipId) {
                 decimals: tip.Token.decimals,
             });
         }
+        console.log(`🔍 About to create embed with data:`, {
+            expired,
+            isFinalized: tip.status === 'FINALIZED',
+            payoutPerUser
+        });
         const embed = groupTipEmbed({
             creator: creatorDisplay,
             amount: amountStr,
@@ -67,8 +73,10 @@ export async function updateGroupTipMessage(client, groupTipId) {
             payoutPerUser,
             // note: (omit, since GroupTip has no note column)
         });
+        console.log(`🔍 Embed created successfully`);
         // Force Discord cache refresh by setting a new timestamp for finalized tips
         if (tip.status === 'FINALIZED') {
+            console.log(`🔍 Setting fresh timestamp for finalized tip`);
             embed.setTimestamp(new Date());
         }
         const components = [groupTipClaimRow(tip.id, expired || tip.status !== "ACTIVE")];
