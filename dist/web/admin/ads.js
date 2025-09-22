@@ -90,3 +90,20 @@ adsRouter.post("/ads/refresh", async (_req, res) => {
         res.status(500).json({ ok: false, error: "Failed to refresh ad cache" });
     }
 });
+// Debug endpoint to check ad status
+adsRouter.get("/ads/debug", async (_req, res) => {
+    try {
+        const { debugAds, getActiveAd } = await import("../../services/ads.js");
+        const debug = await debugAds();
+        const currentAd = await getActiveAd();
+        res.json({
+            ok: true,
+            debug,
+            currentAd,
+            message: `Found ${debug.totalAds} total ads, ${debug.activeAds} active`
+        });
+    }
+    catch (error) {
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
