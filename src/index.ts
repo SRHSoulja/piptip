@@ -346,6 +346,15 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
   // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓
   if ("isChatInputCommand" in i && (i as any).isChatInputCommand()) {
     // fire-and-forget: delivers queued account notices as an ephemeral message
+
+    // Process any pending Discord message updates from expired timers
+    try {
+      const { processPendingDiscordUpdates } = await import("./features/group_tip_expiry.js");
+      processPendingDiscordUpdates(bot).catch(() => {}); // Fire and forget
+    } catch (error) {
+      // Ignore import errors
+    }
+
     switch ((i as any).commandName) {
       case "pip_withdraw": return pipWithdraw(i as any);
       case "pip_profile":  return pipProfile(i as any);

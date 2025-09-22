@@ -4,6 +4,7 @@ import { finalizeExpiredGroupTip } from "./finalizeExpiredGroupTip.js";
 import { updateGroupTipMessage } from "./group_tip_helpers.js";
 
 const timers = new Map<number, NodeJS.Timeout>();
+const pendingDiscordUpdates = new Set<number>();
 
 async function updateDiscordMessageWithRetry(client: Client, tipId: number, maxAttempts: number = 3) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -68,15 +69,15 @@ async function announceResult(client: Client, tipId: number) {
   const summary = await finalizeExpiredGroupTip(tipId);
   console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
 
-  // Update Discord message immediately when timer fires
-  console.log(`📝 Updating Discord message immediately for tip ${tipId}...`);
-  try {
-    await updateDiscordMessageWithRetry(client, tipId, 3);
-    console.log(`✅ Discord message updated successfully for tip ${tipId}`);
-  } catch (error: any) {
-    console.error(`❌ Failed to update Discord message for tip ${tipId}:`, error.message);
-    console.error('Full error:', error);
-  }
+  // Mark tip for Discord message update - will be handled by interaction processor
+  console.log(`📝 Marking tip ${tipId} for Discord message update...`);
+  pendingDiscordUpdates.add(tipId);
+  console.log(`✅ Tip ${tipId} marked for Discord update (${pendingDiscordUpdates.size} pending)`);
+
+  // Try immediate update but don't block if it fails
+  updateDiscordMessageWithRetry(client, tipId, 1).catch(error => {
+    console.log(`⚠️ Immediate Discord update failed for tip ${tipId}, will retry later: ${error.message}`);
+  });
 
   console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
   const chan = await client.channels.fetch(tip.channelId).catch((error) => {
@@ -200,5 +201,26 @@ export function getTimerStatus() {
     active: timers.size,
     timers: timerList
   };
+}
+
+/** Process pending Discord message updates */
+export async function processPendingDiscordUpdates(client: Client) {
+  if (pendingDiscordUpdates.size === 0) return;
+
+  console.log(`🔄 Processing ${pendingDiscordUpdates.size} pending Discord updates...`);
+
+  const updates = Array.from(pendingDiscordUpdates);
+  pendingDiscordUpdates.clear();
+
+  for (const tipId of updates) {
+    try {
+      console.log(`📝 Processing Discord update for tip ${tipId}...`);
+      await updateDiscordMessageWithRetry(client, tipId, 2);
+      console.log(`✅ Discord update completed for tip ${tipId}`);
+    } catch (error: any) {
+      console.error(`❌ Failed to process Discord update for tip ${tipId}:`, error.message);
+      // Don't re-add to pending to avoid infinite loops
+    }
+  }
 }
 
