@@ -129,163 +129,243 @@ async function announceResult(client, tipId) {
     console.log(`⚡ Finalizing tip ${tipId}...`);
     const summary = await finalizeExpiredGroupTip(tipId);
     console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
-    // Update Discord message IMMEDIATELY after finalization with retries
-    console.log(`📝 Updating Discord message after finalization...`);
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-            await updateGroupTipMessage(client, tipId);
-            console.log(`✅ Discord message updated successfully for tip ${tipId} on attempt ${attempt}`);
-            break;
-        }
-        catch (error) {
-            console.error(`❌ Discord message update attempt ${attempt}/3 failed for tip ${tipId}:`, error.message);
-            if (attempt < 3) {
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    // Update Discord message IMMEDIATELY after finalization - SIMPLE BULLETPROOF VERSION
+    console.log(`📝 Starting BULLETPROOF Discord message update for tip ${tipId}...`);
+    try {
+        const tipData = await prisma.groupTip.findUnique({
+            where: { id: tipId },
+            include: {
+                Creator: true,
+                Token: true,
+                claims: { include: { User: true } }
             }
-            else {
-                console.error(`💀 All Discord message update attempts failed for tip ${tipId}`);
+        });
+        if (tipData?.channelId && tipData?.messageId) {
+            console.log(`📡 Fetching Discord channel ${tipData.channelId}...`);
+            const channel = await client.channels.fetch(tipData.channelId);
+            if (channel && 'messages' in channel) {
+                console.log(`📨 Fetching Discord message ${tipData.messageId}...`);
+                const message = await channel.messages.fetch(tipData.messageId);
+                console.log(`🔧 Creating simple finalized embed...`);
+                const simpleEmbed = {
+                    title: '🎉✅ Colony Fish Distributed!',
+                    description: 
+                } `🐧 **<@\${tipData.Creator?.discordId || 'Unknown'}>** shared **\${summary.totalText}** with the colony!\\n\\n✅ **Fish distributed successfully!**\\n💰 **Each penguin got:** \${summary.perShareText}\`,
+          color: 0x00ff00,
+          timestamp: new Date().toISOString(),
+          fields: [
+            {
+              name: '🎣 Fish Claimed By',
+              value: tipData.claims.map(c => \`<@\${c.User?.discordId}>\`).join(', ') || 'No one',
+              inline: false
+            }
+          ]
+        };
+
+        console.log(`, Editing, Discord, message;
+                with (simple)
+                    embed;
+                `);
+        await message.edit({
+          embeds: [simpleEmbed],
+          components: [] // Remove buttons
+        });
+        console.log(`;
+                BULLETPROOF;
+                Discord;
+                update;
+                completed;
+                for (tip; $; { tipId } `);
+      }
+    }
+  } catch (error: any) {
+    console.error(\`❌ BULLETPROOF Discord update failed for tip \${tipId}:\`, error.message);
+    // Continue anyway - don't block the rest of the process
+  }
+
+  console.log(`)
+                    ;
+                Fetching;
+                channel;
+                $;
+                {
+                    tip.channelId;
+                }
+                for (announcement; ; )
+                    ;
+                `);
+  const chan = await client.channels.fetch(tip.channelId).catch((error) => {
+    console.error(`;
+                Failed;
+                to;
+                fetch;
+                channel;
+                $;
+                {
+                    tip.channelId;
+                }
+                `, error.message);
+    return null;
+  });
+
+  if (!chan || !chan.isTextBased()) {
+    console.log(`;
+                Channel;
+                $;
+                {
+                    tip.channelId;
+                }
+                not;
+                found;
+                or;
+                not;
+                text - based;
+                for (tip; $; { tipId } `);
+    return;
+  }
+
+  // 🔽 Type-narrow to a channel that actually supports `.send() `
+  if (!("send" in chan)) {
+    console.log(`)
+                    ;
+                Channel;
+                $;
+                {
+                    tip.channelId;
+                }
+                doesn;
+                't support .send() for tip ${tipId}`);;
+                return;
+            }
+            const channel = chan;
+            if (summary.kind === "REFUNDED") {
+                await channel.send(`<a:PenguNo:1415469218681585674> Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>.`).catch(() => { });
+            }
+            else if (summary.kind === "FINALIZED") {
+                const list = summary.payouts
+                    .slice(0, 10)
+                    .map(p => `<@${p.discordId}>: ${p.shareText}`)
+                    .join(", ");
+                const more = summary.payouts.length > 10 ? ` …and ${summary.payouts.length - 10} more.` : "";
+                const rem = summary.remainderText ? ` (remainder ${summary.remainderText} added to first share)` : "";
+                await channel.send(`⏰ Group tip finalized — split **${summary.totalText}** equally.\n` +
+                    `Per person: **${summary.perShareText}**${rem}\n` +
+                    `Payouts: ${list}${more}`).catch(() => { });
+            }
+            // Discord message already updated after finalization above
+        }
+        /** Schedule a one-shot timer to finalize and announce at expiry. */
+        export async function scheduleGroupTipExpiry(client, tipId) {
+            console.log(`⏰ scheduleGroupTipExpiry called for tip ${tipId}`);
+            const row = await prisma.groupTip.findUnique({
+                where: { id: tipId },
+                select: { id: true, expiresAt: true, status: true },
+            });
+            if (!row || row.status !== "ACTIVE") {
+                console.log(`❌ Cannot schedule timer for tip ${tipId}: status=${row?.status || 'not found'}`);
+                return;
+            }
+            const delay = Math.max(0, row.expiresAt.getTime() - Date.now());
+            const expiryTime = new Date(row.expiresAt).toISOString();
+            console.log(`⏱️ Scheduling timer for tip ${tipId}: expires at ${expiryTime} (in ${Math.round(delay / 1000)}s)`);
+            clearGroupTipExpiry(tipId);
+            const t = setTimeout(async () => {
+                try {
+                    console.log(`🔥 Timer FIRED for tip ${tipId}! Processing now...`);
+                    await announceResult(client, tipId);
+                    console.log(`✅ Timer processing completed for tip ${tipId}`);
+                }
+                catch (error) {
+                    console.error(`❌ Timer processing failed for tip ${tipId}:`, error.message);
+                }
+                finally {
+                    timers.delete(tipId);
+                    console.log(`🗑️ Timer removed for tip ${tipId}`);
+                }
+            }, delay);
+            timers.set(tipId, t);
+            console.log(`✅ Timer scheduled successfully for tip ${tipId}, will fire in ${Math.round(delay / 1000)} seconds`);
+        }
+        export function clearGroupTipExpiry(tipId) {
+            const t = timers.get(tipId);
+            if (t) {
+                clearTimeout(t);
+                timers.delete(tipId);
+            }
+        }
+        /** Call this once after login to recover timers and finalize overdue ones. */
+        export async function restoreGroupTipExpiryTimers(client) {
+            // Finalize anything ACTIVE but already expired
+            const overdue = await prisma.groupTip.findMany({
+                where: { status: "ACTIVE", expiresAt: { lte: new Date() } },
+                select: { id: true },
+            });
+            for (const g of overdue) {
+                await announceResult(client, g.id);
+            }
+            // Schedule upcoming ACTIVE tips
+            const upcoming = await prisma.groupTip.findMany({
+                where: { status: "ACTIVE", expiresAt: { gt: new Date() } },
+                select: { id: true, expiresAt: true },
+            });
+            for (const g of upcoming) {
+                await scheduleGroupTipExpiry(client, g.id);
+            }
+            // Clear any stale pending Discord updates from previous runs
+            clearPendingDiscordUpdates();
+        }
+        /** Clear all timers - call during shutdown to prevent memory leaks */
+        export function clearAllTimers() {
+            console.log(`🧹 Clearing ${timers.size} group tip timers...`);
+            for (const [tipId, timer] of timers.entries()) {
+                clearTimeout(timer);
+            }
+            timers.clear();
+            console.log("✅ All group tip timers cleared");
+        }
+        /** Clear pending Discord updates - call during startup to prevent stale updates */
+        export function clearPendingDiscordUpdates() {
+            const count = pendingDiscordUpdates.size;
+            if (count > 0) {
+                console.log(`🧹 Clearing ${count} stale pending Discord updates: ${Array.from(pendingDiscordUpdates).join(', ')}`);
+                pendingDiscordUpdates.clear();
+                console.log("✅ Stale pending Discord updates cleared");
+            }
+        }
+        /** Get current timer status for monitoring */
+        export function getTimerStatus() {
+            const now = Date.now();
+            const timerList = Array.from(timers.entries()).map(([tipId, timer]) => ({
+                tipId,
+                // Note: accessing private Node.js timer properties for debugging
+                expiresIn: timer._idleStart + timer._idleTimeout - now,
+            }));
+            return {
+                active: timers.size,
+                timers: timerList
+            };
+        }
+        /** Process pending Discord message updates */
+        export async function processPendingDiscordUpdates(client) {
+            if (pendingDiscordUpdates.size === 0)
+                return;
+            console.log(`🔄 Processing ${pendingDiscordUpdates.size} pending Discord updates...`);
+            console.log(`📋 Pending tip IDs: ${Array.from(pendingDiscordUpdates).join(', ')}`);
+            const updates = Array.from(pendingDiscordUpdates);
+            pendingDiscordUpdates.clear();
+            for (const tipId of updates) {
+                try {
+                    console.log(`📝 Processing Discord update for tip ${tipId}...`);
+                    await updateDiscordMessageWithRetry(client, tipId, 2);
+                    console.log(`✅ Discord update completed for tip ${tipId}`);
+                }
+                catch (error) {
+                    console.error(`❌ Failed to process Discord update for tip ${tipId}:`, error.message);
+                    // Don't re-add to pending to avoid infinite loops
+                }
             }
         }
     }
-    console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
-    const chan = await client.channels.fetch(tip.channelId).catch((error) => {
-        console.error(`❌ Failed to fetch channel ${tip.channelId}:`, error.message);
-        return null;
-    });
-    if (!chan || !chan.isTextBased()) {
-        console.log(`❌ Channel ${tip.channelId} not found or not text-based for tip ${tipId}`);
-        return;
-    }
-    // 🔽 Type-narrow to a channel that actually supports `.send()`
-    if (!("send" in chan)) {
-        console.log(`❌ Channel ${tip.channelId} doesn't support .send() for tip ${tipId}`);
-        return;
-    }
-    const channel = chan;
-    if (summary.kind === "REFUNDED") {
-        await channel.send(`<a:PenguNo:1415469218681585674> Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>.`).catch(() => { });
-    }
-    else if (summary.kind === "FINALIZED") {
-        const list = summary.payouts
-            .slice(0, 10)
-            .map(p => `<@${p.discordId}>: ${p.shareText}`)
-            .join(", ");
-        const more = summary.payouts.length > 10 ? ` …and ${summary.payouts.length - 10} more.` : "";
-        const rem = summary.remainderText ? ` (remainder ${summary.remainderText} added to first share)` : "";
-        await channel.send(`⏰ Group tip finalized — split **${summary.totalText}** equally.\n` +
-            `Per person: **${summary.perShareText}**${rem}\n` +
-            `Payouts: ${list}${more}`).catch(() => { });
-    }
-    // Discord message already updated after finalization above
-}
-/** Schedule a one-shot timer to finalize and announce at expiry. */
-export async function scheduleGroupTipExpiry(client, tipId) {
-    console.log(`⏰ scheduleGroupTipExpiry called for tip ${tipId}`);
-    const row = await prisma.groupTip.findUnique({
-        where: { id: tipId },
-        select: { id: true, expiresAt: true, status: true },
-    });
-    if (!row || row.status !== "ACTIVE") {
-        console.log(`❌ Cannot schedule timer for tip ${tipId}: status=${row?.status || 'not found'}`);
-        return;
-    }
-    const delay = Math.max(0, row.expiresAt.getTime() - Date.now());
-    const expiryTime = new Date(row.expiresAt).toISOString();
-    console.log(`⏱️ Scheduling timer for tip ${tipId}: expires at ${expiryTime} (in ${Math.round(delay / 1000)}s)`);
-    clearGroupTipExpiry(tipId);
-    const t = setTimeout(async () => {
-        try {
-            console.log(`🔥 Timer FIRED for tip ${tipId}! Processing now...`);
-            await announceResult(client, tipId);
-            console.log(`✅ Timer processing completed for tip ${tipId}`);
-        }
-        catch (error) {
-            console.error(`❌ Timer processing failed for tip ${tipId}:`, error.message);
-        }
-        finally {
-            timers.delete(tipId);
-            console.log(`🗑️ Timer removed for tip ${tipId}`);
-        }
-    }, delay);
-    timers.set(tipId, t);
-    console.log(`✅ Timer scheduled successfully for tip ${tipId}, will fire in ${Math.round(delay / 1000)} seconds`);
-}
-export function clearGroupTipExpiry(tipId) {
-    const t = timers.get(tipId);
-    if (t) {
-        clearTimeout(t);
-        timers.delete(tipId);
-    }
-}
-/** Call this once after login to recover timers and finalize overdue ones. */
-export async function restoreGroupTipExpiryTimers(client) {
-    // Finalize anything ACTIVE but already expired
-    const overdue = await prisma.groupTip.findMany({
-        where: { status: "ACTIVE", expiresAt: { lte: new Date() } },
-        select: { id: true },
-    });
-    for (const g of overdue) {
-        await announceResult(client, g.id);
-    }
-    // Schedule upcoming ACTIVE tips
-    const upcoming = await prisma.groupTip.findMany({
-        where: { status: "ACTIVE", expiresAt: { gt: new Date() } },
-        select: { id: true, expiresAt: true },
-    });
-    for (const g of upcoming) {
-        await scheduleGroupTipExpiry(client, g.id);
-    }
-    // Clear any stale pending Discord updates from previous runs
-    clearPendingDiscordUpdates();
-}
-/** Clear all timers - call during shutdown to prevent memory leaks */
-export function clearAllTimers() {
-    console.log(`🧹 Clearing ${timers.size} group tip timers...`);
-    for (const [tipId, timer] of timers.entries()) {
-        clearTimeout(timer);
-    }
-    timers.clear();
-    console.log("✅ All group tip timers cleared");
-}
-/** Clear pending Discord updates - call during startup to prevent stale updates */
-export function clearPendingDiscordUpdates() {
-    const count = pendingDiscordUpdates.size;
-    if (count > 0) {
-        console.log(`🧹 Clearing ${count} stale pending Discord updates: ${Array.from(pendingDiscordUpdates).join(', ')}`);
-        pendingDiscordUpdates.clear();
-        console.log("✅ Stale pending Discord updates cleared");
-    }
-}
-/** Get current timer status for monitoring */
-export function getTimerStatus() {
-    const now = Date.now();
-    const timerList = Array.from(timers.entries()).map(([tipId, timer]) => ({
-        tipId,
-        // Note: accessing private Node.js timer properties for debugging
-        expiresIn: timer._idleStart + timer._idleTimeout - now,
-    }));
-    return {
-        active: timers.size,
-        timers: timerList
-    };
-}
-/** Process pending Discord message updates */
-export async function processPendingDiscordUpdates(client) {
-    if (pendingDiscordUpdates.size === 0)
-        return;
-    console.log(`🔄 Processing ${pendingDiscordUpdates.size} pending Discord updates...`);
-    console.log(`📋 Pending tip IDs: ${Array.from(pendingDiscordUpdates).join(', ')}`);
-    const updates = Array.from(pendingDiscordUpdates);
-    pendingDiscordUpdates.clear();
-    for (const tipId of updates) {
-        try {
-            console.log(`📝 Processing Discord update for tip ${tipId}...`);
-            await updateDiscordMessageWithRetry(client, tipId, 2);
-            console.log(`✅ Discord update completed for tip ${tipId}`);
-        }
-        catch (error) {
-            console.error(`❌ Failed to process Discord update for tip ${tipId}:`, error.message);
-            // Don't re-add to pending to avoid infinite loops
-        }
+    finally {
     }
 }

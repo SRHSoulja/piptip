@@ -152,21 +152,52 @@ async function announceResult(client: Client, tipId: number) {
   const summary = await finalizeExpiredGroupTip(tipId);
   console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
 
-  // Update Discord message IMMEDIATELY after finalization with retries
-  console.log(`📝 Updating Discord message after finalization...`);
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await updateGroupTipMessage(client, tipId);
-      console.log(`✅ Discord message updated successfully for tip ${tipId} on attempt ${attempt}`);
-      break;
-    } catch (error: any) {
-      console.error(`❌ Discord message update attempt ${attempt}/3 failed for tip ${tipId}:`, error.message);
-      if (attempt < 3) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-      } else {
-        console.error(`💀 All Discord message update attempts failed for tip ${tipId}`);
+  // Update Discord message IMMEDIATELY after finalization - SIMPLE BULLETPROOF VERSION
+  console.log(`📝 Starting BULLETPROOF Discord message update for tip ${tipId}...`);
+  try {
+    const tipData = await prisma.groupTip.findUnique({
+      where: { id: tipId },
+      include: {
+        Creator: true,
+        Token: true,
+        claims: { include: { User: true } }
+      }
+    });
+
+    if (tipData?.channelId && tipData?.messageId) {
+      console.log(`📡 Fetching Discord channel ${tipData.channelId}...`);
+      const channel = await client.channels.fetch(tipData.channelId);
+
+      if (channel && 'messages' in channel) {
+        console.log(`📨 Fetching Discord message ${tipData.messageId}...`);
+        const message = await channel.messages.fetch(tipData.messageId);
+
+        console.log(`🔧 Creating simple finalized embed...`);
+        const simpleEmbed = {
+          title: '🎉✅ Colony Fish Distributed!',
+          description: \`🐧 **<@\${tipData.Creator?.discordId || 'Unknown'}>** shared **\${summary.totalText}** with the colony!\\n\\n✅ **Fish distributed successfully!**\\n💰 **Each penguin got:** \${summary.perShareText}\`,
+          color: 0x00ff00,
+          timestamp: new Date().toISOString(),
+          fields: [
+            {
+              name: '🎣 Fish Claimed By',
+              value: tipData.claims.map(c => \`<@\${c.User?.discordId}>\`).join(', ') || 'No one',
+              inline: false
+            }
+          ]
+        };
+
+        console.log(`💾 Editing Discord message with simple embed...`);
+        await message.edit({
+          embeds: [simpleEmbed],
+          components: [] // Remove buttons
+        });
+        console.log(`✅ BULLETPROOF Discord update completed for tip ${tipId}`);
       }
     }
+  } catch (error: any) {
+    console.error(\`❌ BULLETPROOF Discord update failed for tip \${tipId}:\`, error.message);
+    // Continue anyway - don't block the rest of the process
   }
 
   console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
