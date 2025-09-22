@@ -55,10 +55,60 @@ export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, g
       tokenDecimals: groupTip.Token.decimals
     });
 
-    // Show loading message
-    await i.editReply({
-      content: PENGUIN_LOADING.tip() + "\n*Calculating tax and processing your contribution...*"
+    // Calculate and show exact tax before processing
+    const { getConfig } = await import("../config.js");
+    const { userHasActiveTaxFreeTier } = await import("../services/tiers.js");
+    const { RoleTaxBenefitService } = await import("../services/role_tax_benefits.js");
+    const { toAtomicDirect, bigToDecDirect } = await import("../services/token.js");
+
+    // Ensure user exists for tax calculation
+    const user = await prisma.user.upsert({
+      where: { discordId: i.user.id },
+      update: {},
+      create: { discordId: i.user.id }
     });
+
+    // Calculate exact tax
+    const cfg = await getConfig();
+    const atomic = toAtomicDirect(contributionAmount, groupTip.Token.decimals);
+    const bestTaxBenefit = await RoleTaxBenefitService.getBestTaxBenefit(
+      user.id,
+      groupTip.guildId || '',
+      i.user.id
+    );
+
+    let feeBpsNum = groupTip.Token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+    if (bestTaxBenefit) {
+      const taxReduction = bestTaxBenefit.exemptionRate / 100;
+      feeBpsNum = Math.round(feeBpsNum * (1 - taxReduction));
+    } else {
+      const taxFree = await userHasActiveTaxFreeTier(user.id);
+      feeBpsNum = taxFree ? 0 : feeBpsNum;
+    }
+
+    const feeBps = BigInt(feeBpsNum);
+    const feeAtomic = (atomic * feeBps) / 10000n;
+    const taxAmount = Number(bigToDecDirect(feeAtomic, groupTip.Token.decimals));
+    const totalCost = contributionAmount + taxAmount;
+
+    // Show tax preview and confirm
+    if (taxAmount > 0) {
+      await i.editReply({
+        content: `💰 **Tax Calculation**\n\n` +
+          `🐟 Contribution: ${contributionAmount} ${groupTip.Token.symbol}\n` +
+          `💸 Tax (${(feeBpsNum / 100).toFixed(1)}%): ${taxAmount.toFixed(4)} ${groupTip.Token.symbol}\n` +
+          `💳 **Total Cost: ${totalCost.toFixed(4)} ${groupTip.Token.symbol}**\n\n` +
+          `${PENGUIN_LOADING.tip()} *Processing your contribution...*`
+      });
+    } else {
+      await i.editReply({
+        content: `🎉 **Tax-Free Contribution!**\n\n` +
+          `🐟 Contribution: ${contributionAmount} ${groupTip.Token.symbol}\n` +
+          `💸 Tax: FREE! 🎉\n` +
+          `💳 **Total Cost: ${contributionAmount} ${groupTip.Token.symbol}**\n\n` +
+          `${PENGUIN_LOADING.tip()} *Processing your contribution...*`
+      });
+    }
 
     // Process the contribution with timeout
     const contributionPromise = addGroupTipContribution(groupTipId, i.user.id, contributionAmount);

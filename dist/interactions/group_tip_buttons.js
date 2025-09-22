@@ -149,38 +149,14 @@ export async function handleGroupTipAdd(i, groupTipId) {
                 ephemeral: true
             });
         }
-        // Get user's tax rate for display in modal
-        const { getConfig } = await import("../config.js");
-        const { userHasActiveTaxFreeTier } = await import("../services/tiers.js");
-        const { RoleTaxBenefitService } = await import("../services/role_tax_benefits.js");
-        // Calculate user's tax rate
-        const cfg = await getConfig();
-        const bestTaxBenefit = await RoleTaxBenefitService.getBestTaxBenefit(user.id, tip.guildId || '', i.user.id);
-        let feeBpsNum = tip.Token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
-        if (bestTaxBenefit) {
-            const taxReduction = bestTaxBenefit.exemptionRate / 100;
-            feeBpsNum = Math.round(feeBpsNum * (1 - taxReduction));
-        }
-        else {
-            const taxFree = await userHasActiveTaxFreeTier(user.id);
-            feeBpsNum = taxFree ? 0 : feeBpsNum;
-        }
-        const taxPercentage = (feeBpsNum / 100).toFixed(1);
-        // Calculate example tax for preview
-        const exampleAmount = 100;
-        const exampleTaxAmount = (exampleAmount * feeBpsNum) / 10000;
-        const exampleTotal = exampleAmount + exampleTaxAmount;
-        const taxDisplay = feeBpsNum === 0
-            ? "Tax-free! You pay exactly what you contribute."
-            : `${taxPercentage}% tax applies (e.g., ${exampleAmount} ${tip.Token.symbol} + ${exampleTaxAmount.toFixed(2)} tax = ${exampleTotal.toFixed(2)} total)`;
-        // Show modal for contribution amount
+        // Show modal immediately to avoid timeout - tax will be calculated during submission
         const modal = new ModalBuilder()
             .setCustomId(`grouptip_contribute:${groupTipId}`)
             .setTitle(`🐟 Add ${tip.Token.symbol} to Colony`);
         const amountInput = new TextInputBuilder()
             .setCustomId("contribution_amount")
             .setLabel(`How many ${tip.Token.symbol} to add?`)
-            .setPlaceholder(`Enter amount - ${taxDisplay}`)
+            .setPlaceholder("Enter amount (e.g., 50, 25.5) - tax calculated before payment")
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
             .setMaxLength(20);

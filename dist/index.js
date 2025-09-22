@@ -173,8 +173,11 @@ const bot = new Client({ intents: [GatewayIntentBits.Guilds] });
 function withAutoAck(fn) {
     return async (i) => {
         let timerCleared = false;
+        // Skip auto-defer for interactions that might show modals
+        const skipAutoDefer = isButtonInteraction(i) &&
+            (i.customId.includes("grouptip:add") || i.customId.includes("_add"));
         // auto-defer after 1.5s if nothing replied yet (optimized for faster perceived response)
-        const timer = setTimeout(async () => {
+        const timer = skipAutoDefer ? null : setTimeout(async () => {
             if (!timerCleared && "deferred" in i && !i.deferred && "replied" in i && !i.replied && "deferReply" in i) {
                 try {
                     await i.deferReply({ flags: 64 });
@@ -189,7 +192,8 @@ function withAutoAck(fn) {
             await fn(i);
             // Clear timer immediately after handler completes
             timerCleared = true;
-            clearTimeout(timer);
+            if (timer)
+                clearTimeout(timer);
             // ✅ after the handler has replied/deferred, flush notices as an ephemeral follow-up
             if ("isChatInputCommand" in i && i.isChatInputCommand()) {
                 await flushNoticesEphemeral(i).catch(() => { });
@@ -215,7 +219,8 @@ function withAutoAck(fn) {
         }
         finally {
             timerCleared = true;
-            clearTimeout(timer);
+            if (timer)
+                clearTimeout(timer);
         }
     };
 }
