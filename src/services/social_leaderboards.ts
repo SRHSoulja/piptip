@@ -10,6 +10,8 @@ export const SOCIAL_WEIGHTS = {
   TIPS_SENT: 3,        // Generous sharing
   TIPS_RECEIVED: 1,    // Community appreciation
   GROUP_TIPS_CREATED: 10, // Colony leadership
+  GROUP_TIP_CONTRIBUTIONS: 5, // Community support
+  GROUP_TIP_CLAIMS: 3, // Participation
   ACHIEVEMENTS: 5,      // Personal growth
   STREAK_CURRENT: 2,   // Current performance
   STREAK_LONGEST: 1,   // Historical performance
@@ -32,6 +34,8 @@ export async function calculateSocialScore(discordId: string): Promise<{
         tipsSent: { select: { id: true } },
         tipsReceived: { select: { id: true } },
         groupTipsCreated: { select: { id: true } },
+        groupTipContributions: { select: { id: true } },
+        groupTipsClaimed: { select: { id: true } },
         unlockedAchievements: { select: { id: true } },
         streak: true,
         tierMemberships: {
@@ -58,6 +62,8 @@ export async function calculateSocialScore(discordId: string): Promise<{
       tipsSent: user.tipsSent.length * SOCIAL_WEIGHTS.TIPS_SENT,
       tipsReceived: user.tipsReceived.length * SOCIAL_WEIGHTS.TIPS_RECEIVED,
       groupTipsCreated: user.groupTipsCreated.length * SOCIAL_WEIGHTS.GROUP_TIPS_CREATED,
+      groupTipContributions: user.groupTipContributions.length * SOCIAL_WEIGHTS.GROUP_TIP_CONTRIBUTIONS,
+      groupTipClaims: user.groupTipsClaimed.length * SOCIAL_WEIGHTS.GROUP_TIP_CLAIMS,
       achievements: user.unlockedAchievements.length * SOCIAL_WEIGHTS.ACHIEVEMENTS,
       currentStreak: (user.streak?.currentWins || 0) * SOCIAL_WEIGHTS.STREAK_CURRENT,
       longestStreak: (user.streak?.longestWins || 0) * SOCIAL_WEIGHTS.STREAK_LONGEST,
@@ -94,6 +100,8 @@ export async function getSocialLeaderboard(limit: number = 10): Promise<Array<{
         tipsSent: { select: { id: true } },
         tipsReceived: { select: { id: true } },
         groupTipsCreated: { select: { id: true } },
+        groupTipContributions: { select: { id: true } },
+        groupTipsClaimed: { select: { id: true } },
         unlockedAchievements: { select: { id: true } },
         streak: true,
         tierMemberships: {

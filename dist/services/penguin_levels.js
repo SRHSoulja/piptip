@@ -12,7 +12,8 @@ export const XP_SOURCES = {
     DAILY_LOGIN: 20,
     REFERRAL: 200,
     GROUP_TIP_CREATE: 25,
-    GROUP_TIP_CLAIM: 15
+    GROUP_TIP_CLAIM: 15,
+    GROUP_TIP_CONTRIBUTE: 10
 };
 // Daily XP caps for healthy engagement
 export const DAILY_XP_CAPS = {
