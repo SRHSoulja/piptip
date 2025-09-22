@@ -5,7 +5,12 @@ import { RefundEngine } from "../services/refund_engine.js";
 
 export type FinalizeSummary =
   | { kind: "NOOP" } // not active/expired or someone else finalized
-  | { kind: "REFUNDED"; creatorId: string; amountText: string }
+  | {
+      kind: "REFUNDED";
+      creatorId: string;
+      amountText: string;
+      contributorRefunds?: { discordId: string; amountText: string }[];
+    }
   | {
       kind: "FINALIZED";
       totalText: string;
@@ -47,6 +52,8 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
 
   if (claimedClaims.length === 0) {
     // No successful claims - refund everything to creator AND contributors
+    const contributorRefunds: { discordId: string; amountText: string }[] = [];
+
     await prisma.$transaction(async (tx) => {
       // Refund creator's original amount + tax
       const refundResult = await RefundEngine.refundContribution(tip.id);
@@ -75,6 +82,12 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
           where: { id: contrib.id },
           data: { status: 'REFUNDED' }
         });
+
+        // Collect refund info for announcement
+        contributorRefunds.push({
+          discordId: contrib.contributor.discordId,
+          amountText: formatAmount(totalRefund, tip.Token)
+        });
       }
 
       // Handle pending claims separately
@@ -86,15 +99,14 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
       }
     });
 
-    // Calculate total refunded for display
+    // Calculate creator refund for display
     const creatorRefund = decToBigDirect(tip.totalAmount, tip.Token.decimals) + BigInt(tip.taxAtomic.toString());
-    const contributionsRefund = decToBigDirect(tip.contributionsTotal || 0, tip.Token.decimals);
-    const totalRefunded = creatorRefund + contributionsRefund;
 
     return {
       kind: "REFUNDED",
       creatorId: tip.Creator!.discordId,
-      amountText: formatAmount(totalRefunded, tip.Token),
+      amountText: formatAmount(creatorRefund, tip.Token),
+      contributorRefunds: contributorRefunds.length > 0 ? contributorRefunds : undefined,
     };
   }
 

@@ -33,6 +33,7 @@ export async function finalizeExpiredGroupTip(groupTipId) {
     const claimedClaims = tip.claims.filter(c => c.status === 'CLAIMED');
     if (claimedClaims.length === 0) {
         // No successful claims - refund everything to creator AND contributors
+        const contributorRefunds = [];
         await prisma.$transaction(async (tx) => {
             // Refund creator's original amount + tax
             const refundResult = await RefundEngine.refundContribution(tip.id);
@@ -57,6 +58,11 @@ export async function finalizeExpiredGroupTip(groupTipId) {
                     where: { id: contrib.id },
                     data: { status: 'REFUNDED' }
                 });
+                // Collect refund info for announcement
+                contributorRefunds.push({
+                    discordId: contrib.contributor.discordId,
+                    amountText: formatAmount(totalRefund, tip.Token)
+                });
             }
             // Handle pending claims separately
             if (pendingClaims.length > 0) {
@@ -66,14 +72,13 @@ export async function finalizeExpiredGroupTip(groupTipId) {
                 });
             }
         });
-        // Calculate total refunded for display
+        // Calculate creator refund for display
         const creatorRefund = decToBigDirect(tip.totalAmount, tip.Token.decimals) + BigInt(tip.taxAtomic.toString());
-        const contributionsRefund = decToBigDirect(tip.contributionsTotal || 0, tip.Token.decimals);
-        const totalRefunded = creatorRefund + contributionsRefund;
         return {
             kind: "REFUNDED",
             creatorId: tip.Creator.discordId,
-            amountText: formatAmount(totalRefunded, tip.Token),
+            amountText: formatAmount(creatorRefund, tip.Token),
+            contributorRefunds: contributorRefunds.length > 0 ? contributorRefunds : undefined,
         };
     }
     // Split payout among CLAIMED claims and refund PENDING claims - batch all operations

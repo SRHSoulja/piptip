@@ -284,9 +284,19 @@ async function announceResult(client: Client, tipId: number) {
   const channel = chan as GuildTextBasedChannel;
 
   if (summary.kind === "REFUNDED") {
-    await channel.send(
-      `<a:PenguNo:1415469218681585674> Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>.`
-    ).catch(() => {});
+    let message = `<a:PenguNo:1415469218681585674> Group tip expired. No claims — refunded **${summary.amountText}** to <@${summary.creatorId}>`;
+
+    if (summary.contributorRefunds && summary.contributorRefunds.length > 0) {
+      const contributorList = summary.contributorRefunds
+        .slice(0, 5) // Limit to 5 contributors to avoid message length issues
+        .map(refund => `<@${refund.discordId}>: ${refund.amountText}`)
+        .join(", ");
+      const more = summary.contributorRefunds.length > 5 ? ` and ${summary.contributorRefunds.length - 5} more contributors` : "";
+      message += `\n🐟 Contributors also refunded: ${contributorList}${more}`;
+    }
+
+    message += ".";
+    await channel.send(message).catch(() => {});
   } else if (summary.kind === "FINALIZED") {
     const list = summary.payouts
       .slice(0, 10)
