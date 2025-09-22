@@ -4,7 +4,8 @@ import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { finalizeExpiredGroupTip } from "../features/finalizeExpiredGroupTip.js";
 
 export async function handleGroupTipClaim(i: ButtonInteraction, groupTipId: number) {
-  await i.deferReply({ ephemeral: true });
+  // No manual defer - let the auto-defer wrapper handle it to avoid double acknowledgment
+  console.log(`🎯 handleGroupTipClaim: Starting claim for tip ${groupTipId} by user ${i.user.id}`);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -81,17 +82,25 @@ try {
     // If the tip had already expired, just update message (let native timer handle finalization)
     if (result.expired) {
       // Don't call finalizeExpiredGroupTip here - let the native timer handle it to avoid race conditions
+      console.log(`🎯 handleGroupTipClaim: Tip ${result.groupTipId} expired, updating message and rejecting claim`);
       await updateGroupTipMessage(i.client, result.groupTipId);
       return i.editReply({ content: "<a:PenguNo:1415469218681585674> This group tip has expired — claims are closed." });
     }
 
     // Normal path: update card and confirm claim
+    console.log(`🎯 handleGroupTipClaim: Tip ${result.groupTipId} claim successful, updating message to show ${result.newClaimCount} claims`);
     await updateGroupTipMessage(i.client, result.groupTipId);
+    console.log(`🎯 handleGroupTipClaim: Message updated, sending confirmation to user`);
     await i.editReply({
       content: `✅ You're in! You'll receive your share when the timer expires. (${result.newClaimCount} people claimed so far)`,
     });
   } catch (error: any) {
-    await i.editReply({ content: `${error?.message || String(error)}` });
+    console.error(`🎯 handleGroupTipClaim: Error in tip ${groupTipId}:`, error.message);
+    try {
+      await i.editReply({ content: `${error?.message || String(error)}` });
+    } catch (replyError: any) {
+      console.error(`🎯 handleGroupTipClaim: Failed to send error reply:`, replyError.message);
+    }
   }
 }
 
