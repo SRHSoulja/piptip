@@ -196,9 +196,9 @@ export const CacheKeys = {
   USER_STREAK: (userId: number) => `piptip:streak:${userId}`,
 
   // Legacy compatibility
-  leaderboard: 'piptip:leaderboard:social', // For backwards compatibility
-  userStreak: (userId: number) => `piptip:streak:${userId}`,
-  userAchievements: (userId: number) => `piptip:achievements:${userId}`,
+  leaderboard: (type?: string) => type ? `piptip:leaderboard:${type}` : 'piptip:leaderboard:social',
+  userStreak: (userId: string | number) => `piptip:streak:${userId}`,
+  userAchievements: (userId: string | number) => `piptip:achievements:${userId}`,
 } as const;
 
 // Cache TTL constants (in seconds)
@@ -218,5 +218,25 @@ export const CacheTTL = {
   achievements: 600,  // 10 minutes
 } as const;
 // Legacy compatibility functions for existing code
-export const cacheWithMetrics = cache;
 export const getCache = cache;
+
+// Cache wrapper function for existing code that expects a function
+export async function cacheWithMetrics<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlSeconds?: number
+): Promise<T> {
+  // Try to get from cache first
+  const cached = await cache.get<T>(key);
+  if (cached !== null) {
+    return cached;
+  }
+
+  // Not in cache, fetch fresh data
+  const fresh = await fetcher();
+
+  // Store in cache
+  await cache.set(key, fresh, ttlSeconds);
+
+  return fresh;
+}

@@ -379,7 +379,7 @@ export async function generateProfileData(userId, discordUser) {
     const socialScoreText = `${socialScoreData.totalScore.toLocaleString()} points` +
         (socialRank > 0 ? ` (#${socialRank} in colony)` : "");
     // Format daily activity streak
-    const completedGoals = dailyStats.goals?.filter(g => g.completed).length || 0;
+    const completedGoals = dailyStats.goals?.filter((g) => g.completed).length || 0;
     const totalGoals = dailyStats.goals?.length || 3;
     const dailyStreakText = completedGoals > 0
         ? `${completedGoals}/${totalGoals} daily goals completed today`

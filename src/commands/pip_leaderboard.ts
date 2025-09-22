@@ -95,7 +95,7 @@ async function buildStreakLeaderboard(limit: number): Promise<EmbedBuilder> {
     });
   } else {
     const entries = await Promise.all(
-      leaderboard.map(async (entry) => {
+      leaderboard.map(async (entry: any) => {
         const user = await prisma.user.findUnique({
           where: { discordId: entry.discordId },
           select: { discordId: true }

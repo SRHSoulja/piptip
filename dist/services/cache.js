@@ -19,8 +19,6 @@ export class PIPTipCache {
                 socket: {
                     connectTimeout: 5000,
                 },
-                retryDelayOnFailover: 100,
-                retryDelayOnClusterDown: 100,
             });
             this.redis.on('error', (err) => {
                 console.error('Redis Client Error:', err);
@@ -179,7 +177,7 @@ export const CacheKeys = {
     // Streaks
     USER_STREAK: (userId) => `piptip:streak:${userId}`,
     // Legacy compatibility
-    leaderboard: 'piptip:leaderboard:social', // For backwards compatibility
+    leaderboard: (type) => type ? `piptip:leaderboard:${type}` : 'piptip:leaderboard:social',
     userStreak: (userId) => `piptip:streak:${userId}`,
     userAchievements: (userId) => `piptip:achievements:${userId}`,
 };
@@ -199,5 +197,17 @@ export const CacheTTL = {
     achievements: 600, // 10 minutes
 };
 // Legacy compatibility functions for existing code
-export const cacheWithMetrics = cache;
 export const getCache = cache;
+// Cache wrapper function for existing code that expects a function
+export async function cacheWithMetrics(key, fetcher, ttlSeconds) {
+    // Try to get from cache first
+    const cached = await cache.get(key);
+    if (cached !== null) {
+        return cached;
+    }
+    // Not in cache, fetch fresh data
+    const fresh = await fetcher();
+    // Store in cache
+    await cache.set(key, fresh, ttlSeconds);
+    return fresh;
+}
