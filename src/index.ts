@@ -77,8 +77,8 @@ app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
 
 // Replit-optimized cron webhook for reliable finalization
-import cronWebhookRouter from "./web/cron_webhook.js";
-app.use("/cron", cronWebhookRouter);
+// import cronWebhookRouter from "./web/cron_webhook.js"; // DISABLED - conflicts with native timers
+// app.use("/cron", cronWebhookRouter);
 app.use("/admin", adminRouter);
 app.use("/auth", authRouter);
 app.use("/pengubook", pengubookModularRouter);
@@ -442,13 +442,14 @@ bot.once(Events.ClientReady, async () => {
   }
 
   // Start group tip cleanup service to prevent stuck tips
-  try {
-    const { startCleanupService } = await import("./services/group_tip_cleanup.js");
-    startCleanupService();
-    console.log("✅ Group tip cleanup service started");
-  } catch (error) {
-    console.error("Failed to start group tip cleanup service:", error);
-  }
+  // DISABLED - conflicts with native timer system that "worked perfectly"
+  // try {
+  //   const { startCleanupService } = await import("./services/group_tip_cleanup.js");
+  //   startCleanupService();
+  //   console.log("✅ Group tip cleanup service started");
+  // } catch (error) {
+  //   console.error("Failed to start group tip cleanup service:", error);
+  // }
 });
 
 // Global error handlers
@@ -521,12 +522,13 @@ async function main() {
       }
 
       // Stop group tip cleanup service
-      try {
-        const { stopCleanupService } = await import("./services/group_tip_cleanup.js");
-        stopCleanupService();
-      } catch (error) {
-        console.error("Error stopping group tip cleanup service:", error);
-      }
+      // DISABLED - cleanup service not running
+      // try {
+      //   const { stopCleanupService } = await import("./services/group_tip_cleanup.js");
+      //   stopCleanupService();
+      // } catch (error) {
+      //   console.error("Error stopping group tip cleanup service:", error);
+      // }
 
       // Stop tier management services
       try {
