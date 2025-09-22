@@ -202,7 +202,8 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
 }
 
 async function handleGroupTipConfirm(i: ButtonInteraction, groupTipId: number, contributionAmount: number) {
-  await i.deferReply({ ephemeral: true });
+  // Update the existing tax preview message instead of creating a new interaction
+  await i.deferUpdate();
   console.log(`✅ handleGroupTipConfirm: Processing confirmed contribution for tip ${groupTipId}`);
 
   try {
@@ -210,9 +211,10 @@ async function handleGroupTipConfirm(i: ButtonInteraction, groupTipId: number, c
     const { updateGroupTipMessage } = await import("../features/group_tip_helpers.js");
     const { PENGUIN_LOADING } = await import("../utils/penguin_messages.js");
 
-    // Show processing message
+    // Update the tax preview message to show processing
     await i.editReply({
-      content: `${PENGUIN_LOADING.tip()} *Processing your contribution...*`
+      content: `${PENGUIN_LOADING.tip()} *Processing your contribution...*`,
+      components: [] // Remove the buttons during processing
     });
 
     // Process the contribution with timeout
@@ -255,9 +257,10 @@ async function handleGroupTipConfirm(i: ButtonInteraction, groupTipId: number, c
 
 async function handleGroupTipCancel(i: ButtonInteraction, groupTipId: number) {
   console.log(`❌ handleGroupTipCancel: User cancelled contribution for tip ${groupTipId}`);
-  await i.reply({
+  // Update the existing tax preview message
+  await i.update({
     content: "❌ Contribution cancelled. No payment was processed.",
-    ephemeral: true
+    components: [] // Remove the buttons
   });
 }
 
