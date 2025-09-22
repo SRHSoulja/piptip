@@ -694,6 +694,36 @@ adminRouter.get("/ui.js", async (_req: Request, res: Response) => {
   }
 });
 
+// Serve modular admin interface
+adminRouter.get("/modular", async (_req: Request, res: Response) => {
+  try {
+    const srcDir = process.cwd();
+    const htmlPath = join(srcDir, "src", "web", "admin", "admin-modular.html");
+    const htmlContent = await readFile(htmlPath, 'utf-8');
+    res.type("text/html").send(htmlContent);
+  } catch (error) {
+    console.error("❌ Failed to serve modular admin HTML:", error);
+    res.status(500).send("Failed to load modular admin interface");
+  }
+});
+
+// Serve JavaScript modules dynamically
+const jsModules = ['security.js', 'validation.js', 'ui-secure-helpers.js', 'tokens.js', 'core.js', 'fees.js', 'dashboard.js', 'ads.js', 'tiers.js', 'config.js', 'servers.js', 'treasury.js', 'fees-data.js'];
+
+jsModules.forEach(module => {
+  adminRouter.get(`/${module}`, async (_req: Request, res: Response) => {
+    try {
+      const srcDir = process.cwd();
+      const jsPath = join(srcDir, "src", "web", "admin", "js", module);
+      const jsContent = await readFile(jsPath, 'utf-8');
+      res.type("application/javascript").send(jsContent);
+    } catch (error) {
+      console.error(`❌ Failed to serve ${module}:`, error);
+      res.status(500).send(`// Failed to load ${module}`);
+    }
+  });
+});
+
 /* ------------------------------------------------------------------------ */
 /*                    Enhanced Multi-Factor Authentication                   */
 /* ------------------------------------------------------------------------ */
@@ -845,9 +875,10 @@ adminRouter.get('/dashboard.js', serveJavaScript('dashboard.js'));
 adminRouter.use((req: Request, res: Response, next: NextFunction) => {
   // Skip auth for specific endpoints and JavaScript modules
   const publicPaths = [
-    '/ping', '/ui', '/ui.js', '/',
+    '/ping', '/ui', '/ui.js', '/', '/modular',
     '/security.js', '/validation.js', '/ui-secure-helpers.js',
-    '/tokens.js', '/core.js', '/fees.js', '/dashboard.js'
+    '/tokens.js', '/core.js', '/fees.js', '/dashboard.js',
+    '/ads.js', '/tiers.js', '/config.js', '/servers.js', '/treasury.js', '/fees-data.js'
   ];
 
   if (publicPaths.includes(req.path)) {

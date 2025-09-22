@@ -62,7 +62,7 @@ async function loadFees() {
 }
 
 // Initialize the admin dashboard
-export function initDashboard() {
+export async function initDashboard() {
   console.log("🎛️ Initializing admin dashboard...");
 
   // Set up authentication
@@ -70,6 +70,31 @@ export function initDashboard() {
 
   // Initialize sections
   initTokensSection();
+
+  // Lazy load and initialize other sections
+  try {
+    const { initAdsSection } = await import('./ads.js');
+    initAdsSection();
+
+    const { initTiersSection } = await import('./tiers.js');
+    initTiersSection();
+
+    const { initConfigSection } = await import('./config.js');
+    initConfigSection();
+
+    const { initServersSection } = await import('./servers.js');
+    initServersSection();
+
+    const { initTreasurySection } = await import('./treasury.js');
+    initTreasurySection();
+
+    const { initFeesSection } = await import('./fees-data.js');
+    initFeesSection();
+
+    console.log("✅ All sections initialized");
+  } catch (error) {
+    console.error("❌ Failed to initialize some sections:", error);
+  }
 
   // Set default dates for date inputs
   setDefaultDates();

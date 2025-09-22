@@ -151,6 +151,10 @@ app.get("/", (req: Request, res: Response) => {
         <div class="link-title">🛠️ Admin Panel</div>
         <div class="link-desc">Manage tokens, users, and settings</div>
       </a>
+      <a href="/admin/modular" class="link">
+        <div class="link-title">🔧 Modular Admin</div>
+        <div class="link-desc">Streamlined admin interface with focused modules</div>
+      </a>
       <a href="/pengubook" class="link">
         <div class="link-title">📖 PenguBook</div>
         <div class="link-desc">Social profiles and discovery</div>

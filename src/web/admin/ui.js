@@ -163,6 +163,22 @@ const createGroupTipTableRow = (groupTip) => {
   return tr;
 };
 
+const createTierTableRow = (tier) => {
+  const tr = document.createElement('tr');
+  tr.dataset.id = tier.id;
+  tr.innerHTML = `
+    <td>${tier.id}</td>
+    <td><input value="${escapeHtml(tier.name)}" data-field="name" style="width:160px"/></td>
+    <td>${escapeHtml(tier.token?.symbol || tier.tokenId)}</td>
+    <td><input value="${escapeHtml(String(tier.priceAmount))}" data-field="priceAmount" type="number" step="0.00000001" style="width:140px"/></td>
+    <td><input value="${escapeHtml(String(tier.durationDays))}" data-field="durationDays" type="number" min="1" style="width:90px"/></td>
+    <td><input type="checkbox" ${tier.tipTaxFree ? "checked" : ""} data-field="tipTaxFree"/></td>
+    <td><input type="checkbox" ${tier.active ? "checked" : ""} data-field="active"/></td>
+    <td><button class="saveTier">Save</button></td>
+  `;
+  return tr;
+};
+
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);
 const API = async (path, opts = {}) => {

@@ -78,11 +78,70 @@
             </table>
         </div>
 
-        <!-- Additional sections would go here -->
+        <!-- Ads Section -->
         <div class="section">
-            <h2>📊 Other Sections</h2>
-            <p>Additional admin functionality will be loaded modularly as needed.</p>
-            <p>This demonstrates the broken down structure with manageable file sizes.</p>
+            <h2>📢 Ads Management</h2>
+            <div id="adsMsg"></div>
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">➕ Create New Ad</h3>
+                <input type="text" id="newAdText" placeholder="Ad text" style="width: 300px;">
+                <input type="text" id="newAdUrl" placeholder="URL (optional)" style="width: 200px;">
+                <input type="number" id="newAdWeight" placeholder="Weight" min="1" max="100" value="5" style="width: 80px;">
+                <button id="createAd">Create Ad</button>
+                <button id="refreshAdsCache">Refresh Cache</button>
+            </div>
+            <table id="adsTbl">
+                <thead>
+                    <tr><th>ID</th><th>Text</th><th>URL</th><th>Weight</th><th>Active</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Tiers Section -->
+        <div class="section">
+            <h2>🎫 Tiers Management</h2>
+            <div id="tiersMsg"></div>
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">➕ Create New Tier</h3>
+                <input type="text" id="newTierName" placeholder="Tier name" style="width: 150px;">
+                <input type="text" id="newTierDescription" placeholder="Description" style="width: 300px;">
+                <input type="number" id="newTierPrice" placeholder="Price" min="0" style="width: 100px;">
+                <button id="createTier">Create Tier</button>
+            </div>
+            <table id="tiersTbl">
+                <thead>
+                    <tr><th>ID</th><th>Name</th><th>Description</th><th>Price</th><th>Active</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Treasury Monitor Section -->
+        <div class="section">
+            <h2>💰 Treasury Monitor</h2>
+            <div id="transactionsMsg"></div>
+            <div style="margin-bottom: 20px;">
+                <button id="refreshTransactions">🔄 Refresh Transactions</button>
+                <button id="refreshGroupTips">🔄 Refresh Group Tips</button>
+            </div>
+
+            <h3>Recent Transactions</h3>
+            <table id="transactionsTbl">
+                <thead>
+                    <tr><th>ID</th><th>Type</th><th>Amount</th><th>User</th><th>Status</th><th>Date</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+            <h3 style="margin-top: 30px;">Group Tips</h3>
+            <div id="groupTipsMsg"></div>
+            <table id="groupTipsTbl">
+                <thead>
+                    <tr><th>ID</th><th>Creator</th><th>Amount</th><th>Claims</th><th>Status</th><th>Expires</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 
