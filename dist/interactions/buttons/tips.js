@@ -179,6 +179,10 @@ export async function showDurationSelection(i, data) {
 }
 /** Show final confirmation screen */
 export async function showTipConfirmation(i, data) {
+    // Ensure interaction is acknowledged (defensive programming)
+    if (!i.deferred && !i.replied) {
+        await i.deferUpdate().catch(() => { });
+    }
     const { getActiveTokens } = await import("../../services/token.js");
     const { userHasActiveTaxFreeTier } = await import("../../services/tiers.js");
     const tokens = await getActiveTokens();

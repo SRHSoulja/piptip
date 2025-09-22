@@ -223,6 +223,11 @@ export async function showTipConfirmation(i: ButtonInteraction, data: {
   tokenId: number;
   duration?: number;
 }) {
+  // Ensure interaction is acknowledged (defensive programming)
+  if (!i.deferred && !i.replied) {
+    await i.deferUpdate().catch(() => {});
+  }
+
   const { getActiveTokens } = await import("../../services/token.js");
   const { userHasActiveTaxFreeTier } = await import("../../services/tiers.js");
 
