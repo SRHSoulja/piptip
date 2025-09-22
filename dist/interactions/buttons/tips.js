@@ -229,12 +229,23 @@ export async function showDurationSelection(i, data) {
 }
 /** Show final confirmation screen */
 export async function showTipConfirmation(i, data) {
+    // Ensure interaction is acknowledged if not already
+    if (!i.deferred && !i.replied) {
+        try {
+            await i.deferUpdate();
+        }
+        catch (error) {
+            console.log('Could not defer in showTipConfirmation:', error);
+        }
+    }
     const { getActiveTokens } = await import("../../services/token.js");
     const { userHasActiveTaxFreeTier } = await import("../../services/tiers.js");
     const tokens = await getActiveTokens();
     const token = tokens.find(t => t.id === data.tokenId);
+    // Use the appropriate reply method based on interaction state
+    const replyMethod = (i.deferred || i.replied) ? i.editReply.bind(i) : i.reply.bind(i);
     if (!token) {
-        return i.editReply({
+        return replyMethod({
             content: "❌ **Token not found**\nThe selected token is no longer available.",
             embeds: [],
             components: []
@@ -277,7 +288,7 @@ export async function showTipConfirmation(i, data) {
         .setEmoji("❌");
     const actionRow = new ActionRowBuilder()
         .addComponents(confirmButton, cancelButton);
-    await i.editReply({
+    await replyMethod({
         embeds: [embed],
         components: [actionRow]
     });
