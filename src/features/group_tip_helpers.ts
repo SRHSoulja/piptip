@@ -7,7 +7,11 @@ import { groupTipClaimRow } from "../ui/components.js";
 import { rateLimitedDiscord } from "../services/discord_rate_limiter.js";
 
 export async function updateGroupTipMessage(client: Client, groupTipId: number) {
-  const tip = await prisma.groupTip.findUnique({
+  console.log(`🚀 ENTERING updateGroupTipMessage for tip ${groupTipId}`);
+
+  try {
+    console.log(`🔍 Fetching tip ${groupTipId} from database...`);
+    const tip = await prisma.groupTip.findUnique({
     where: { id: groupTipId },
     include: {
       Creator: true,
@@ -16,7 +20,18 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
       contributions: { include: { contributor: true }, orderBy: { createdAt: "asc" } },
     },
   });
-  if (!tip || !tip.channelId || !tip.messageId) return;
+
+  console.log(`🔍 Database query completed for tip ${groupTipId}:`, {
+    found: !!tip,
+    status: tip?.status,
+    channelId: tip?.channelId,
+    messageId: tip?.messageId
+  });
+
+  if (!tip || !tip.channelId || !tip.messageId) {
+    console.log(`❌ updateGroupTipMessage: Missing required data for tip ${groupTipId}`);
+    return;
+  }
 
   const now = new Date();
   const expired = (!!tip.expiresAt && now >= tip.expiresAt) || tip.status === 'FINALIZED';
@@ -99,5 +114,13 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
       status: error.status
     });
     throw error;
+  }
+  } catch (outerError: any) {
+    console.error(`💥 FATAL ERROR in updateGroupTipMessage for tip ${groupTipId}:`, {
+      error: outerError.message,
+      name: outerError.name,
+      stack: outerError.stack
+    });
+    throw outerError;
   }
 }
