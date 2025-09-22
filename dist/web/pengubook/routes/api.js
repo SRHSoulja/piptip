@@ -119,7 +119,16 @@ export const apiHandlers = {
                 include: { Token: true },
                 orderBy: { Token: { symbol: "asc" } }
             });
-            res.json({ success: true, balances });
+            // Format balances with max 2 decimal places, remove trailing zeros
+            const formattedBalances = balances.map(balance => {
+                const amount = Number(balance.amount.toString());
+                const formatted = amount.toFixed(2).replace(/\.?0+$/, "");
+                return {
+                    ...balance,
+                    amount: formatted
+                };
+            });
+            res.json({ success: true, balances: formattedBalances });
         }
         catch (error) {
             console.error("Balance fetch error:", error);
@@ -142,10 +151,13 @@ export const apiHandlers = {
                 where: { userId: user.id },
                 include: { Token: true }
             });
-            // Format balances for easy lookup
+            // Format balances for easy lookup (max 2 decimal places, remove trailing zeros)
             const balanceMap = {};
             balances.forEach(balance => {
-                balanceMap[balance.tokenId] = balance.amount.toString();
+                const amount = Number(balance.amount.toString());
+                // Format to 2 decimal places and remove trailing zeros
+                const formatted = amount.toFixed(2).replace(/\.?0+$/, "");
+                balanceMap[balance.tokenId] = formatted;
             });
             res.json({
                 success: true,
