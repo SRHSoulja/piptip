@@ -54,16 +54,19 @@ export async function updateGroupTipMessage(client, groupTipId) {
             symbol: tip.Token.symbol,
             decimals: tip.Token.decimals,
         });
-        // Format contributors data with Discord usernames
-        const contributors = await Promise.all(tip.contributions.map(async (contrib) => {
+        // Format contributors data with Discord usernames - optimized for many contributors
+        const contributors = await Promise.allSettled(tip.contributions.map(async (contrib) => {
             let displayName = `User-${contrib.contributor.discordId.slice(-4)}`;
             try {
-                // Try to get Discord user for display name
-                const discordUser = await client.users.fetch(contrib.contributor.discordId);
+                // Use rate-limited Discord fetching with timeout for viral scalability
+                const userPromise = rateLimitedDiscord.execute('user_fetch', () => client.users.fetch(contrib.contributor.discordId));
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Discord user fetch timeout')), 2000));
+                const discordUser = await Promise.race([userPromise, timeoutPromise]);
                 displayName = `@${discordUser.username}`;
             }
             catch (error) {
-                console.log(`Could not fetch Discord user ${contrib.contributor.discordId}, using fallback name`);
+                // Fallback to Discord ID display - don't log in production to reduce noise
+                displayName = `<@${contrib.contributor.discordId}>`;
             }
             return {
                 name: displayName,
@@ -74,12 +77,16 @@ export async function updateGroupTipMessage(client, groupTipId) {
                 })
             };
         }));
+        // Filter successful results and handle failures gracefully
+        const successfulContributors = contributors
+            .filter((result) => result.status === 'fulfilled')
+            .map(result => result.value);
         console.log(`🔍 Formatted amounts:`, {
             original: originalAmountStr,
             contributionsTotal,
             grandTotal,
             totalAmount: totalAmountStr,
-            contributorsCount: contributors.length
+            contributorsCount: successfulContributors.length
         });
         // Calculate payout per user if finalized
         let payoutPerUser;
@@ -101,8 +108,8 @@ export async function updateGroupTipMessage(client, groupTipId) {
         const embed = groupTipEmbed({
             creator: creatorDisplay,
             amount: originalAmountStr,
-            totalAmount: contributors.length > 0 ? totalAmountStr : undefined, // Only show total if there are contributions
-            contributors: contributors.length > 0 ? contributors : undefined,
+            totalAmount: successfulContributors.length > 0 ? totalAmountStr : undefined, // Only show total if there are contributions
+            contributors: successfulContributors.length > 0 ? successfulContributors : undefined,
             expiresAt: tip.expiresAt, // not optional in your schema
             claimCount,
             claimedBy,

@@ -1,166 +1,203 @@
-// src/services/cache.ts - Simple swappable cache interface
-// Start with Map, can swap to Redis later when needed
-// Simple in-memory cache implementation using Map
-class MapCache {
-    cache = new Map();
-    cleanupInterval;
-    maxSize = 5000; // Increased for better hit rates under high load
+// src/services/cache.ts - Redis caching service for PIPTip bot performance optimization
+import { createClient } from 'redis';
+export class PIPTipCache {
+    redis = null;
+    connecting = false;
+    connected = false;
     constructor() {
-        // Clean up expired entries every 60 seconds
-        this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
-        // Warm cache on startup with frequently accessed data
-        this.warmCache().catch(console.error);
+        this.initializeRedis();
     }
-    // Pre-load frequently accessed data for immediate performance gains
-    async warmCache() {
+    async initializeRedis() {
+        if (this.connecting || this.connected)
+            return;
         try {
-            console.log('🔥 Warming cache with frequently accessed data...');
-            // Import dynamically to avoid circular dependencies
-            const { prisma } = await import('./db.js');
-            // 1. Cache all achievement definitions (rarely change, frequently accessed)
-            const definitions = await prisma.achievementDefinition.findMany({
-                where: { isEnabled: true }
+            this.connecting = true;
+            // Use Railway's REDIS_URL or fallback for local development
+            const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+            this.redis = createClient({
+                url: redisUrl,
+                socket: {
+                    connectTimeout: 5000,
+                },
+                retryDelayOnFailover: 100,
+                retryDelayOnClusterDown: 100,
             });
-            await this.set('achievement:definitions:all', definitions, 300); // 5 min cache
-            console.log(`✅ Cached ${definitions.length} achievement definitions`);
-            // 2. Cache top 100 users for leaderboards (accessed frequently)
-            const topUsers = await prisma.userStats.findMany({
-                take: 100,
-                orderBy: [
-                    { totalTipAmountSent: 'desc' },
-                    { matchesWon: 'desc' }
-                ],
-                include: {
-                    user: {
-                        select: { discordId: true }
-                    }
-                }
+            this.redis.on('error', (err) => {
+                console.error('Redis Client Error:', err);
+                this.connected = false;
             });
-            await this.set('leaderboard:top100', topUsers, 180); // 3 min cache
-            console.log(`✅ Cached top ${topUsers.length} users for leaderboards`);
-            // 3. Cache achievement categories for filtering
-            const categories = await prisma.achievementDefinition.groupBy({
-                by: ['category'],
-                where: { isEnabled: true },
-                _count: { id: true }
+            this.redis.on('connect', () => {
+                console.log('✅ Redis connected successfully');
+                this.connected = true;
             });
-            await this.set('achievements:categories', categories, 600); // 10 min cache
-            console.log(`✅ Cached ${categories.length} achievement categories`);
-            console.log('🎯 Cache warming complete - ready for optimal performance!');
+            this.redis.on('disconnect', () => {
+                console.log('⚠️ Redis disconnected');
+                this.connected = false;
+            });
+            await this.redis.connect();
+            this.connecting = false;
         }
         catch (error) {
-            console.error('⚠️ Cache warming failed (non-critical):', error);
+            console.error('Failed to initialize Redis:', error);
+            this.connecting = false;
+            this.redis = null;
+        }
+    }
+    async ensureConnection() {
+        if (!this.redis || !this.connected) {
+            await this.initializeRedis();
         }
     }
     async get(key) {
-        const entry = this.cache.get(key);
-        if (!entry) {
-            return null;
+        try {
+            await this.ensureConnection();
+            if (!this.redis)
+                return null;
+            const data = await this.redis.get(key);
+            return data ? JSON.parse(data) : null;
         }
-        // Check if expired
-        if (entry.expiresAt && entry.expiresAt < Date.now()) {
-            this.cache.delete(key);
-            return null;
+        catch (error) {
+            console.error('Redis get error:', error);
+            return null; // Graceful fallback - don't break functionality
         }
-        // Update access time for LRU
-        entry.lastAccessed = Date.now();
-        return entry.value;
     }
-    async set(key, value, ttlSeconds = 30) {
-        const expiresAt = ttlSeconds > 0 ? Date.now() + (ttlSeconds * 1000) : undefined;
-        // Check if we need to evict entries due to size limit
-        if (this.cache.size >= this.maxSize) {
-            this.evictLRU();
+    async set(key, value, ttlSeconds = 300) {
+        try {
+            await this.ensureConnection();
+            if (!this.redis)
+                return;
+            await this.redis.setEx(key, ttlSeconds, JSON.stringify(value));
         }
-        this.cache.set(key, { value, expiresAt, lastAccessed: Date.now() });
+        catch (error) {
+            console.error('Redis set error:', error);
+            // Don't throw - cache failures shouldn't break functionality
+        }
     }
-    async delete(key) {
-        this.cache.delete(key);
+    async del(key) {
+        try {
+            await this.ensureConnection();
+            if (!this.redis)
+                return;
+            await this.redis.del(key);
+        }
+        catch (error) {
+            console.error('Redis del error:', error);
+        }
     }
-    async clear() {
-        this.cache.clear();
-    }
-    cleanup() {
-        const now = Date.now();
-        for (const [key, entry] of this.cache.entries()) {
-            if (entry.expiresAt && entry.expiresAt < now) {
-                this.cache.delete(key);
+    async delPattern(pattern) {
+        try {
+            await this.ensureConnection();
+            if (!this.redis)
+                return;
+            const keys = await this.redis.keys(pattern);
+            if (keys.length > 0) {
+                await this.redis.del(keys);
             }
         }
-    }
-    // Clean up on shutdown
-    destroy() {
-        if (this.cleanupInterval) {
-            clearInterval(this.cleanupInterval);
+        catch (error) {
+            console.error('Redis delPattern error:', error);
         }
-        this.cache.clear();
     }
-    // LRU eviction policy
-    evictLRU() {
-        let oldestKey = null;
-        let oldestTime = Date.now();
-        for (const [key, entry] of this.cache.entries()) {
-            if (entry.lastAccessed < oldestTime) {
-                oldestTime = entry.lastAccessed;
-                oldestKey = key;
+    async exists(key) {
+        try {
+            await this.ensureConnection();
+            if (!this.redis)
+                return false;
+            const result = await this.redis.exists(key);
+            return result === 1;
+        }
+        catch (error) {
+            console.error('Redis exists error:', error);
+            return false;
+        }
+    }
+    async increment(key, ttlSeconds = 300) {
+        try {
+            await this.ensureConnection();
+            if (!this.redis)
+                return 0;
+            const result = await this.redis.incr(key);
+            if (result === 1) {
+                // Set TTL only on first increment
+                await this.redis.expire(key, ttlSeconds);
+            }
+            return result;
+        }
+        catch (error) {
+            console.error('Redis increment error:', error);
+            return 0;
+        }
+    }
+    // Health check for monitoring
+    async ping() {
+        try {
+            await this.ensureConnection();
+            if (!this.redis)
+                return false;
+            const result = await this.redis.ping();
+            return result === 'PONG';
+        }
+        catch (error) {
+            console.error('Redis ping error:', error);
+            return false;
+        }
+    }
+    // Graceful shutdown
+    async disconnect() {
+        try {
+            if (this.redis && this.connected) {
+                await this.redis.quit();
+                this.connected = false;
             }
         }
-        if (oldestKey) {
-            this.cache.delete(oldestKey);
-            console.log(`🗑️ Evicted cache entry: ${oldestKey}`);
+        catch (error) {
+            console.error('Redis disconnect error:', error);
         }
     }
-    // Get cache stats for monitoring
-    getStats() {
-        const memoryUsage = this.cache.size / this.maxSize;
-        return {
-            size: this.cache.size,
-            maxSize: this.maxSize,
-            memoryUsage: Math.round(memoryUsage * 100),
-            keys: Array.from(this.cache.keys())
-        };
-    }
 }
-// Singleton instance - can be swapped with Redis cache later
-let cacheInstance = null;
-export function getCache() {
-    if (!cacheInstance) {
-        cacheInstance = new MapCache();
-        console.log("📦 In-memory cache initialized");
-    }
-    return cacheInstance;
-}
+// Export singleton instance
+export const cache = new PIPTipCache();
 // Cache key helpers for consistency
 export const CacheKeys = {
-    leaderboard: (type) => `leaderboard:${type}`,
-    userAchievements: (userId) => `achievements:${userId}`,
-    userStreak: (userId) => `streak:${userId}`,
-    profileData: (userId) => `profile:${userId}`
+    // Token data
+    ACTIVE_TOKENS: 'piptip:tokens:active',
+    TOKEN: (id) => `piptip:token:${id}`,
+    // User data
+    USER_BALANCE: (userId, tokenId) => `piptip:balance:${userId}:${tokenId}`,
+    USER_TIER: (userId) => `piptip:tier:${userId}`,
+    USER_PROFILE: (userId) => `piptip:profile:${userId}`,
+    // Leaderboards
+    LEADERBOARD_SOCIAL: 'piptip:leaderboard:social',
+    LEADERBOARD_LEVEL: 'piptip:leaderboard:level',
+    LEADERBOARD_GENEROSITY: 'piptip:leaderboard:generosity',
+    // Rate limiting
+    RATE_LIMIT: (userId, action) => `piptip:ratelimit:${userId}:${action}`,
+    // Achievements
+    USER_ACHIEVEMENTS: (userId) => `piptip:achievements:${userId}`,
+    // Group tips
+    GROUP_TIP: (id) => `piptip:grouptip:${id}`,
+    // Streaks
+    USER_STREAK: (userId) => `piptip:streak:${userId}`,
+    // Legacy compatibility
+    leaderboard: 'piptip:leaderboard:social', // For backwards compatibility
+    userStreak: (userId) => `piptip:streak:${userId}`,
+    userAchievements: (userId) => `piptip:achievements:${userId}`,
 };
-// Cache TTL settings (in seconds)
+// Cache TTL constants (in seconds)
 export const CacheTTL = {
-    leaderboard: 30, // 30 seconds for leaderboards
-    achievements: 60, // 1 minute for user achievements
-    streak: 30, // 30 seconds for streak data
-    profile: 15 // 15 seconds for profile data
+    TOKENS: 300, // 5 minutes
+    BALANCE: 60, // 1 minute
+    TIER: 3600, // 1 hour
+    PROFILE: 300, // 5 minutes
+    LEADERBOARD: 300, // 5 minutes
+    RATE_LIMIT: 60, // 1 minute
+    ACHIEVEMENTS: 600, // 10 minutes
+    GROUP_TIP: 30, // 30 seconds
+    // Legacy compatibility
+    leaderboard: 300, // 5 minutes
+    streak: 300, // 5 minutes
+    achievements: 600, // 10 minutes
 };
-// Performance monitoring wrapper
-export async function cacheWithMetrics(key, fetchFn, ttlSeconds = 30) {
-    const cache = getCache();
-    // Try to get from cache
-    const startTime = Date.now();
-    const cached = await cache.get(key);
-    if (cached !== null) {
-        const hitTime = Date.now() - startTime;
-        console.log(`✅ Cache hit: ${key} (${hitTime}ms)`);
-        return cached;
-    }
-    // Cache miss - fetch data
-    const fetchStart = Date.now();
-    const data = await fetchFn();
-    const fetchTime = Date.now() - fetchStart;
-    // Store in cache
-    await cache.set(key, data, ttlSeconds);
-    console.log(`❌ Cache miss: ${key} (fetch: ${fetchTime}ms)`);
-    return data;
-}
+// Legacy compatibility functions for existing code
+export const cacheWithMetrics = cache;
+export const getCache = cache;

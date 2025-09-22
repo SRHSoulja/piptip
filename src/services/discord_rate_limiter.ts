@@ -19,6 +19,7 @@ export class DiscordRateLimiter {
     'channel_fetch': 50,      // Channel operations
     'guild_fetch': 10,        // Guild operations
     'member_fetch': 10,       // Member operations
+    'user_fetch': 25,         // User fetching for contributors display
     'message_send': 5,        // Message sending
     'message_edit': 5,        // Message editing
     'interaction_reply': 50,  // Interaction responses
@@ -272,5 +273,10 @@ export const rateLimitedDiscord = {
     return discordRateLimiter.execute('message_edit', () =>
       message.edit(options)
     );
+  },
+
+  // Direct execute method for custom operations
+  async execute<T>(endpoint: string, operation: () => Promise<T>): Promise<T> {
+    return discordRateLimiter.execute(endpoint, operation);
   }
 };

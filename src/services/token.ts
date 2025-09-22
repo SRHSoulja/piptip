@@ -3,7 +3,7 @@ import "dotenv/config";
 import { formatUnits, parseUnits } from "ethers";
 import { prisma } from "./db.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
-import { getCachedTokens, setCachedTokens } from "./redis_cache.js";
+import { cache, CacheKeys, CacheTTL } from "./cache.js";
 
 
 /** For legacy callers that still read a single TOKEN_ADDRESS */
@@ -40,11 +40,11 @@ let _tokens: TokenRow[] = [];
 let _tokensTs = 0;
 const TOKENS_TTL_MS = 10_000;
 
-/** Load active tokens (cached with Redis fallback). */
+/** Load active tokens (cached with Redis). */
 export async function getActiveTokens(force = false): Promise<TokenRow[]> {
   // Check Redis cache first
   if (!force) {
-    const cachedTokens = await getCachedTokens();
+    const cachedTokens = await cache.get<TokenRow[]>(CacheKeys.ACTIVE_TOKENS);
     if (cachedTokens && cachedTokens.length > 0) {
       _tokens = cachedTokens;
       _tokensTs = Date.now();
@@ -52,7 +52,7 @@ export async function getActiveTokens(force = false): Promise<TokenRow[]> {
     }
   }
 
-  // Check memory cache
+  // Check memory cache as fallback
   const now = Date.now();
   if (!force && now - _tokensTs < TOKENS_TTL_MS && _tokens.length) return _tokens;
 
@@ -69,7 +69,7 @@ export async function getActiveTokens(force = false): Promise<TokenRow[]> {
   })) as unknown as TokenRow[];
 
   // Cache in Redis for faster future access
-  await setCachedTokens(_tokens, 300); // 5 minute cache
+  await cache.set(CacheKeys.ACTIVE_TOKENS, _tokens, CacheTTL.TOKENS);
 
   _tokensTs = now;
   return _tokens;

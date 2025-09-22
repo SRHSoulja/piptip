@@ -3,6 +3,7 @@ import { prisma } from "./db.js";
 import { formatUnits, parseUnits } from "ethers";
 import { incrementNegativeBalanceAttempts } from "./metrics.js";
 import { BalanceConservationService } from "./balance_conservation.js";
+import { cache, CacheKeys, CacheTTL } from "./cache.js";
 // Legacy compatibility function for existing commands
 export async function debit(discordId, amountAtomic, type = "MATCH_WAGER") {
     // For legacy compatibility, use the first active token (likely PENGU)
@@ -435,4 +436,56 @@ export async function transferTokenTx(tx, fromDiscordId, toDiscordId, tokenId, a
         note: opts.note ?? null,
     });
     return { fromUserId: fromUser.id, toUserId: toUser.id };
+}
+// ========== CACHED BALANCE FUNCTIONS ==========
+/**
+ * Get user balance with Redis caching for fast access
+ */
+export async function getCachedUserBalance(userId, tokenId) {
+    const cacheKey = CacheKeys.USER_BALANCE(userId, tokenId);
+    // Try cache first
+    const cached = await cache.get(cacheKey);
+    if (cached !== null)
+        return cached;
+    // Fallback to database
+    const balance = await prisma.userBalance.findUnique({
+        where: { userId_tokenId: { userId, tokenId } }
+    });
+    const amount = Number(balance?.amount || 0);
+    // Cache for 1 minute
+    await cache.set(cacheKey, amount, CacheTTL.BALANCE);
+    return amount;
+}
+/**
+ * Get user balance by Discord ID with caching
+ */
+export async function getCachedUserBalanceByDiscord(discordId, tokenId) {
+    // Get user first
+    const user = await prisma.user.findUnique({
+        where: { discordId },
+        select: { id: true }
+    });
+    if (!user)
+        return 0;
+    return getCachedUserBalance(user.id, tokenId);
+}
+/**
+ * Invalidate balance cache when balance changes
+ */
+export async function invalidateBalanceCache(userId, tokenId) {
+    const cacheKey = CacheKeys.USER_BALANCE(userId, tokenId);
+    await cache.del(cacheKey);
+    // Also invalidate profile cache since it contains balance info
+    await cache.del(CacheKeys.USER_PROFILE(userId));
+}
+/**
+ * Update balance and cache simultaneously
+ */
+export async function updateCachedBalance(userId, tokenId, newAmount) {
+    // Update cache immediately
+    const cacheKey = CacheKeys.USER_BALANCE(userId, tokenId);
+    await cache.set(cacheKey, newAmount, CacheTTL.BALANCE);
+    // Invalidate related caches
+    await cache.del(CacheKeys.USER_PROFILE(userId));
+    await cache.delPattern("piptip:leaderboard:*");
 }
