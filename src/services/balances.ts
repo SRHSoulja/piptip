@@ -73,7 +73,7 @@ export async function logTxAtomicTx(
     userId: number | null;
     otherUserId?: number | null;
     guildId?: string | null;
-    type: "DEPOSIT" | "WITHDRAW" | "TIP" | "MATCH_WAGER" | "MATCH_PAYOUT" | "MATCH_RAKE" | "GROUP_TIP_PAYOUT";
+    type: "DEPOSIT" | "WITHDRAW" | "TIP" | "MATCH_WAGER" | "MATCH_PAYOUT" | "MATCH_RAKE" | "GROUP_TIP_PAYOUT" | "GROUP_TIP_CONTRIBUTION" | "GROUP_TIP_REFUND";
     tokenId: number;
     decimals: number;
     amountAtomic: bigint;
@@ -503,7 +503,7 @@ export async function creditTokenTx(
   discordId: string,
   tokenId: number,
   amountAtomic: bigint,
-  type: "DEPOSIT" | "MATCH_PAYOUT" | "TIP" | "GROUP_TIP_PAYOUT" | "MATCH_WAGER" | "WITHDRAW" | "MATCH_RAKE",
+  type: "DEPOSIT" | "MATCH_PAYOUT" | "TIP" | "GROUP_TIP_PAYOUT" | "MATCH_WAGER" | "WITHDRAW" | "MATCH_RAKE" | "GROUP_TIP_REFUND",
   opts: {
     guildId?: string | null;
     feeAtomic?: bigint;

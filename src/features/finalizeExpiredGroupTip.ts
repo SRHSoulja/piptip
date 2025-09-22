@@ -72,7 +72,7 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
         const taxAtomic = decToBigDirect(contrib.taxPaid, tip.Token.decimals);
         const totalRefund = contributionAtomic + taxAtomic;
 
-        await creditTokenTx(tx, contrib.contributor.discordId, tip.Token.id, totalRefund, "TIP", {
+        await creditTokenTx(tx, contrib.contributor.discordId, tip.Token.id, totalRefund, "GROUP_TIP_REFUND", {
           guildId: tip.guildId ?? undefined,
           note: `Group tip contribution refund: ${contrib.amount} + ${contrib.taxPaid} tax`
         });
@@ -134,7 +134,7 @@ export async function finalizeExpiredGroupTip(groupTipId: number): Promise<Final
         console.error(`GroupTipClaim ${c.id} has no associated User`);
         continue;
       }
-      await creditTokenTx(tx, c.User.discordId, tip.Token.id, share, "TIP", {
+      await creditTokenTx(tx, c.User.discordId, tip.Token.id, share, "GROUP_TIP_PAYOUT", {
         guildId: tip.guildId ?? undefined,
       });
       payouts.push({ discordId: c.User.discordId, shareText: formatAmount(share, tip.Token) });

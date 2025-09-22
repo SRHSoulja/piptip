@@ -383,6 +383,12 @@ export async function generateProfileData(userId: string, discordUser: User) {
             } else if (tx.otherUserId === u.id) {
               direction = " RECEIVED";
             }
+          } else if (tx.type === "GROUP_TIP_CONTRIBUTION") {
+            direction = " CONTRIBUTED";
+          } else if (tx.type === "GROUP_TIP_PAYOUT") {
+            direction = " CLAIMED";
+          } else if (tx.type === "GROUP_TIP_REFUND") {
+            direction = " REFUNDED";
           }
 
           // Get token symbol from transaction data

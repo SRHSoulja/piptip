@@ -328,6 +328,15 @@ export async function generateProfileData(userId, discordUser) {
                     direction = " RECEIVED";
                 }
             }
+            else if (tx.type === "GROUP_TIP_CONTRIBUTION") {
+                direction = " CONTRIBUTED";
+            }
+            else if (tx.type === "GROUP_TIP_PAYOUT") {
+                direction = " CLAIMED";
+            }
+            else if (tx.type === "GROUP_TIP_REFUND") {
+                direction = " REFUNDED";
+            }
             // Get token symbol from transaction data
             const tokenSymbol = tx.Token?.symbol || "tokens";
             const amount = formatDecimal(Number(tx.amount), tokenSymbol);
