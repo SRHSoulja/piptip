@@ -129,14 +129,23 @@ async function announceResult(client, tipId) {
     console.log(`⚡ Finalizing tip ${tipId}...`);
     const summary = await finalizeExpiredGroupTip(tipId);
     console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
-    // Update Discord message IMMEDIATELY after finalization (like working version)
+    // Update Discord message IMMEDIATELY after finalization with retries
     console.log(`📝 Updating Discord message after finalization...`);
-    try {
-        await updateGroupTipMessage(client, tipId);
-        console.log(`✅ Discord message updated for tip ${tipId}`);
-    }
-    catch (error) {
-        console.error(`❌ Failed to update Discord message for tip ${tipId}:`, error.message);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            await updateGroupTipMessage(client, tipId);
+            console.log(`✅ Discord message updated successfully for tip ${tipId} on attempt ${attempt}`);
+            break;
+        }
+        catch (error) {
+            console.error(`❌ Discord message update attempt ${attempt}/3 failed for tip ${tipId}:`, error.message);
+            if (attempt < 3) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+            else {
+                console.error(`💀 All Discord message update attempts failed for tip ${tipId}`);
+            }
+        }
     }
     console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
     const chan = await client.channels.fetch(tip.channelId).catch((error) => {
