@@ -74,10 +74,7 @@ async function announceResult(client: Client, tipId: number) {
   pendingDiscordUpdates.add(tipId);
   console.log(`✅ Tip ${tipId} marked for Discord update (${pendingDiscordUpdates.size} pending)`);
 
-  // Try immediate update but don't block if it fails
-  updateDiscordMessageWithRetry(client, tipId, 1).catch(error => {
-    console.log(`⚠️ Immediate Discord update failed for tip ${tipId}, will retry later: ${error.message}`);
-  });
+  // Discord message update will be attempted after announcement
 
   console.log(`📡 Fetching channel ${tip.channelId} for announcement...`);
   const chan = await client.channels.fetch(tip.channelId).catch((error) => {
@@ -113,6 +110,18 @@ async function announceResult(client: Client, tipId: number) {
       `Per person: **${summary.perShareText}**${rem}\n` +
       `Payouts: ${list}${more}`
     ).catch(() => {});
+  }
+
+  // Now try to update the Discord message in the same context where the announcement worked
+  console.log(`🔄 Attempting Discord message update in same context as announcement...`);
+  try {
+    await updateGroupTipMessage(client, tipId);
+    console.log(`✅ Discord message update succeeded for tip ${tipId}!`);
+    pendingDiscordUpdates.delete(tipId); // Remove from pending since it worked
+  } catch (error: any) {
+    console.error(`❌ Discord message update failed even in announcement context for tip ${tipId}:`, error.message);
+    console.error(`Error stack:`, error.stack);
+    console.log(`📋 Tip ${tipId} will be retried via pending queue`);
   }
 }
 /** Schedule a one-shot timer to finalize and announce at expiry. */
