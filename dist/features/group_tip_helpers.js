@@ -125,12 +125,30 @@ export async function updateGroupTipMessage(client, groupTipId) {
             embed.setTimestamp(new Date());
         }
         const components = [groupTipClaimRow(tip.id, expired || tip.status !== "ACTIVE")];
-        const channel = await rateLimitedDiscord.fetchChannel(client, tip.channelId).catch(() => null);
-        if (!channel || typeof channel !== 'object' || !('isTextBased' in channel) || typeof channel.isTextBased !== 'function' || !channel.isTextBased())
+        console.log(`🔍 About to fetch channel ${tip.channelId} for tip ${groupTipId}`);
+        const channel = await Promise.race([
+            rateLimitedDiscord.fetchChannel(client, tip.channelId),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Channel fetch timeout')), 10000))
+        ]).catch((error) => {
+            console.error(`❌ Failed to fetch channel ${tip.channelId}:`, error.message);
+            return null;
+        });
+        if (!channel || typeof channel !== 'object' || !('isTextBased' in channel) || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
+            console.log(`❌ Invalid channel type for tip ${groupTipId}`);
             return;
-        const msg = await channel.messages.fetch(tip.messageId).catch(() => null);
-        if (!msg)
+        }
+        console.log(`🔍 About to fetch message ${tip.messageId} for tip ${groupTipId}`);
+        const msg = await Promise.race([
+            channel.messages.fetch(tip.messageId),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Message fetch timeout')), 10000))
+        ]).catch((error) => {
+            console.error(`❌ Failed to fetch message ${tip.messageId}:`, error.message);
+            return null;
+        });
+        if (!msg) {
+            console.log(`❌ Message not found for tip ${groupTipId}`);
             return;
+        }
         // Use rate limiter for message editing to prevent Discord API issues
         console.log(`🔧 updateGroupTipMessage: Editing message for tip ${groupTipId}`, {
             expired,

@@ -158,11 +158,33 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
 
   const components = [groupTipClaimRow(tip.id, expired || tip.status !== "ACTIVE")];
 
-  const channel = await rateLimitedDiscord.fetchChannel(client, tip.channelId).catch(() => null);
-  if (!channel || typeof channel !== 'object' || !('isTextBased' in channel) || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) return;
+  console.log(`🔍 About to fetch channel ${tip.channelId} for tip ${groupTipId}`);
+  const channel = await Promise.race([
+    rateLimitedDiscord.fetchChannel(client, tip.channelId),
+    new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Channel fetch timeout')), 10000))
+  ]).catch((error) => {
+    console.error(`❌ Failed to fetch channel ${tip.channelId}:`, error.message);
+    return null;
+  });
 
-  const msg = await (channel as TextBasedChannel).messages.fetch(tip.messageId).catch(() => null);
-  if (!msg) return;
+  if (!channel || typeof channel !== 'object' || !('isTextBased' in channel) || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
+    console.log(`❌ Invalid channel type for tip ${groupTipId}`);
+    return;
+  }
+
+  console.log(`🔍 About to fetch message ${tip.messageId} for tip ${groupTipId}`);
+  const msg = await Promise.race([
+    (channel as TextBasedChannel).messages.fetch(tip.messageId),
+    new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Message fetch timeout')), 10000))
+  ]).catch((error) => {
+    console.error(`❌ Failed to fetch message ${tip.messageId}:`, error.message);
+    return null;
+  });
+
+  if (!msg) {
+    console.log(`❌ Message not found for tip ${groupTipId}`);
+    return;
+  }
 
   // Use rate limiter for message editing to prevent Discord API issues
   console.log(`🔧 updateGroupTipMessage: Editing message for tip ${groupTipId}`, {
