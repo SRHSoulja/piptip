@@ -10,9 +10,6 @@ import { Client, GatewayIntentBits, Events, } from "discord.js";
 import { ensurePrisma, prisma } from "./services/db.js";
 import { healthRouter } from "./web/health.js";
 import { internalRouter } from "./web/internal.js";
-import { adminRouter } from "./web/admin.js";
-import { authRouter } from "./web/auth.js";
-import { pengubookModularRouter } from "./web/pengubook/router.js";
 import pipWithdraw from "./commands/pip_withdraw.js";
 import pipLink from "./commands/pip_link.js";
 import pipProfile from "./commands/pip_profile.js";
@@ -69,14 +66,10 @@ app.get("/favicon.ico", (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
     res.send(favicon);
 });
+// Routes that don't need sessions
 app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
-// Replit-optimized cron webhook for reliable finalization
-// import cronWebhookRouter from "./web/cron_webhook.js"; // DISABLED - conflicts with native timers
-// app.use("/cron", cronWebhookRouter);
-app.use("/admin", adminRouter);
-app.use("/auth", authRouter);
-app.use("/pengubook", pengubookModularRouter);
+// Session-dependent routes will be added after session middleware is configured in main()
 // Replit-friendly landing page
 app.get("/", (req, res) => {
     const isReplit = !!(process.env.REPL_ID || process.env.REPL_SLUG || process.env.REPLIT_DB_URL);
@@ -489,6 +482,14 @@ async function main() {
         });
         app.use(sessionMiddleware);
         console.log(`✅ Session middleware configured with ${sessionStore ? 'Redis' : 'in-memory'} store`);
+        // Add session-dependent routes after session middleware is configured
+        const { adminRouter } = await import("./web/admin.js");
+        const { authRouter } = await import("./web/auth.js");
+        const { pengubookModularRouter } = await import("./web/pengubook/router.js");
+        app.use("/admin", adminRouter);
+        app.use("/auth", authRouter);
+        app.use("/pengubook", pengubookModularRouter);
+        console.log("✅ Session-dependent routes configured");
         // Backup service disabled - using external cron job with backup-script.js
         // await backupService.start();
         console.log("Backup service: using external cron job");

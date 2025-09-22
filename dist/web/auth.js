@@ -199,7 +199,7 @@ export function requireAuth(req, res, next) {
             'user-agent': req.get('user-agent')?.slice(0, 50)
         }
     });
-    if (!req.session.discordId) {
+    if (!req.session || !req.session.discordId) {
         console.log("❌ No Discord ID in session, redirecting to auth");
         return res.redirect(`/auth/discord?redirect=${encodeURIComponent(req.originalUrl)}`);
     }
@@ -208,7 +208,7 @@ export function requireAuth(req, res, next) {
 }
 // Middleware to get current user info
 export function getCurrentUser(req) {
-    if (!req.session.discordId)
+    if (!req.session || !req.session.discordId)
         return null;
     return {
         discordId: req.session.discordId,
