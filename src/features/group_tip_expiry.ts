@@ -6,27 +6,48 @@ import { updateGroupTipMessage } from "./group_tip_helpers.js";
 const timers = new Map<number, NodeJS.Timeout>();
 
 async function announceResult(client: Client, tipId: number) {
+  console.log(`🔔 announceResult called for tip ${tipId}`);
+
   const tip = await prisma.groupTip.findUnique({
     where: { id: tipId },
     select: { channelId: true, messageId: true },
   });
-  if (!tip?.channelId) return;
 
-  const chan = await client.channels.fetch(tip.channelId).catch(() => null);
-  if (!chan || !chan.isTextBased()) return;
+  if (!tip?.channelId) {
+    console.log(`❌ No channelId found for tip ${tipId}`);
+    return;
+  }
+
+  console.log(`📡 Fetching channel ${tip.channelId} for tip ${tipId}`);
+  const chan = await client.channels.fetch(tip.channelId).catch((error) => {
+    console.error(`❌ Failed to fetch channel ${tip.channelId}:`, error.message);
+    return null;
+  });
+
+  if (!chan || !chan.isTextBased()) {
+    console.log(`❌ Channel ${tip.channelId} not found or not text-based for tip ${tipId}`);
+    return;
+  }
 
   // 🔽 Type-narrow to a channel that actually supports `.send()`
-  if (!("send" in chan)) return;
+  if (!("send" in chan)) {
+    console.log(`❌ Channel ${tip.channelId} doesn't support .send() for tip ${tipId}`);
+    return;
+  }
   const channel = chan as GuildTextBasedChannel;
 
+  console.log(`⚡ Finalizing tip ${tipId}...`);
   const summary = await finalizeExpiredGroupTip(tipId);
+  console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
 
   // Update Discord message with proper error logging
   try {
+    console.log(`📝 Updating Discord message for tip ${tipId}...`);
     await updateGroupTipMessage(client, tipId);
-    console.log(`✅ Discord message updated for tip ${tipId}`);
+    console.log(`✅ Discord message updated successfully for tip ${tipId}`);
   } catch (error: any) {
     console.error(`❌ Failed to update Discord message for tip ${tipId}:`, error.message);
+    console.error('Full error:', error);
   }
 
   if (summary.kind === "REFUNDED") {
@@ -49,18 +70,39 @@ async function announceResult(client: Client, tipId: number) {
 }
 /** Schedule a one-shot timer to finalize and announce at expiry. */
 export async function scheduleGroupTipExpiry(client: Client, tipId: number) {
+  console.log(`⏰ scheduleGroupTipExpiry called for tip ${tipId}`);
+
   const row = await prisma.groupTip.findUnique({
     where: { id: tipId },
     select: { id: true, expiresAt: true, status: true },
   });
-  if (!row || row.status !== "ACTIVE") return;
+
+  if (!row || row.status !== "ACTIVE") {
+    console.log(`❌ Cannot schedule timer for tip ${tipId}: status=${row?.status || 'not found'}`);
+    return;
+  }
 
   const delay = Math.max(0, row.expiresAt.getTime() - Date.now());
+  const expiryTime = new Date(row.expiresAt).toISOString();
+
+  console.log(`⏱️ Scheduling timer for tip ${tipId}: expires at ${expiryTime} (in ${Math.round(delay/1000)}s)`);
+
   clearGroupTipExpiry(tipId);
   const t = setTimeout(async () => {
-    try { await announceResult(client, tipId); } finally { timers.delete(tipId); }
+    try {
+      console.log(`🔥 Timer FIRED for tip ${tipId}! Processing now...`);
+      await announceResult(client, tipId);
+      console.log(`✅ Timer processing completed for tip ${tipId}`);
+    } catch (error: any) {
+      console.error(`❌ Timer processing failed for tip ${tipId}:`, error.message);
+    } finally {
+      timers.delete(tipId);
+      console.log(`🗑️ Timer removed for tip ${tipId}`);
+    }
   }, delay);
   timers.set(tipId, t);
+
+  console.log(`✅ Timer scheduled successfully for tip ${tipId}, will fire in ${Math.round(delay/1000)} seconds`);
 }
 
 export function clearGroupTipExpiry(tipId: number) {
