@@ -24,25 +24,52 @@ export async function finalizeExpiredGroupTip(groupTipId) {
     });
     if (!tip)
         return { kind: "NOOP" };
-    const totalAtomic = decToBigDirect(tip.totalAmount, tip.Token.decimals);
+    // Calculate total including contributions
+    const originalAtomic = decToBigDirect(tip.totalAmount, tip.Token.decimals);
+    const contributionsAtomic = decToBigDirect(tip.contributionsTotal || 0, tip.Token.decimals);
+    const totalAtomic = originalAtomic + contributionsAtomic;
     // Separate PENDING (need refunds) from CLAIMED (get payouts)
     const pendingClaims = tip.claims.filter(c => c.status === 'PENDING');
     const claimedClaims = tip.claims.filter(c => c.status === 'CLAIMED');
     if (claimedClaims.length === 0) {
-        // No successful claims - refund everything to creator using centralized engine
-        const refundResult = await RefundEngine.refundContribution(tip.id);
-        if (!refundResult.success) {
-            console.error("Failed to refund expired group tip:", refundResult.message);
-            return { kind: "NOOP" };
-        }
-        // Handle pending claims separately
-        if (pendingClaims.length > 0) {
-            await prisma.groupTipClaim.updateMany({
-                where: { groupTipId: tip.id, status: 'PENDING' },
-                data: { status: 'REFUNDED', refundedAt: new Date() }
+        // No successful claims - refund everything to creator AND contributors
+        await prisma.$transaction(async (tx) => {
+            // Refund creator's original amount + tax
+            const refundResult = await RefundEngine.refundContribution(tip.id);
+            if (!refundResult.success) {
+                throw new Error(`Failed to refund creator: ${refundResult.message}`);
+            }
+            // Refund all contributors their amounts + tax
+            const contributions = await tx.groupTipContribution.findMany({
+                where: { groupTipId: tip.id, status: 'COMPLETED' },
+                include: { contributor: true }
             });
-        }
-        const totalRefunded = refundResult.refundedAmount + refundResult.refundedTax;
+            for (const contrib of contributions) {
+                const contributionAtomic = decToBigDirect(contrib.amount, tip.Token.decimals);
+                const taxAtomic = decToBigDirect(contrib.taxPaid, tip.Token.decimals);
+                const totalRefund = contributionAtomic + taxAtomic;
+                await creditTokenTx(tx, contrib.contributor.discordId, tip.Token.id, totalRefund, "TIP", {
+                    guildId: tip.guildId ?? undefined,
+                    note: `Group tip contribution refund: ${contrib.amount} + ${contrib.taxPaid} tax`
+                });
+                // Mark contribution as refunded
+                await tx.groupTipContribution.update({
+                    where: { id: contrib.id },
+                    data: { status: 'REFUNDED' }
+                });
+            }
+            // Handle pending claims separately
+            if (pendingClaims.length > 0) {
+                await tx.groupTipClaim.updateMany({
+                    where: { groupTipId: tip.id, status: 'PENDING' },
+                    data: { status: 'REFUNDED', refundedAt: new Date() }
+                });
+            }
+        });
+        // Calculate total refunded for display
+        const creatorRefund = decToBigDirect(tip.totalAmount, tip.Token.decimals) + BigInt(tip.taxAtomic.toString());
+        const contributionsRefund = decToBigDirect(tip.contributionsTotal || 0, tip.Token.decimals);
+        const totalRefunded = creatorRefund + contributionsRefund;
         return {
             kind: "REFUNDED",
             creatorId: tip.Creator.discordId,

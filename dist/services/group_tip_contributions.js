@@ -1,8 +1,10 @@
 // src/services/group_tip_contributions.ts - Secure group tip contribution system
 import { prisma } from "./db.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
-import { formatDecimal, decToBigDirect, formatAmount } from "./token.js";
+import { formatDecimal, decToBigDirect, formatAmount, toAtomicDirect, bigToDecDirect } from "./token.js";
 import { PENGUIN_ERRORS, createPenguinSuccess } from "../utils/penguin_messages.js";
+import { getConfig } from "../config.js";
+import { RoleTaxBenefitService } from "./role_tax_benefits.js";
 // Rate limiting: Track recent contribution attempts
 const recentContributions = new Map();
 const CONTRIBUTION_COOLDOWN = 5000; // 5 seconds between contributions per user
@@ -92,15 +94,51 @@ export async function addGroupTipContribution(groupTipId, contributorDiscordId, 
             if (existingContribution) {
                 throw new Error("You have already contributed to this group tip");
             }
-            // 8. TAX CALCULATION (respects tier benefits)
-            const hasTaxFreeTier = await userHasActiveTaxFreeTier(contributor.id);
-            let taxAmount = 0;
-            let totalCost = contributionAmount;
-            if (!hasTaxFreeTier) {
-                // Apply 5% tax (same as regular tips)
-                taxAmount = Math.floor(contributionAmount * 0.05);
-                totalCost = contributionAmount + taxAmount;
+            // 7b. CHECK IF USER HAS CLAIMED (claimers can't contribute)
+            const existingClaim = await tx.groupTipClaim.findUnique({
+                where: {
+                    groupTipId_userId: {
+                        groupTipId: groupTipId,
+                        userId: contributor.id
+                    }
+                }
+            });
+            if (existingClaim) {
+                throw new Error("You cannot add fish to this group tip because you've already claimed from it! Choose one: give or receive, but not both! 🐧");
             }
+            // 8. TAX CALCULATION (same logic as regular tips)
+            const cfg = await getConfig();
+            const atomic = toAtomicDirect(contributionAmount, groupTip.Token.decimals);
+            // Check for role-based tax benefits first
+            const bestTaxBenefit = await RoleTaxBenefitService.getBestTaxBenefit(contributor.id, groupTip.guildId || '', contributorDiscordId);
+            // Apply tax benefit or fallback to existing logic
+            let feeBpsNum = groupTip.Token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+            if (bestTaxBenefit) {
+                // Apply percentage reduction (exemptionRate = 0-100% reduction)
+                const taxReduction = bestTaxBenefit.exemptionRate / 100;
+                feeBpsNum = Math.round(feeBpsNum * (1 - taxReduction));
+            }
+            else {
+                // Fallback to existing tier check for backward compatibility
+                const taxFree = await userHasActiveTaxFreeTier(contributor.id);
+                feeBpsNum = taxFree ? 0 : feeBpsNum;
+            }
+            const feeBps = BigInt(feeBpsNum);
+            const feeAtomic = (atomic * feeBps) / 10000n;
+            const taxAmount = Number(bigToDecDirect(feeAtomic, groupTip.Token.decimals));
+            const totalCost = contributionAmount + taxAmount;
+            console.log('DEBUG: Group tip contribution tax calculation', {
+                contributionAmount,
+                atomic: atomic.toString(),
+                feeBpsNum,
+                taxAmount,
+                totalCost,
+                hasTaxFreeTier: feeBpsNum === 0,
+                bestTaxBenefit: bestTaxBenefit ? {
+                    source: bestTaxBenefit.source,
+                    exemptionRate: bestTaxBenefit.exemptionRate
+                } : null
+            });
             // 9. BALANCE VALIDATION
             const userBalance = await tx.userBalance.findUnique({
                 where: {

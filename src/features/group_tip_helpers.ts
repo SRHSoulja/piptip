@@ -51,23 +51,63 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
 
   console.log(`🔍 Creator display: ${creatorDisplay}`);
 
-  const atomicTotal = decToBigDirect(tip.totalAmount, tip.Token.decimals);
-  console.log(`🔍 Calculated atomicTotal: ${atomicTotal}`);
+  // Calculate original amount
+  const atomicOriginal = decToBigDirect(tip.totalAmount, tip.Token.decimals);
+  console.log(`🔍 Calculated atomicOriginal: ${atomicOriginal}`);
 
-  const amountStr = formatAmount(atomicTotal, {
+  const originalAmountStr = formatAmount(atomicOriginal, {
     address: tip.Token.address,
     symbol: tip.Token.symbol,
     decimals: tip.Token.decimals,
   } as any);
 
-  console.log(`🔍 Formatted amount: ${amountStr}`);
+  // Calculate total amount including contributions
+  const contributionsTotal = Number(tip.contributionsTotal || 0);
+  const grandTotal = Number(tip.totalAmount) + contributionsTotal;
+  const atomicGrandTotal = decToBigDirect(grandTotal, tip.Token.decimals);
+
+  const totalAmountStr = formatAmount(atomicGrandTotal, {
+    address: tip.Token.address,
+    symbol: tip.Token.symbol,
+    decimals: tip.Token.decimals,
+  } as any);
+
+  // Format contributors data with Discord usernames
+  const contributors = await Promise.all(tip.contributions.map(async contrib => {
+    let displayName = `User-${contrib.contributor.discordId.slice(-4)}`;
+
+    try {
+      // Try to get Discord user for display name
+      const discordUser = await client.users.fetch(contrib.contributor.discordId);
+      displayName = `@${discordUser.username}`;
+    } catch (error) {
+      console.log(`Could not fetch Discord user ${contrib.contributor.discordId}, using fallback name`);
+    }
+
+    return {
+      name: displayName,
+      amount: formatAmount(decToBigDirect(contrib.amount, tip.Token.decimals), {
+        address: tip.Token.address,
+        symbol: tip.Token.symbol,
+        decimals: tip.Token.decimals,
+      } as any)
+    };
+  }));
+
+  console.log(`🔍 Formatted amounts:`, {
+    original: originalAmountStr,
+    contributionsTotal,
+    grandTotal,
+    totalAmount: totalAmountStr,
+    contributorsCount: contributors.length
+  });
 
   // Calculate payout per user if finalized
   let payoutPerUser: string | undefined;
   console.log(`🔍 About to calculate payoutPerUser, tip.status=${tip.status}, claimCount=${claimCount}`);
   if (tip.status === 'FINALIZED' && claimCount > 0) {
-    const totalPayout = decToBigDirect(tip.totalAmount, tip.Token.decimals);
-    const perUser = totalPayout / BigInt(claimCount);
+    // Use grand total (original + contributions) for payout calculation
+    const perUser = atomicGrandTotal / BigInt(claimCount);
     payoutPerUser = formatAmount(perUser, {
       address: tip.Token.address,
       symbol: tip.Token.symbol,
@@ -83,7 +123,9 @@ export async function updateGroupTipMessage(client: Client, groupTipId: number) 
 
   const embed = groupTipEmbed({
     creator: creatorDisplay,
-    amount: amountStr,
+    amount: originalAmountStr,
+    totalAmount: contributors.length > 0 ? totalAmountStr : undefined, // Only show total if there are contributions
+    contributors: contributors.length > 0 ? contributors : undefined,
     expiresAt: tip.expiresAt,   // not optional in your schema
     claimCount,
     claimedBy,
