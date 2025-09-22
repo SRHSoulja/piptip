@@ -2,6 +2,7 @@
 import "dotenv/config";
 import express from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import path from "path";
 import { flushNoticesEphemeral } from "./services/notifier.js";
 import { Client, GatewayIntentBits, Events, } from "discord.js";
@@ -41,8 +42,14 @@ const PORT = Number(process.env.PORT || (process.env.REPLIT_DB_URL ? 5000 : 3000
 // ---------- Express (REST) ----------
 const app = express();
 app.use(express.json({ limit: "256kb" }));
-// Session middleware for OAuth
+// Session middleware for OAuth with PostgreSQL store
+const PgSession = connectPgSimple(session);
 app.use(session({
+    store: new PgSession({
+        conString: process.env.DATABASE_URL,
+        tableName: "session", // optional
+        createTableIfMissing: true
+    }),
     secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-this",
     resave: false,
     saveUninitialized: false,
