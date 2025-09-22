@@ -318,14 +318,16 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
     // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓
     if ("isChatInputCommand" in i && i.isChatInputCommand()) {
         // fire-and-forget: delivers queued account notices as an ephemeral message
-        // Process any pending Discord message updates from expired timers
+        // TEMPORARILY DISABLED: Process any pending Discord message updates from expired timers
+        // This was causing early Discord updates before timer finalization
+        /*
         try {
-            const { processPendingDiscordUpdates } = await import("./features/group_tip_expiry.js");
-            processPendingDiscordUpdates(bot).catch(() => { }); // Fire and forget
+          const { processPendingDiscordUpdates } = await import("./features/group_tip_expiry.js");
+          processPendingDiscordUpdates(bot).catch(() => {}); // Fire and forget
+        } catch (error) {
+          // Ignore import errors
         }
-        catch (error) {
-            // Ignore import errors
-        }
+        */
         switch (i.commandName) {
             case "pip_withdraw": return pipWithdraw(i);
             case "pip_profile": return pipProfile(i);
