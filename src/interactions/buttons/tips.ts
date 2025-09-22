@@ -7,7 +7,16 @@ import { formatDecimal } from "../../services/token.js";
 
 /** Handle tip token selection */
 export async function handleSelectToken(i: ButtonInteraction, parts: string[]) {
-  await i.deferUpdate().catch(() => {});
+  // Ensure interaction is properly acknowledged
+  try {
+    if (!i.deferred && !i.replied) {
+      await i.deferUpdate();
+    }
+  } catch (error) {
+    if (!i.deferred && !i.replied) {
+      await i.deferReply({ ephemeral: true });
+    }
+  }
   
   try {
     // Parse button data: pip:select_token:amount:tipType:target:note:tokenId
@@ -43,7 +52,16 @@ export async function handleSelectToken(i: ButtonInteraction, parts: string[]) {
 
 /** Handle tip cancellation */
 export async function handleCancelTip(i: ButtonInteraction) {
-  await i.deferUpdate().catch(() => {});
+  // Ensure interaction is properly acknowledged
+  try {
+    if (!i.deferred && !i.replied) {
+      await i.deferUpdate();
+    }
+  } catch (error) {
+    if (!i.deferred && !i.replied) {
+      await i.deferReply({ ephemeral: true });
+    }
+  }
   
   await i.editReply({
     content: "❌ **Tip cancelled**\n*Use `/pip_tip` to start a new tip.*",
@@ -54,7 +72,16 @@ export async function handleCancelTip(i: ButtonInteraction) {
 
 /** Handle group tip duration selection */
 export async function handleSelectDuration(i: ButtonInteraction, parts: string[]) {
-  await i.deferUpdate().catch(() => {});
+  // Ensure interaction is properly acknowledged
+  try {
+    if (!i.deferred && !i.replied) {
+      await i.deferUpdate();
+    }
+  } catch (error) {
+    if (!i.deferred && !i.replied) {
+      await i.deferReply({ ephemeral: true });
+    }
+  }
   
   try {
     // Parse: pip:select_duration:amount:note:tokenId:duration
@@ -80,8 +107,23 @@ export async function handleSelectDuration(i: ButtonInteraction, parts: string[]
 
 /** Handle final tip confirmation */
 export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
-  await i.deferUpdate().catch(() => {});
-  
+  // Ensure interaction is properly acknowledged
+  try {
+    if (!i.deferred && !i.replied) {
+      await i.deferUpdate();
+    }
+  } catch (error) {
+    console.error('Failed to defer update, trying deferReply:', error);
+    try {
+      if (!i.deferred && !i.replied) {
+        await i.deferReply({ ephemeral: true });
+      }
+    } catch (fallbackError) {
+      console.error('All interaction acknowledgment methods failed:', fallbackError);
+      return;
+    }
+  }
+
   try {
     // Parse: pip:confirm_tip:amount:tipType:target:note:tokenId:duration?
     const [, , amount, tipType, target, encodedNote, tokenId, duration] = parts;

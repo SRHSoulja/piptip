@@ -3,7 +3,17 @@ import { prisma } from "../../services/db.js";
 import { getConfig } from "../../config.js";
 /** Handle tip token selection */
 export async function handleSelectToken(i, parts) {
-    await i.deferUpdate().catch(() => { });
+    // Ensure interaction is properly acknowledged
+    try {
+        if (!i.deferred && !i.replied) {
+            await i.deferUpdate();
+        }
+    }
+    catch (error) {
+        if (!i.deferred && !i.replied) {
+            await i.deferReply({ ephemeral: true });
+        }
+    }
     try {
         // Parse button data: pip:select_token:amount:tipType:target:note:tokenId
         const [, , amount, tipType, target, encodedNote, tokenId] = parts;
@@ -38,7 +48,17 @@ export async function handleSelectToken(i, parts) {
 }
 /** Handle tip cancellation */
 export async function handleCancelTip(i) {
-    await i.deferUpdate().catch(() => { });
+    // Ensure interaction is properly acknowledged
+    try {
+        if (!i.deferred && !i.replied) {
+            await i.deferUpdate();
+        }
+    }
+    catch (error) {
+        if (!i.deferred && !i.replied) {
+            await i.deferReply({ ephemeral: true });
+        }
+    }
     await i.editReply({
         content: "❌ **Tip cancelled**\n*Use `/pip_tip` to start a new tip.*",
         embeds: [],
@@ -47,7 +67,17 @@ export async function handleCancelTip(i) {
 }
 /** Handle group tip duration selection */
 export async function handleSelectDuration(i, parts) {
-    await i.deferUpdate().catch(() => { });
+    // Ensure interaction is properly acknowledged
+    try {
+        if (!i.deferred && !i.replied) {
+            await i.deferUpdate();
+        }
+    }
+    catch (error) {
+        if (!i.deferred && !i.replied) {
+            await i.deferReply({ ephemeral: true });
+        }
+    }
     try {
         // Parse: pip:select_duration:amount:note:tokenId:duration
         const [, , amount, encodedNote, tokenId, duration] = parts;
@@ -71,7 +101,24 @@ export async function handleSelectDuration(i, parts) {
 }
 /** Handle final tip confirmation */
 export async function handleConfirmTip(i, parts) {
-    await i.deferUpdate().catch(() => { });
+    // Ensure interaction is properly acknowledged
+    try {
+        if (!i.deferred && !i.replied) {
+            await i.deferUpdate();
+        }
+    }
+    catch (error) {
+        console.error('Failed to defer update, trying deferReply:', error);
+        try {
+            if (!i.deferred && !i.replied) {
+                await i.deferReply({ ephemeral: true });
+            }
+        }
+        catch (fallbackError) {
+            console.error('All interaction acknowledgment methods failed:', fallbackError);
+            return;
+        }
+    }
     try {
         // Parse: pip:confirm_tip:amount:tipType:target:note:tokenId:duration?
         const [, , amount, tipType, target, encodedNote, tokenId, duration] = parts;
