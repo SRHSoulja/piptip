@@ -170,8 +170,13 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
   console.log('🔍 DEBUG: showDurationSelection called with data:', data);
 
   // Ensure interaction is acknowledged
-  if (!i.deferred && !i.replied) {
-    await i.deferReply({ ephemeral: true });
+  try {
+    if (!i.deferred && !i.replied) {
+      await i.deferUpdate();
+    }
+  } catch (error) {
+    // Interaction was likely already acknowledged
+    console.log('Interaction already acknowledged in showDurationSelection, continuing...');
   }
 
   const { getActiveTokens } = await import("../../services/token.js");
