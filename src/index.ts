@@ -49,6 +49,13 @@ const PORT = Number(process.env.PORT || (process.env.REPLIT_DB_URL ? 5000 : 3000
 
 // ---------- Express (REST) ----------
 const app = express();
+
+// Trust proxy for Railway/Heroku-style deployments
+if (process.env.NODE_ENV === "production") {
+  app.set('trust proxy', 1);
+  console.log("✅ Trust proxy enabled for production");
+}
+
 app.use(express.json({ limit: "256kb" }));
 
 // Session middleware for OAuth - will be configured in main()
@@ -489,7 +496,7 @@ async function main() {
       saveUninitialized: false,
       name: 'piptip-session', // Explicit session name
       cookie: {
-        secure: process.env.NODE_ENV === "production",
+        secure: process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "false",
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         httpOnly: true,
         sameSite: 'lax', // Use 'lax' for OAuth redirects to work properly

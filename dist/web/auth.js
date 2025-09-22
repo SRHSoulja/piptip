@@ -157,9 +157,23 @@ authRouter.get("/discord/callback", async (req, res) => {
             hasAvatar: !!req.session.avatar,
             hasAccessToken: !!req.session.accessToken
         });
+        // Force session save and add debugging
+        req.session.save((err) => {
+            if (err) {
+                console.error("❌ Session save error:", err);
+            }
+            else {
+                console.log("✅ Session saved to store");
+            }
+        });
         // Redirect to intended destination
         const redirectUrl = stateData.redirectTo || "/pengubook";
         console.log("🔄 Redirecting to:", redirectUrl);
+        // Log response headers before redirect
+        console.log("🍪 Response headers before redirect:", {
+            'set-cookie': res.getHeaders()['set-cookie'],
+            'sessionID': req.sessionID
+        });
         if (redirectUrl.startsWith("/")) {
             // Use relative redirect to preserve session cookies
             console.log("📍 Relative redirect URL:", redirectUrl);
