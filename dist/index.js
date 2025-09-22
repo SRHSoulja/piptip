@@ -62,8 +62,8 @@ app.get("/favicon.ico", (_req, res) => {
 app.use("/health", healthRouter);
 app.use("/internal", internalRouter);
 // Replit-optimized cron webhook for reliable finalization
-import cronWebhookRouter from "./web/cron_webhook.js";
-app.use("/cron", cronWebhookRouter);
+// import cronWebhookRouter from "./web/cron_webhook.js"; // DISABLED - conflicts with native timers
+// app.use("/cron", cronWebhookRouter);
 app.use("/admin", adminRouter);
 app.use("/auth", authRouter);
 app.use("/pengubook", pengubookModularRouter);
@@ -305,18 +305,27 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
         }
     }
     // ↓↓↓ REPLIT FIX: Check for expired tips on every interaction ↓↓↓
-    // Self-healing: ensure expired tips get processed even if external cron fails
-    try {
-        const { checkAndFinalizeExpiredTips } = await import("./services/replit_finalization.js");
-        // Fire and forget - don't block the interaction
-        checkAndFinalizeExpiredTips(bot).catch(err => console.warn("Self-healing check failed:", err.message));
-    }
-    catch (err) {
-        // Ignore import errors in case service isn't ready
-    }
+    // DISABLED - conflicts with native timer system causing duplicate payouts
+    // try {
+    //   const { checkAndFinalizeExpiredTips } = await import("./services/replit_finalization.js");
+    //   // Fire and forget - don't block the interaction
+    //   checkAndFinalizeExpiredTips(bot).catch(err =>
+    //     console.warn("Self-healing check failed:", err.message)
+    //   );
+    // } catch (err) {
+    //   // Ignore import errors in case service isn't ready
+    // }
     // ↓↓↓ FLUSH EPHEMERAL NOTICES RIGHT BEFORE COMMAND ROUTING ↓↓↓
     if ("isChatInputCommand" in i && i.isChatInputCommand()) {
         // fire-and-forget: delivers queued account notices as an ephemeral message
+        // Process any pending Discord message updates from expired timers
+        try {
+            const { processPendingDiscordUpdates } = await import("./features/group_tip_expiry.js");
+            processPendingDiscordUpdates(bot).catch(() => { }); // Fire and forget
+        }
+        catch (error) {
+            // Ignore import errors
+        }
         switch (i.commandName) {
             case "pip_withdraw": return pipWithdraw(i);
             case "pip_profile": return pipProfile(i);
@@ -384,15 +393,15 @@ bot.once(Events.ClientReady, async () => {
         console.error("Failed to initialize resilient Discord update service:", error);
     }
     // Initialize Redis timers for second-precise expiration
-    try {
-        const { redisTimers } = await import("./services/redis_timers.js");
-        await redisTimers.initialize(bot);
-        await redisTimers.restoreActiveTimers();
-        console.log("Redis timer service initialized");
-    }
-    catch (error) {
-        console.error("Failed to initialize Redis timers:", error);
-    }
+    // DISABLED - conflicts with native timer system causing duplicate payouts
+    // try {
+    //   const { redisTimers } = await import("./services/redis_timers.js");
+    //   await redisTimers.initialize(bot);
+    //   await redisTimers.restoreActiveTimers();
+    //   console.log("Redis timer service initialized");
+    // } catch (error) {
+    //   console.error("Failed to initialize Redis timers:", error);
+    // }
     // Start periodic health monitoring
     try {
         const { healthMonitor } = await import("./services/health_monitor.js");
@@ -412,14 +421,14 @@ bot.once(Events.ClientReady, async () => {
         console.error("Failed to start tier management services:", error);
     }
     // Start group tip cleanup service to prevent stuck tips
-    try {
-        const { startCleanupService } = await import("./services/group_tip_cleanup.js");
-        startCleanupService();
-        console.log("✅ Group tip cleanup service started");
-    }
-    catch (error) {
-        console.error("Failed to start group tip cleanup service:", error);
-    }
+    // DISABLED - conflicts with native timer system that "worked perfectly"
+    // try {
+    //   const { startCleanupService } = await import("./services/group_tip_cleanup.js");
+    //   startCleanupService();
+    //   console.log("✅ Group tip cleanup service started");
+    // } catch (error) {
+    //   console.error("Failed to start group tip cleanup service:", error);
+    // }
 });
 // Global error handlers
 process.on("unhandledRejection", (error) => {
@@ -483,13 +492,13 @@ async function main() {
                 console.error("Error shutting down token cache:", error);
             }
             // Stop group tip cleanup service
-            try {
-                const { stopCleanupService } = await import("./services/group_tip_cleanup.js");
-                stopCleanupService();
-            }
-            catch (error) {
-                console.error("Error stopping group tip cleanup service:", error);
-            }
+            // DISABLED - cleanup service not running
+            // try {
+            //   const { stopCleanupService } = await import("./services/group_tip_cleanup.js");
+            //   stopCleanupService();
+            // } catch (error) {
+            //   console.error("Error stopping group tip cleanup service:", error);
+            // }
             // Stop tier management services
             try {
                 TierRoleSyncService.stopPeriodicSync();

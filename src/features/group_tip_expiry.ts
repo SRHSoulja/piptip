@@ -1,10 +1,93 @@
-import type { Client, GuildTextBasedChannel } from "discord.js";
+import type { Client, GuildTextBasedChannel, TextBasedChannel } from "discord.js";
 import { prisma } from "../services/db.js";
 import { finalizeExpiredGroupTip } from "./finalizeExpiredGroupTip.js";
 import { updateGroupTipMessage } from "./group_tip_helpers.js";
+import { decToBigDirect, formatAmount } from "../services/token.js";
+import { groupTipEmbed } from "../ui/embeds.js";
+import { groupTipClaimRow } from "../ui/components.js";
 
 const timers = new Map<number, NodeJS.Timeout>();
 const pendingDiscordUpdates = new Set<number>();
+
+/** Direct Discord message update bypassing rate limiter for timer context */
+async function updateGroupTipMessageDirect(client: Client, groupTipId: number) {
+  console.log(`🔧 updateGroupTipMessageDirect called for tip ${groupTipId}`);
+
+  const tip = await prisma.groupTip.findUnique({
+    where: { id: groupTipId },
+    include: {
+      Creator: true,
+      Token: true,
+      claims: { include: { User: true }, orderBy: { claimedAt: "asc" } },
+      contributions: { include: { contributor: true }, orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  if (!tip || !tip.channelId || !tip.messageId) {
+    console.log(`❌ updateGroupTipMessageDirect: tip data incomplete for ${groupTipId}`);
+    return;
+  }
+
+  const now = new Date();
+  const expired = (!!tip.expiresAt && now >= tip.expiresAt) || tip.status === 'FINALIZED';
+
+  const claimCount = tip.claims.length;
+  const claimedBy = tip.claims
+    .map(c => (c.User?.discordId ? `<@${c.User.discordId}>` : null))
+    .filter(Boolean) as string[];
+
+  const creatorDisplay = tip.Creator?.discordId ? `<@${tip.Creator.discordId}>` : "Unknown";
+
+  const atomicTotal = decToBigDirect(tip.totalAmount, tip.Token.decimals);
+  const amountStr = formatAmount(atomicTotal, {
+    address: tip.Token.address,
+    symbol: tip.Token.symbol,
+    decimals: tip.Token.decimals,
+  } as any);
+
+  // Calculate payout per user if finalized
+  let payoutPerUser: string | undefined;
+  if (tip.status === 'FINALIZED' && claimCount > 0) {
+    const totalPayout = decToBigDirect(tip.totalAmount, tip.Token.decimals);
+    const perUser = totalPayout / BigInt(claimCount);
+    payoutPerUser = formatAmount(perUser, {
+      address: tip.Token.address,
+      symbol: tip.Token.symbol,
+      decimals: tip.Token.decimals,
+    } as any);
+  }
+
+  const embed = groupTipEmbed({
+    creator: creatorDisplay,
+    amount: amountStr,
+    expiresAt: tip.expiresAt,
+    claimCount,
+    claimedBy,
+    isExpired: expired,
+    isFinalized: tip.status === 'FINALIZED',
+    payoutPerUser,
+  });
+
+  const components = [groupTipClaimRow(tip.id, expired || tip.status !== "ACTIVE")];
+
+  console.log(`🔧 Direct: Fetching channel ${tip.channelId}...`);
+  const channel = await client.channels.fetch(tip.channelId);
+  if (!channel || typeof channel !== 'object' || !('isTextBased' in channel) || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
+    console.log(`❌ Direct: Channel ${tip.channelId} not text-based`);
+    return;
+  }
+
+  console.log(`🔧 Direct: Fetching message ${tip.messageId}...`);
+  const msg = await (channel as TextBasedChannel).messages.fetch(tip.messageId);
+  if (!msg) {
+    console.log(`❌ Direct: Message ${tip.messageId} not found`);
+    return;
+  }
+
+  console.log(`🔧 Direct: Editing message...`);
+  await msg.edit({ embeds: [embed], components });
+  console.log(`✅ Direct: Message edited successfully`);
+}
 
 async function updateDiscordMessageWithRetry(client: Client, tipId: number, maxAttempts: number = 3) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -114,14 +197,34 @@ async function announceResult(client: Client, tipId: number) {
 
   // Now try to update the Discord message in the same context where the announcement worked
   console.log(`🔄 Attempting Discord message update in same context as announcement...`);
+  console.log(`🔍 Client state: ready=${client.isReady()}, user=${client.user?.username}, uptime=${client.uptime}ms`);
   try {
+    // First try the normal way
     await updateGroupTipMessage(client, tipId);
     console.log(`✅ Discord message update succeeded for tip ${tipId}!`);
     pendingDiscordUpdates.delete(tipId); // Remove from pending since it worked
   } catch (error: any) {
-    console.error(`❌ Discord message update failed even in announcement context for tip ${tipId}:`, error.message);
-    console.error(`Error stack:`, error.stack);
-    console.log(`📋 Tip ${tipId} will be retried via pending queue`);
+    console.error(`❌ Primary Discord message update failed for tip ${tipId}:`, error.message);
+    console.error(`Error details:`, {
+      name: error.name,
+      code: error.code,
+      status: error.status,
+      method: error.method,
+      url: error.url,
+      requestBody: error.requestBody
+    });
+
+    // Try a direct approach bypassing rate limiter
+    console.log(`🔄 Attempting direct Discord message update bypassing rate limiter...`);
+    try {
+      await updateGroupTipMessageDirect(client, tipId);
+      console.log(`✅ Direct Discord message update succeeded for tip ${tipId}!`);
+      pendingDiscordUpdates.delete(tipId);
+    } catch (directError: any) {
+      console.error(`❌ Direct Discord message update also failed for tip ${tipId}:`, directError.message);
+      console.error(`Direct error stack:`, directError.stack);
+      console.log(`📋 Tip ${tipId} will be retried via pending queue`);
+    }
   }
 }
 /** Schedule a one-shot timer to finalize and announce at expiry. */

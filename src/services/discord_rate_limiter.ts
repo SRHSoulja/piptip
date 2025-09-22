@@ -122,6 +122,17 @@ export class DiscordRateLimiter {
         ]);
         item.resolve(result);
       } catch (error) {
+        // Enhanced error logging for debugging
+        console.error(`Discord rate limiter error for ${endpoint}:`, {
+          message: (error as any)?.message,
+          name: (error as any)?.name,
+          code: (error as any)?.code,
+          status: (error as any)?.status,
+          method: (error as any)?.method,
+          url: (error as any)?.url,
+          stack: (error as any)?.stack?.split('\n').slice(0, 3).join('\n')
+        });
+
         // Handle Discord rate limit responses
         if (error && typeof error === 'object' && 'status' in error) {
           const status = (error as any).status;
