@@ -46,7 +46,10 @@ function createSecureTokenRow(token) {
   const activeCell = createElement('td');
   const activeInput = createSecureInput('checkbox', {
     attributes: {
-      'data-field': 'active'
+      'data-field': 'active',
+      id: `token-active-${token.id}`,
+      name: `token-active-${token.id}`,
+      'aria-label': `Token ${token.symbol} active status`
     }
   });
   activeInput.checked = Boolean(token.active);
@@ -58,7 +61,10 @@ function createSecureTokenRow(token) {
     attributes: {
       'data-field': 'minDeposit',
       step: '0.01',
-      value: String(token.minDeposit || '')
+      value: String(token.minDeposit || ''),
+      id: `token-minDeposit-${token.id}`,
+      name: `token-minDeposit-${token.id}`,
+      'aria-label': `Token ${token.symbol} minimum deposit`
     },
     style: { width: '80px' }
   });
@@ -70,7 +76,10 @@ function createSecureTokenRow(token) {
     attributes: {
       'data-field': 'minWithdraw',
       step: '0.01',
-      value: String(token.minWithdraw || '')
+      value: String(token.minWithdraw || ''),
+      id: `token-minWithdraw-${token.id}`,
+      name: `token-minWithdraw-${token.id}`,
+      'aria-label': `Token ${token.symbol} minimum withdrawal`
     },
     style: { width: '80px' }
   });
@@ -93,7 +102,10 @@ function createSecureTokenRow(token) {
       'data-field': 'withdrawMaxPerTx',
       step: '0.01',
       value: String(token.withdrawMaxPerTx || ''),
-      placeholder: 'default'
+      placeholder: 'default',
+      id: `token-withdrawMaxPerTx-${token.id}`,
+      name: `token-withdrawMaxPerTx-${token.id}`,
+      'aria-label': `Token ${token.symbol} maximum withdrawal per transaction`
     },
     style: { width: '80px' }
   });
@@ -106,7 +118,10 @@ function createSecureTokenRow(token) {
       'data-field': 'withdrawDailyCap',
       step: '0.01',
       value: String(token.withdrawDailyCap || ''),
-      placeholder: 'default'
+      placeholder: 'default',
+      id: `token-withdrawDailyCap-${token.id}`,
+      name: `token-withdrawDailyCap-${token.id}`,
+      'aria-label': `Token ${token.symbol} daily withdrawal cap`
     },
     style: { width: '80px' }
   });
@@ -167,7 +182,10 @@ function createFeeInputContainer(token, feeType) {
       min: '0',
       max: '10',
       value: currentValue,
-      placeholder: 'default'
+      placeholder: 'default',
+      id: `token-${fieldName}-${token.id}`,
+      name: `token-${fieldName}-${token.id}`,
+      'aria-label': `Token ${token.symbol} ${feeType} percentage`
     },
     style: { width: '50px' }
   });

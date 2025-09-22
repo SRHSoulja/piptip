@@ -19,69 +19,7 @@ export async function loadAds() {
 
     tbody.innerHTML = '';
     data.ads.forEach(ad => {
-      const tr = document.createElement('tr');
-      tr.dataset.id = ad.id;
-
-      // ID cell
-      const idCell = document.createElement('td');
-      idCell.textContent = ad.id;
-      tr.appendChild(idCell);
-
-      // Text input cell
-      const textCell = document.createElement('td');
-      const textInput = document.createElement('input');
-      textInput.value = ad.text || '';
-      textInput.setAttribute('data-field', 'text');
-      textInput.maxLength = 500;
-      textInput.style.width = '420px';
-      textCell.appendChild(textInput);
-      tr.appendChild(textCell);
-
-      // URL input cell
-      const urlCell = document.createElement('td');
-      const urlInput = document.createElement('input');
-      urlInput.value = ad.url || '';
-      urlInput.setAttribute('data-field', 'url');
-      urlInput.placeholder = 'https://...';
-      urlInput.style.width = '320px';
-      urlCell.appendChild(urlInput);
-      tr.appendChild(urlCell);
-
-      // Weight input cell
-      const weightCell = document.createElement('td');
-      const weightInput = document.createElement('input');
-      weightInput.type = 'number';
-      weightInput.value = ad.weight;
-      weightInput.setAttribute('data-field', 'weight');
-      weightInput.min = '1';
-      weightInput.max = '100';
-      weightInput.style.width = '80px';
-      weightCell.appendChild(weightInput);
-      tr.appendChild(weightCell);
-
-      // Active checkbox cell
-      const activeCell = document.createElement('td');
-      const activeCheckbox = document.createElement('input');
-      activeCheckbox.type = 'checkbox';
-      activeCheckbox.checked = ad.active;
-      activeCheckbox.setAttribute('data-field', 'active');
-      activeCell.appendChild(activeCheckbox);
-      tr.appendChild(activeCell);
-
-      // Actions cell
-      const actionsCell = document.createElement('td');
-      const saveBtn = document.createElement('button');
-      saveBtn.textContent = 'Save';
-      saveBtn.className = 'saveAd';
-      const deleteBtn = document.createElement('button');
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.className = 'deleteAd';
-      deleteBtn.style.background = '#ef4444';
-      deleteBtn.style.marginLeft = '5px';
-      actionsCell.appendChild(saveBtn);
-      actionsCell.appendChild(deleteBtn);
-      tr.appendChild(actionsCell);
-
+      const tr = createAdTableRow(ad);
       tbody.appendChild(tr);
     });
 

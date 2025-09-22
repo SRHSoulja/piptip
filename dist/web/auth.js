@@ -53,21 +53,43 @@ authRouter.get("/discord", (req, res) => {
 });
 // GET /auth/discord/callback - Handle Discord OAuth callback
 authRouter.get("/discord/callback", async (req, res) => {
+    console.log("🔔 Discord OAuth callback triggered:", {
+        query: req.query,
+        sessionId: req.sessionID,
+        hasSession: !!req.session,
+        timestamp: new Date().toISOString()
+    });
     if (!isDiscordOAuthConfigured()) {
+        console.error("❌ Discord OAuth is not properly configured");
         return res.status(500).send("Discord OAuth is not properly configured");
     }
     try {
         const { code, state } = req.query;
+        console.log("📝 Received callback params:", {
+            hasCode: !!code,
+            hasState: !!state,
+            codeType: typeof code,
+            stateType: typeof state
+        });
         if (!code || !state || typeof code !== "string" || typeof state !== "string") {
+            console.error("❌ Missing or invalid parameters in callback");
             return res.status(400).send("Missing or invalid parameters");
         }
+        console.log("✅ Valid parameters received");
         // Verify state to prevent CSRF
         const stateData = oauthStates.get(state);
+        console.log("🔍 State verification:", {
+            stateExists: !!stateData,
+            totalStates: oauthStates.size
+        });
         if (!stateData) {
+            console.error("❌ Invalid or expired state parameter");
             return res.status(400).send("Invalid or expired state");
         }
         oauthStates.delete(state);
+        console.log("✅ State verified and deleted");
         // Exchange code for access token
+        console.log("🔄 Exchanging code for token...");
         const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -79,21 +101,41 @@ authRouter.get("/discord/callback", async (req, res) => {
                 redirect_uri: REDIRECT_URI,
             }),
         });
+        console.log("📡 Token response status:", tokenResponse.status);
         if (!tokenResponse.ok) {
-            throw new Error("Failed to exchange code for token");
+            const errorText = await tokenResponse.text();
+            console.error("❌ Failed to exchange code for token:", {
+                status: tokenResponse.status,
+                error: errorText
+            });
+            throw new Error(`Failed to exchange code for token: ${errorText}`);
         }
         const tokenData = await tokenResponse.json();
         const { access_token, refresh_token } = tokenData;
+        console.log("✅ Token exchange successful");
         // Fetch user info from Discord
+        console.log("👤 Fetching user info from Discord...");
         const userResponse = await fetch("https://discord.com/api/users/@me", {
             headers: { Authorization: `Bearer ${access_token}` },
         });
+        console.log("📡 User response status:", userResponse.status);
         if (!userResponse.ok) {
-            throw new Error("Failed to fetch user info");
+            const errorText = await userResponse.text();
+            console.error("❌ Failed to fetch user info:", {
+                status: userResponse.status,
+                error: errorText
+            });
+            throw new Error(`Failed to fetch user info: ${errorText}`);
         }
         const discordUser = await userResponse.json();
+        console.log("✅ User info fetched:", {
+            id: discordUser.id,
+            username: discordUser.username
+        });
         // Create or find user in our database
+        console.log("💾 Creating/finding user in database...");
         await findOrCreateUser(discordUser.id);
+        console.log("✅ User created/found in database");
         console.log("💾 Storing user session:", {
             discordId: discordUser.id,
             username: discordUser.username,
@@ -108,15 +150,25 @@ authRouter.get("/discord/callback", async (req, res) => {
             : `https://cdn.discordapp.com/embed/avatars/${parseInt(discordUser.id.slice(-1)) % 6}.png`;
         req.session.accessToken = access_token;
         req.session.refreshToken = refresh_token;
-        console.log("✅ Session stored successfully");
+        console.log("✅ Session stored successfully. Verifying storage...");
+        console.log("🔍 Session verification:", {
+            discordId: req.session.discordId,
+            username: req.session.username,
+            hasAvatar: !!req.session.avatar,
+            hasAccessToken: !!req.session.accessToken
+        });
         // Redirect to intended destination
         const redirectUrl = stateData.redirectTo || "/pengubook";
+        console.log("🔄 Redirecting to:", redirectUrl);
         if (redirectUrl.startsWith("/")) {
             // Direct redirect to ngrok URL
             const baseUrl = req.get('host') ? `${req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http'}://${req.get('host')}` : 'http://localhost:3000';
-            res.redirect(`${baseUrl}${redirectUrl}`);
+            const fullRedirectUrl = `${baseUrl}${redirectUrl}`;
+            console.log("📍 Full redirect URL:", fullRedirectUrl);
+            res.redirect(fullRedirectUrl);
         }
         else {
+            console.log("📍 External redirect URL:", redirectUrl);
             res.redirect(redirectUrl);
         }
     }

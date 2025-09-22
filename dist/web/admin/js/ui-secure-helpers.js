@@ -187,12 +187,12 @@ export function createTierTableRow(tier) {
 
   const cells = [
     { textContent: String(tier.id) },
-    { type: 'html', content: `<input value="${escapeHtml(tier.name)}" data-field="name" style="width:160px"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(tier.name)}" data-field="name" style="width:160px" id="name-${tier.id}" name="name-${tier.id}"/>`, trusted: true },
     { textContent: escapeHtml(tier.token?.symbol || tier.tokenId) },
-    { type: 'html', content: `<input value="${escapeHtml(String(tier.priceAmount))}" data-field="priceAmount" type="number" step="0.00000001" style="width:140px"/>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(String(tier.durationDays))}" data-field="durationDays" type="number" min="1" style="width:90px"/>`, trusted: true },
-    { type: 'html', content: `<input type="checkbox" ${tier.tipTaxFree ? "checked" : ""} data-field="tipTaxFree"/>`, trusted: true },
-    { type: 'html', content: `<input type="checkbox" ${tier.active ? "checked" : ""} data-field="active"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(tier.priceAmount))}" data-field="priceAmount" type="number" step="0.00000001" style="width:140px" id="priceAmount-${tier.id}" name="priceAmount-${tier.id}" aria-label="Tier ${tier.id} price amount"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(tier.durationDays))}" data-field="durationDays" type="number" min="1" style="width:90px" id="durationDays-${tier.id}" name="durationDays-${tier.id}" aria-label="Tier ${tier.id} duration in days"/>`, trusted: true },
+    { type: 'html', content: `<input type="checkbox" ${tier.tipTaxFree ? "checked" : ""} data-field="tipTaxFree" id="tipTaxFree-${tier.id}" name="tipTaxFree-${tier.id}" aria-label="Tier ${tier.id} tip tax free status"/>`, trusted: true },
+    { type: 'html', content: `<input type="checkbox" ${tier.active ? "checked" : ""} data-field="active" id="tier-active-${tier.id}" name="tier-active-${tier.id}" aria-label="Tier ${tier.id} active status"/>`, trusted: true },
     { type: 'html', content: '<button class="saveTier">Save</button>', trusted: true }
   ];
 
@@ -240,7 +240,7 @@ export function createServerTableRow(server) {
     { textContent: String(server.id) },
     { innerHTML: `<strong>${escapeHtml(server.servername || 'Loading...')}</strong>`, trusted: true },
     { innerHTML: `<code>${escapeHtml(server.guildId)}</code>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(server.note || '')}" data-field="note" placeholder="Description"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(server.note || '')}" data-field="note" placeholder="Description" id="note-${server.id}" name="note-${server.id}"/>`, trusted: true },
     { type: 'element', element: statusCell },
     { type: 'element', element: actionCell }
   ];
@@ -311,9 +311,9 @@ export function createAdTableRow(ad) {
 
   const cells = [
     { textContent: String(ad.id) },
-    { type: 'html', content: `<input value="${escapeHtml(ad.text || '')}" data-field="text" maxlength="500" style="width:420px"/>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(ad.url || '')}" data-field="url" placeholder="https://..." style="width:320px"/>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(String(ad.weight))}" data-field="weight" type="number" min="1" max="100" style="width:80px"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(ad.text || '')}" data-field="text" maxlength="500" style="width:420px" id="ad-text-${ad.id}" name="ad-text-${ad.id}"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(ad.url || '')}" data-field="url" placeholder="https://..." style="width:320px" id="ad-url-${ad.id}" name="ad-url-${ad.id}"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(ad.weight))}" data-field="weight" type="number" min="1" max="100" style="width:80px" id="ad-weight-${ad.id}" name="ad-weight-${ad.id}" aria-label="Ad ${ad.id} weight"/>`, trusted: true },
     { type: 'element', element: statusCell },
     { type: 'element', element: actionCell }
   ];
@@ -395,7 +395,7 @@ export function createTokenTableRow(token) {
   const tr = document.createElement('tr');
 
   // Create fee input container helper
-  const createFeeInputContainer = (fieldName, currentValue, presetValues) => {
+  const createFeeInputContainer = (fieldName, currentValue, presetValues, token) => {
     const container = createElement('div', { className: 'fee-input-container' });
 
     const input = createElement('input', {
@@ -407,7 +407,10 @@ export function createTokenTableRow(token) {
         step: '0.01',
         min: '0',
         max: '10',
-        style: 'width:50px'
+        style: 'width:50px',
+        id: `token-${fieldName}-${token.id}`,
+        name: `token-${fieldName}-${token.id}`,
+        'aria-label': `Token ${token.symbol} ${fieldName.replace('FeePercent', ' fee percentage')}`
       }
     });
 
@@ -448,13 +451,13 @@ export function createTokenTableRow(token) {
     { innerHTML: `<strong>${escapeHtml(token.symbol)}</strong>`, trusted: true },
     { innerHTML: `<code>${escapeHtml(token.address)}</code>`, trusted: true },
     { textContent: String(token.decimals) },
-    { type: 'html', content: `<input type="checkbox" ${token.active ? "checked" : ""} data-field="active"/>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(String(token.minDeposit))}" data-field="minDeposit" type="number" step="0.01" style="width:80px"/>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(String(token.minWithdraw))}" data-field="minWithdraw" type="number" step="0.01" style="width:80px"/>`, trusted: true },
-    { type: 'element', element: createFeeInputContainer('tipFeePercent', token.tipFeeBps ? token.tipFeeBps / 100 : null, [0.5, 1, 1.5, 2]) },
-    { type: 'element', element: createFeeInputContainer('houseFeePercent', token.houseFeeBps ? token.houseFeeBps / 100 : null, [1, 2, 2.5, 3]) },
-    { type: 'html', content: `<input value="${escapeHtml(String(token.withdrawMaxPerTx || ''))}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px"/>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(String(token.withdrawDailyCap || ''))}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px"/>`, trusted: true }
+    { type: 'html', content: `<input type="checkbox" ${token.active ? "checked" : ""} data-field="active" id="token-active-${token.id}" name="token-active-${token.id}" aria-label="Token ${token.symbol} active status"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.minDeposit))}" data-field="minDeposit" type="number" step="0.01" style="width:80px" id="token-minDeposit-${token.id}" name="token-minDeposit-${token.id}" aria-label="Token ${token.symbol} minimum deposit"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.minWithdraw))}" data-field="minWithdraw" type="number" step="0.01" style="width:80px" id="token-minWithdraw-${token.id}" name="token-minWithdraw-${token.id}" aria-label="Token ${token.symbol} minimum withdrawal"/>`, trusted: true },
+    { type: 'element', element: createFeeInputContainer('tipFeePercent', token.tipFeeBps ? token.tipFeeBps / 100 : null, [0.5, 1, 1.5, 2], token) },
+    { type: 'element', element: createFeeInputContainer('houseFeePercent', token.houseFeeBps ? token.houseFeeBps / 100 : null, [1, 2, 2.5, 3], token) },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.withdrawMaxPerTx || ''))}" placeholder="default" data-field="withdrawMaxPerTx" type="number" step="0.01" style="width:80px" id="token-withdrawMaxPerTx-${token.id}" name="token-withdrawMaxPerTx-${token.id}" aria-label="Token ${token.symbol} maximum withdrawal per transaction"/>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(token.withdrawDailyCap || ''))}" placeholder="default" data-field="withdrawDailyCap" type="number" step="0.01" style="width:80px" id="token-withdrawDailyCap-${token.id}" name="token-withdrawDailyCap-${token.id}" aria-label="Token ${token.symbol} daily withdrawal cap"/>`, trusted: true }
   ];
 
   // Create action buttons cell
