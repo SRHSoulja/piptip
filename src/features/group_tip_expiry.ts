@@ -5,6 +5,43 @@ import { updateGroupTipMessage } from "./group_tip_helpers.js";
 
 const timers = new Map<number, NodeJS.Timeout>();
 
+async function updateDiscordMessageWithRetry(client: Client, tipId: number, maxAttempts: number = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`📝 Updating Discord message for tip ${tipId} (attempt ${attempt}/${maxAttempts})...`);
+
+      // Wait for client to be ready if it's not
+      if (!client.isReady()) {
+        console.log(`⏳ Waiting for Discord client to be ready...`);
+        await new Promise(resolve => {
+          if (client.isReady()) {
+            resolve(true);
+          } else {
+            client.once('ready', resolve);
+          }
+        });
+      }
+
+      await updateGroupTipMessage(client, tipId);
+      console.log(`✅ Discord message updated successfully for tip ${tipId} on attempt ${attempt}`);
+      return; // Success, exit retry loop
+
+    } catch (error: any) {
+      console.error(`❌ Discord message update attempt ${attempt}/${maxAttempts} failed for tip ${tipId}:`, error.message);
+
+      if (attempt < maxAttempts) {
+        // Wait before retry with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`💀 All ${maxAttempts} attempts failed for Discord message update on tip ${tipId}`);
+        console.error('Final error:', error);
+      }
+    }
+  }
+}
+
 async function announceResult(client: Client, tipId: number) {
   console.log(`🔔 announceResult called for tip ${tipId}`);
 
@@ -40,15 +77,8 @@ async function announceResult(client: Client, tipId: number) {
   const summary = await finalizeExpiredGroupTip(tipId);
   console.log(`✅ Tip ${tipId} finalized with result: ${summary.kind}`);
 
-  // Update Discord message with proper error logging
-  try {
-    console.log(`📝 Updating Discord message for tip ${tipId}...`);
-    await updateGroupTipMessage(client, tipId);
-    console.log(`✅ Discord message updated successfully for tip ${tipId}`);
-  } catch (error: any) {
-    console.error(`❌ Failed to update Discord message for tip ${tipId}:`, error.message);
-    console.error('Full error:', error);
-  }
+  // Update Discord message with robust retry logic
+  await updateDiscordMessageWithRetry(client, tipId);
 
   if (summary.kind === "REFUNDED") {
     await channel.send(
