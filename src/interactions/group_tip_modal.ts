@@ -66,9 +66,11 @@ export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, g
     if (result.success) {
       // Update the group tip message to show new total and contributors
       try {
+        console.log(`🔄 Updating group tip message for tip ${groupTipId} after contribution`);
         await updateGroupTipMessage(i.client, groupTipId);
+        console.log(`✅ Successfully updated group tip message for tip ${groupTipId}`);
       } catch (updateError) {
-        console.warn("Failed to update group tip message:", updateError);
+        console.error("Failed to update group tip message:", updateError);
         // Don't fail the entire operation if message update fails
       }
 
