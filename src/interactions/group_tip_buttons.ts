@@ -1,4 +1,5 @@
 import type { ButtonInteraction } from "discord.js";
+import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from "discord.js";
 import { prisma } from "../services/db.js";
 import { updateGroupTipMessage } from "../features/group_tip_helpers.js";
 import { finalizeExpiredGroupTip } from "../features/finalizeExpiredGroupTip.js";
@@ -104,6 +105,74 @@ try {
   }
 }
 
+export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number) {
+  console.log(`🐟 handleGroupTipAdd: Starting add more fish for tip ${groupTipId} by user ${i.user.id}`);
+
+  try {
+    // Get tip info to validate and show in modal
+    const tip = await prisma.groupTip.findUnique({
+      where: { id: groupTipId },
+      include: {
+        Creator: true,
+        Token: true,
+      },
+    });
+
+    if (!tip) {
+      await i.editReply({ content: "❌ Group tip not found!" });
+      return;
+    }
+
+    const now = new Date();
+    const isExpired = tip.expiresAt.getTime() < now.getTime();
+
+    if (isExpired) {
+      await i.editReply({ content: "❌ This group tip has expired - no more fish can be added!" });
+      return;
+    }
+
+    if (tip.status !== "ACTIVE") {
+      await i.editReply({ content: "❌ This group tip is no longer active!" });
+      return;
+    }
+
+    // Check if user is the creator
+    if (tip.Creator && tip.Creator.discordId === i.user.id) {
+      await i.editReply({ content: "❌ You cannot add more fish to your own group tip!" });
+      return;
+    }
+
+    // Show modal for contribution amount
+    const modal = new ModalBuilder()
+      .setCustomId(`grouptip_contribute:${groupTipId}`)
+      .setTitle(`🐟 Add ${tip.Token.symbol} to Colony`);
+
+    const amountInput = new TextInputBuilder()
+      .setCustomId("contribution_amount")
+      .setLabel(`How many ${tip.Token.symbol} to add?`)
+      .setPlaceholder("Enter amount (e.g., 50, 25.5)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(20);
+
+    const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(amountInput);
+    modal.addComponents(actionRow);
+
+    console.log(`🐟 handleGroupTipAdd: Showing modal for tip ${groupTipId}`);
+    await i.showModal(modal);
+  } catch (error: any) {
+    console.error(`🐟 handleGroupTipAdd: Error in tip ${groupTipId}:`, error.message);
+    // Only try to edit reply if interaction is deferred/replied
+    if (i.deferred || i.replied) {
+      try {
+        await i.editReply({ content: `❌ Error: ${error?.message || String(error)}` });
+      } catch (replyError: any) {
+        console.error(`🐟 handleGroupTipAdd: Failed to send error reply:`, replyError.message);
+      }
+    }
+  }
+}
+
 /** Router for group tip button customIds: grouptip:<action>:<groupTipId> */
 export async function handleGroupTipButton(i: ButtonInteraction) {
   const [ns, action, id] = i.customId.split(":");
@@ -115,5 +184,6 @@ export async function handleGroupTipButton(i: ButtonInteraction) {
   }
 
   if (action === "claim") return handleGroupTipClaim(i, groupTipId);
+  if (action === "add") return handleGroupTipAdd(i, groupTipId);
   return i.reply({ content: "Unknown group tip action.", ephemeral: true });
 }

@@ -124,6 +124,20 @@ export async function addGroupTipContribution(
         throw new Error("You have already contributed to this group tip");
       }
 
+      // 7b. CHECK IF USER HAS CLAIMED (claimers can't contribute)
+      const existingClaim = await tx.groupTipClaim.findUnique({
+        where: {
+          groupTipId_userId: {
+            groupTipId: groupTipId,
+            userId: contributor.id
+          }
+        }
+      });
+
+      if (existingClaim) {
+        throw new Error("You cannot add fish to this group tip because you've already claimed from it! Choose one: give or receive, but not both! 🐧");
+      }
+
       // 8. TAX CALCULATION (respects tier benefits)
       const hasTaxFreeTier = await userHasActiveTaxFreeTier(contributor.id);
       let taxAmount = 0;
