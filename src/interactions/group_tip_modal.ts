@@ -60,8 +60,13 @@ export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, g
       content: PENGUIN_LOADING.tip() + "\n*Calculating tax and processing your contribution...*"
     });
 
-    // Process the contribution
-    const result = await addGroupTipContribution(groupTipId, i.user.id, contributionAmount);
+    // Process the contribution with timeout
+    const contributionPromise = addGroupTipContribution(groupTipId, i.user.id, contributionAmount);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Contribution timeout - database may be overloaded')), 30000)
+    );
+
+    const result = await Promise.race([contributionPromise, timeoutPromise]) as any;
 
     if (result.success) {
       // Update the group tip message to show new total and contributors
