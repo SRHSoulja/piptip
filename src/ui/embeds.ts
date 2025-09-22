@@ -371,6 +371,7 @@ export function groupTipEmbed(data: {
   totalAmount?: string; // New: total amount including contributions
   isFinalized?: boolean; // New: shows if tip was finalized
   payoutPerUser?: string; // New: amount each user received
+  forceRefresh?: boolean; // Force Discord to recognize as different
 }) {
   let description = `🐧 **${data.creator}** is sharing fish with the colony!`;
 
