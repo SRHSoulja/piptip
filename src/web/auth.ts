@@ -127,14 +127,23 @@ authRouter.get("/discord/callback", async (req: Request, res: Response) => {
     // Create or find user in our database
     await findOrCreateUser(discordUser.id);
 
+    console.log("💾 Storing user session:", {
+      discordId: discordUser.id,
+      username: discordUser.username,
+      sessionId: req.sessionID,
+      sessionExists: !!req.session
+    });
+
     // Store user session
     req.session.discordId = discordUser.id;
     req.session.username = discordUser.username;
-    req.session.avatar = discordUser.avatar 
+    req.session.avatar = discordUser.avatar
       ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
       : `https://cdn.discordapp.com/embed/avatars/${parseInt(discordUser.id.slice(-1)) % 6}.png`;
     req.session.accessToken = access_token;
     req.session.refreshToken = refresh_token;
+
+    console.log("✅ Session stored successfully");
 
     // Redirect to intended destination
     const redirectUrl = stateData.redirectTo || "/pengubook";
@@ -162,9 +171,26 @@ authRouter.get("/logout", (req: Request, res: Response) => {
 
 // Middleware to require authentication
 export function requireAuth(req: Request, res: Response, next: any) {
+  console.log("🔐 Auth check:", {
+    hasSession: !!req.session,
+    discordId: req.session?.discordId ? "SET" : "MISSING",
+    sessionId: req.sessionID,
+    url: req.originalUrl,
+    secure: req.secure,
+    cookies: Object.keys(req.cookies || {}),
+    headers: {
+      host: req.get('host'),
+      'x-forwarded-proto': req.get('x-forwarded-proto'),
+      'user-agent': req.get('user-agent')?.slice(0, 50)
+    }
+  });
+
   if (!req.session.discordId) {
+    console.log("❌ No Discord ID in session, redirecting to auth");
     return res.redirect(`/auth/discord?redirect=${encodeURIComponent(req.originalUrl)}`);
   }
+
+  console.log("✅ Auth check passed");
   next();
 }
 
