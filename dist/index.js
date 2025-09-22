@@ -2,7 +2,8 @@
 import "dotenv/config";
 import express from "express";
 import session from "express-session";
-import connectPgSimple from "connect-pg-simple";
+import { RedisStore } from "connect-redis";
+import { createClient } from "redis";
 import path from "path";
 import { flushNoticesEphemeral } from "./services/notifier.js";
 import { Client, GatewayIntentBits, Events, } from "discord.js";
@@ -42,22 +43,24 @@ const PORT = Number(process.env.PORT || (process.env.REPLIT_DB_URL ? 5000 : 3000
 // ---------- Express (REST) ----------
 const app = express();
 app.use(express.json({ limit: "256kb" }));
-// Session middleware for OAuth with PostgreSQL store
-const PgSession = connectPgSimple(session);
-app.use(session({
-    store: new PgSession({
-        conString: process.env.DATABASE_URL,
-        tableName: "session", // optional
-        createTableIfMissing: true
-    }),
-    secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-this",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+// Create Redis client for session store
+const redisClient = createClient({
+    url: process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL || "redis://localhost:6379",
+    socket: {
+        connectTimeout: 5000
     }
-}));
+});
+redisClient.on("error", (err) => {
+    console.error("Redis Client Error:", err);
+});
+redisClient.on("connect", () => {
+    console.log("Redis client connected");
+});
+redisClient.on("ready", () => {
+    console.log("Redis client ready");
+});
+// Session middleware for OAuth with Redis store - will be configured after Redis connects
+let sessionMiddleware;
 // Favicon route to prevent 404 errors
 app.get("/favicon.ico", (_req, res) => {
     // Return a simple 1x1 transparent PNG
@@ -459,6 +462,33 @@ async function main() {
     try {
         await ensurePrisma();
         console.log("Database connected");
+        // Connect Redis and configure session middleware
+        let sessionStore;
+        try {
+            await redisClient.connect();
+            sessionStore = new RedisStore({ client: redisClient });
+            console.log("✅ Redis connected - using Redis session store");
+        }
+        catch (error) {
+            console.warn("⚠️ Redis connection failed, falling back to in-memory sessions:", error.message);
+            sessionStore = undefined; // Use default in-memory store
+        }
+        sessionMiddleware = session({
+            store: sessionStore,
+            secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-this",
+            resave: false,
+            saveUninitialized: false,
+            name: 'piptip-session', // Explicit session name
+            cookie: {
+                secure: process.env.NODE_ENV === "production",
+                maxAge: 24 * 60 * 60 * 1000, // 24 hours
+                httpOnly: true,
+                sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax',
+                domain: process.env.NODE_ENV === "production" ? undefined : undefined // Let browser decide
+            }
+        });
+        app.use(sessionMiddleware);
+        console.log(`✅ Session middleware configured with ${sessionStore ? 'Redis' : 'in-memory'} store`);
         // Backup service disabled - using external cron job with backup-script.js
         // await backupService.start();
         console.log("Backup service: using external cron job");
@@ -490,6 +520,16 @@ async function main() {
             }
             catch (error) {
                 console.error("Error shutting down rate limiter:", error);
+            }
+            // Disconnect Redis
+            try {
+                if (redisClient.isOpen) {
+                    await redisClient.disconnect();
+                    console.log("🔴 Redis disconnected");
+                }
+            }
+            catch (error) {
+                console.error("Error disconnecting Redis:", error);
             }
             // Clean up resilient Discord update service
             try {
