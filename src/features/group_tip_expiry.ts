@@ -20,7 +20,14 @@ async function announceResult(client: Client, tipId: number) {
   const channel = chan as GuildTextBasedChannel;
 
   const summary = await finalizeExpiredGroupTip(tipId);
-  await updateGroupTipMessage(client, tipId).catch(() => {});
+
+  // Update Discord message with proper error logging
+  try {
+    await updateGroupTipMessage(client, tipId);
+    console.log(`✅ Discord message updated for tip ${tipId}`);
+  } catch (error: any) {
+    console.error(`❌ Failed to update Discord message for tip ${tipId}:`, error.message);
+  }
 
   if (summary.kind === "REFUNDED") {
     await channel.send(

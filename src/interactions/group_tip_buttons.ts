@@ -47,7 +47,12 @@ const user = await tx.user.upsert({
 // Record claim (catch duplicate if they spam-click)
 try {
   await tx.groupTipClaim.create({
-    data: { groupTipId: tip.id, userId: user.id },
+    data: {
+      groupTipId: tip.id,
+      userId: user.id,
+      status: 'CLAIMED',  // Mark as CLAIMED immediately when user claims
+      claimedAt: new Date()
+    },
   });
 } catch (err: any) {
   // Prisma unique constraint on @@unique([groupTipId, userId])
