@@ -7,15 +7,6 @@ import { formatDecimal } from "../../services/token.js";
 
 /** Handle tip token selection */
 export async function handleSelectToken(i: ButtonInteraction, parts: string[]) {
-  // Ensure interaction is properly acknowledged
-  try {
-    if (!i.deferred && !i.replied) {
-      await i.deferUpdate();
-    }
-  } catch (error) {
-    // Interaction was likely already acknowledged by auto-ack wrapper
-    console.log('Interaction already acknowledged, continuing...');
-  }
   
   try {
     // Parse button data: pip:select_token:amount:tipType:target:note:tokenId
@@ -51,15 +42,6 @@ export async function handleSelectToken(i: ButtonInteraction, parts: string[]) {
 
 /** Handle tip cancellation */
 export async function handleCancelTip(i: ButtonInteraction) {
-  // Ensure interaction is properly acknowledged
-  try {
-    if (!i.deferred && !i.replied) {
-      await i.deferUpdate();
-    }
-  } catch (error) {
-    // Interaction was likely already acknowledged by auto-ack wrapper
-    console.log('Interaction already acknowledged, continuing...');
-  }
   
   await i.editReply({
     content: "❌ **Tip cancelled**\n*Use `/pip_tip` to start a new tip.*",
@@ -70,15 +52,6 @@ export async function handleCancelTip(i: ButtonInteraction) {
 
 /** Handle group tip duration selection */
 export async function handleSelectDuration(i: ButtonInteraction, parts: string[]) {
-  // Ensure interaction is properly acknowledged
-  try {
-    if (!i.deferred && !i.replied) {
-      await i.deferUpdate();
-    }
-  } catch (error) {
-    // Interaction was likely already acknowledged by auto-ack wrapper
-    console.log('Interaction already acknowledged, continuing...');
-  }
   
   try {
     // Parse: pip:select_duration:amount:note:tokenId:duration
@@ -104,15 +77,6 @@ export async function handleSelectDuration(i: ButtonInteraction, parts: string[]
 
 /** Handle final tip confirmation */
 export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
-  // Ensure interaction is properly acknowledged
-  try {
-    if (!i.deferred && !i.replied) {
-      await i.deferUpdate();
-    }
-  } catch (error) {
-    // Interaction was likely already acknowledged by auto-ack wrapper
-    console.log('Interaction already acknowledged, continuing...');
-  }
 
   try {
     // Parse: pip:confirm_tip:amount:tipType:target:note:tokenId:duration?
@@ -169,27 +133,12 @@ export async function handleConfirmTip(i: ButtonInteraction, parts: string[]) {
 export async function showDurationSelection(i: ButtonInteraction, data: { amount: number; note: string; tokenId: number }) {
   console.log('🔍 DEBUG: showDurationSelection called with data:', data);
 
-  // This function is always called from handlers that have already acknowledged
-  // If not acknowledged yet, acknowledge it now
-  if (!i.deferred && !i.replied) {
-    try {
-      await i.deferUpdate();
-    } catch (error) {
-      // If deferUpdate fails, try reply directly (for cases where called without prior acknowledgment)
-      // This will be handled below with reply() instead of editReply()
-      console.log('Could not defer in showDurationSelection:', error);
-    }
-  }
-
   const { getActiveTokens } = await import("../../services/token.js");
   const tokens = await getActiveTokens();
   const token = tokens.find(t => t.id === data.tokenId);
 
-  // Use the appropriate reply method based on interaction state
-  const replyMethod = (i.deferred || i.replied) ? i.editReply.bind(i) : i.reply.bind(i);
-
   if (!token) {
-    return replyMethod({
+    return i.editReply({
       content: "❌ **Token not found**\nThe selected token is no longer available.",
       embeds: [],
       components: []
@@ -253,7 +202,7 @@ export async function showDurationSelection(i: ButtonInteraction, data: { amount
 
   console.log('🔍 DEBUG: About to send', [actionRow1, actionRow2, cancelRow].length, 'action rows to Discord');
 
-  await replyMethod({
+  await i.editReply({
     embeds: [embed],
     components: [actionRow1, actionRow2, cancelRow]
   });
@@ -270,26 +219,14 @@ export async function showTipConfirmation(i: ButtonInteraction, data: {
   tokenId: number;
   duration?: number;
 }) {
-  // Ensure interaction is acknowledged if not already
-  if (!i.deferred && !i.replied) {
-    try {
-      await i.deferUpdate();
-    } catch (error) {
-      console.log('Could not defer in showTipConfirmation:', error);
-    }
-  }
-
   const { getActiveTokens } = await import("../../services/token.js");
   const { userHasActiveTaxFreeTier } = await import("../../services/tiers.js");
 
   const tokens = await getActiveTokens();
   const token = tokens.find(t => t.id === data.tokenId);
 
-  // Use the appropriate reply method based on interaction state
-  const replyMethod = (i.deferred || i.replied) ? i.editReply.bind(i) : i.reply.bind(i);
-
   if (!token) {
-    return replyMethod({
+    return i.editReply({
       content: "❌ **Token not found**\nThe selected token is no longer available.",
       embeds: [],
       components: []
@@ -340,7 +277,7 @@ export async function showTipConfirmation(i: ButtonInteraction, data: {
   const actionRow = new ActionRowBuilder<ButtonBuilder>()
     .addComponents(confirmButton, cancelButton);
 
-  await replyMethod({
+  await i.editReply({
     embeds: [embed],
     components: [actionRow]
   });
