@@ -119,27 +119,23 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
     });
 
     if (!tip) {
-      await i.editReply({ content: "❌ Group tip not found!" });
-      return;
+      return i.reply({ content: "❌ Group tip not found!", ephemeral: true });
     }
 
     const now = new Date();
     const isExpired = tip.expiresAt.getTime() < now.getTime();
 
     if (isExpired) {
-      await i.editReply({ content: "❌ This group tip has expired - no more fish can be added!" });
-      return;
+      return i.reply({ content: "❌ This group tip has expired - no more fish can be added!", ephemeral: true });
     }
 
     if (tip.status !== "ACTIVE") {
-      await i.editReply({ content: "❌ This group tip is no longer active!" });
-      return;
+      return i.reply({ content: "❌ This group tip is no longer active!", ephemeral: true });
     }
 
     // Check if user is the creator
     if (tip.Creator && tip.Creator.discordId === i.user.id) {
-      await i.editReply({ content: "❌ You cannot add more fish to your own group tip!" });
-      return;
+      return i.reply({ content: "❌ You cannot add more fish to your own group tip!", ephemeral: true });
     }
 
     // Show modal for contribution amount
@@ -162,13 +158,10 @@ export async function handleGroupTipAdd(i: ButtonInteraction, groupTipId: number
     await i.showModal(modal);
   } catch (error: any) {
     console.error(`🐟 handleGroupTipAdd: Error in tip ${groupTipId}:`, error.message);
-    // Only try to edit reply if interaction is deferred/replied
-    if (i.deferred || i.replied) {
-      try {
-        await i.editReply({ content: `❌ Error: ${error?.message || String(error)}` });
-      } catch (replyError: any) {
-        console.error(`🐟 handleGroupTipAdd: Failed to send error reply:`, replyError.message);
-      }
+    try {
+      await i.reply({ content: `❌ Error: ${error?.message || String(error)}`, ephemeral: true });
+    } catch (replyError: any) {
+      console.error(`🐟 handleGroupTipAdd: Failed to send error reply:`, replyError.message);
     }
   }
 }
