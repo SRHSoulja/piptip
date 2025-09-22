@@ -23,6 +23,7 @@ pengubookModularRouter.post("/user/:discordId/tip", userTipHandler);
 // API routes
 pengubookModularRouter.get("/api/unread-count", apiHandlers.unreadCount);
 pengubookModularRouter.get("/api/discord-user/:discordId", apiHandlers.discordUser);
+pengubookModularRouter.get("/api/user-data", apiHandlers.userData);
 pengubookModularRouter.post("/api/tip", apiHandlers.tip);
 pengubookModularRouter.post("/api/profile", apiHandlers.profile);
 pengubookModularRouter.get("/api/balance", apiHandlers.balance);

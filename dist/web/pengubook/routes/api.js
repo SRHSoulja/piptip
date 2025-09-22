@@ -126,11 +126,131 @@ export const apiHandlers = {
             res.status(500).json({ success: false, error: "Failed to fetch balance" });
         }
     },
-    // Tip API endpoint (placeholder)
+    // User data endpoint (tokens and balances)
+    async userData(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            // Get active tokens
+            const { getActiveTokens } = await import("../../../services/token.js");
+            const tokens = await getActiveTokens();
+            // Get user balances
+            const user = await findOrCreateUser(currentUser.discordId);
+            const balances = await prisma.userBalance.findMany({
+                where: { userId: user.id },
+                include: { Token: true }
+            });
+            // Format balances for easy lookup
+            const balanceMap = {};
+            balances.forEach(balance => {
+                balanceMap[balance.tokenId] = balance.amount.toString();
+            });
+            res.json({
+                success: true,
+                tokens: tokens.map(token => ({
+                    id: token.id,
+                    symbol: token.symbol,
+                    decimals: token.decimals,
+                    active: token.active
+                })),
+                balances: balanceMap
+            });
+        }
+        catch (error) {
+            console.error("User data fetch error:", error);
+            res.status(500).json({ success: false, error: "Failed to fetch user data" });
+        }
+    },
+    // Tip API endpoint
     async tip(req, res) {
-        res.status(501).json({
-            success: false,
-            error: "Tip API not yet implemented. Use Discord commands for tipping."
-        });
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            const { targetDiscordId, tokenId, amount, message } = req.body;
+            // Validate inputs
+            if (!targetDiscordId || !tokenId || !amount) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: targetDiscordId, tokenId, amount"
+                });
+            }
+            // Validate amount
+            if (typeof amount !== 'number' || amount <= 0 || amount > 1e15) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid amount"
+                });
+            }
+            // Check decimal places
+            const decimalPlaces = (amount.toString().split('.')[1] || '').length;
+            if (decimalPlaces > 2) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Amount can have maximum 2 decimal places"
+                });
+            }
+            // Prevent self-tipping
+            if (targetDiscordId === currentUser.discordId) {
+                return res.status(400).json({
+                    success: false,
+                    error: "You cannot tip yourself"
+                });
+            }
+            // Import tip processor
+            const { processTip } = await import("../../../services/tip_processor.js");
+            const { getDiscordClient } = await import("../../../services/discord_users.js");
+            const client = getDiscordClient();
+            if (!client) {
+                return res.status(500).json({
+                    success: false,
+                    error: "Discord client not available"
+                });
+            }
+            // Process the tip
+            const tipData = {
+                amount,
+                tipType: 'direct',
+                targetUserId: targetDiscordId,
+                note: message || "",
+                tokenId: parseInt(tokenId),
+                userId: currentUser.discordId,
+                guildId: null, // PenguBook tips don't belong to a specific guild
+                channelId: null,
+                fromPenguBook: true
+            };
+            const result = await processTip(tipData, client);
+            if (result.success) {
+                // Create a PenguBook message record for the tip
+                const senderUser = await findOrCreateUser(currentUser.discordId);
+                const recipientUser = await findOrCreateUser(targetDiscordId);
+                await prisma.penguBookMessage.create({
+                    data: {
+                        fromUserId: senderUser.id,
+                        toUserId: recipientUser.id,
+                        message: message || `Received a tip of ${amount} tokens`,
+                        read: false
+                    }
+                });
+                return res.json({
+                    success: true,
+                    message: result.message,
+                    details: result.details
+                });
+            }
+            else {
+                return res.status(400).json({
+                    success: false,
+                    error: result.message || "Failed to process tip"
+                });
+            }
+        }
+        catch (error) {
+            console.error("Tip API error:", error);
+            res.status(500).json({ success: false, error: "Failed to process tip" });
+        }
     }
 };

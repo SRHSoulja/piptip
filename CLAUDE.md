@@ -92,3 +92,29 @@ Requires extensive `.env` configuration including Discord credentials, PostgreSQ
 - **Automated Rollback**: CI/CD automatically reverts on health check failure
 - **Smoke Testing**: End-to-end validation of critical functionality post-deployment
 - **Migration Validation**: Database schema consistency verification before deployment
+
+## Session Management & OAuth (Railway Deployment)
+
+### Critical Configuration for Railway
+- **Trust Proxy**: `app.set('trust proxy', 1)` is ESSENTIAL for Railway deployment
+- **PostgreSQL Sessions**: Use `connect-pg-simple` for persistent session storage (Railway doesn't have managed Redis)
+- **Cookie Settings**: `sameSite: 'lax'` and `secure: true` with trust proxy enabled
+- **Relative Redirects**: Use relative paths `/pengubook` instead of full URLs to preserve cookies
+
+### OAuth Authentication Flow
+- **Session Persistence Issue**: Without trust proxy, secure cookies fail on Railway's HTTPS termination
+- **Debug Indicators**: Check for `cookies: []` in auth logs - indicates cookie delivery failure
+- **Session Store**: PostgreSQL session table auto-created by `connect-pg-simple`
+- **Route Order**: Session middleware MUST be configured before session-dependent routes (admin, auth, pengubook)
+
+### Key Files
+- `src/index.ts`: Session middleware configuration and trust proxy setup
+- `src/web/auth.ts`: OAuth callback handling and session storage
+- PostgreSQL `session` table: Automatically managed by connect-pg-simple
+
+### Troubleshooting OAuth Loops
+1. Check if `cookies: []` appears in auth check logs
+2. Verify trust proxy is enabled: Look for "✅ Trust proxy enabled for production"
+3. Confirm PostgreSQL session store: "✅ PostgreSQL session store configured"
+4. Ensure routes load after sessions: "✅ Session-dependent routes configured"
+5. Session ID should remain consistent between OAuth callback and redirect

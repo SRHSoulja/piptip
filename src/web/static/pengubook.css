@@ -2840,3 +2840,212 @@ p {
     text-shadow: none !important;
   }
 }
+
+/* ===== Modal Styles ===== */
+.pg-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: var(--pg-space-4);
+  backdrop-filter: blur(4px);
+}
+
+.pg-modal {
+  background: var(--pg-dark-200);
+  border-radius: var(--pg-border-radius-lg);
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: var(--pg-shadow-2xl);
+  border: 1px solid var(--pg-dark-300);
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.pg-modal-header {
+  padding: var(--pg-space-6);
+  border-bottom: 1px solid var(--pg-dark-300);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--pg-dark-100);
+}
+
+.pg-modal-header h2 {
+  margin: 0;
+  color: var(--pg-dark-800);
+  font-size: var(--pg-text-xl);
+  font-weight: 600;
+}
+
+.pg-modal-close {
+  background: none;
+  border: none;
+  font-size: var(--pg-text-2xl);
+  color: var(--pg-dark-600);
+  cursor: pointer;
+  padding: var(--pg-space-2);
+  line-height: 1;
+  border-radius: var(--pg-border-radius);
+  transition: all 0.2s ease;
+}
+
+.pg-modal-close:hover {
+  background: var(--pg-dark-300);
+  color: var(--pg-dark-800);
+}
+
+.pg-modal-body {
+  padding: var(--pg-space-6);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.pg-modal-actions {
+  display: flex;
+  gap: var(--pg-space-3);
+  justify-content: flex-end;
+  margin-top: var(--pg-space-6);
+  padding-top: var(--pg-space-4);
+  border-top: 1px solid var(--pg-dark-300);
+}
+
+.pg-form-group {
+  margin-bottom: var(--pg-space-5);
+}
+
+.pg-form-group label {
+  display: block;
+  margin-bottom: var(--pg-space-2);
+  color: var(--pg-dark-700);
+  font-weight: 500;
+  font-size: var(--pg-text-sm);
+}
+
+.pg-form-group input,
+.pg-form-group select,
+.pg-form-group textarea {
+  width: 100%;
+  padding: var(--pg-space-3);
+  border: 1px solid var(--pg-dark-400);
+  border-radius: var(--pg-border-radius);
+  background: var(--pg-dark-100);
+  color: var(--pg-dark-800);
+  font-size: var(--pg-text-sm);
+  transition: all 0.2s ease;
+}
+
+.pg-form-group input:focus,
+.pg-form-group select:focus,
+.pg-form-group textarea:focus {
+  outline: none;
+  border-color: var(--pg-primary-500);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.pg-form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.pg-form-hint {
+  display: block;
+  margin-top: var(--pg-space-1);
+  color: var(--pg-dark-600);
+  font-size: var(--pg-text-xs);
+}
+
+.pg-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  padding: var(--pg-space-3);
+  border-radius: var(--pg-border-radius);
+  font-size: var(--pg-text-sm);
+  margin-top: var(--pg-space-3);
+}
+
+/* ===== Toast Styles ===== */
+.pg-toast {
+  position: fixed;
+  top: var(--pg-space-6);
+  right: var(--pg-space-6);
+  background: var(--pg-dark-200);
+  color: var(--pg-dark-800);
+  padding: var(--pg-space-4) var(--pg-space-6);
+  border-radius: var(--pg-border-radius-lg);
+  box-shadow: var(--pg-shadow-xl);
+  border: 1px solid var(--pg-dark-300);
+  z-index: 10000;
+  max-width: 400px;
+  transform: translateX(calc(100% + var(--pg-space-6)));
+  transition: transform 0.3s ease;
+  font-size: var(--pg-text-sm);
+  font-weight: 500;
+}
+
+.pg-toast--success {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.pg-toast--show {
+  transform: translateX(0);
+}
+
+/* ===== Mobile Responsive Modal ===== */
+@media (max-width: 768px) {
+  .pg-modal-overlay {
+    padding: var(--pg-space-4);
+  }
+
+  .pg-modal {
+    max-width: none;
+    width: 100%;
+    margin: 0;
+  }
+
+  .pg-modal-header,
+  .pg-modal-body {
+    padding: var(--pg-space-4);
+  }
+
+  .pg-modal-actions {
+    flex-direction: column;
+  }
+
+  .pg-modal-actions .pg-btn {
+    width: 100%;
+  }
+
+  .pg-toast {
+    right: var(--pg-space-4);
+    left: var(--pg-space-4);
+    max-width: none;
+    transform: translateY(calc(-100% - var(--pg-space-6)));
+  }
+
+  .pg-toast--show {
+    transform: translateY(0);
+  }
+}
