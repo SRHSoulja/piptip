@@ -38,7 +38,7 @@ async function updateGroupTipMessageSimple(client, tipId, forceExpired = false) 
                 await message.edit({
                     embeds: [{
                             title: '⏰ Colony Fish Expired!',
-                            description: `🐧 **${creatorDisplay}** shared **${tip.totalAmount} ${tip.Token.symbol}** with the colony!\\n\\n⏰ **Timer expired!** Processing payouts...`,
+                            description: `🐧 **${creatorDisplay}** shared **${tip.totalAmount} ${tip.Token.symbol}** with the colony!\n\n⏰ **Timer expired!** Processing payouts...`,
                             color: 0xff9900,
                             fields: [
                                 { name: '🐧 Colony Members', value: `${claimCount} penguins`, inline: true },
@@ -85,7 +85,7 @@ async function updateGroupTipMessageToFinalState(client, tipId) {
             await message.edit({
                 embeds: [{
                         title: '🎉✅ Colony Fish Distributed!',
-                        description: `🐧 **${creatorDisplay}** shared **${tip.totalAmount} ${tip.Token.symbol}** with the colony!\\n\\n✅ **Fish distributed successfully!**`,
+                        description: `🐧 **${creatorDisplay}** shared **${tip.totalAmount} ${tip.Token.symbol}** with the colony!\n\n✅ **Fish distributed successfully!**`,
                         color: 0x00ff00,
                         fields: [
                             { name: '🐧 Colony Members', value: `${claimCount} penguins`, inline: true },
@@ -278,9 +278,9 @@ export async function scheduleGroupTipExpiry(client, tipId) {
     // Schedule immediate embed update at expiry time
     const embedUpdateTimer = setTimeout(async () => {
         try {
-            console.log(`⚡ EMBED UPDATE timer fired for tip ${tipId} - updating to expired state`);
-            await updateGroupTipMessageSimple(client, tipId, true); // Mark as expired
-            console.log(`✅ Embed updated to expired state for tip ${tipId}`);
+            console.log(`⚡ EMBED UPDATE timer fired for tip ${tipId} - updating to final distributed state`);
+            await updateGroupTipMessageToFinalState(client, tipId);
+            console.log(`✅ Embed updated to final distributed state for tip ${tipId}`);
         }
         catch (error) {
             console.error(`❌ Embed update failed for tip ${tipId}:`, error.message);
@@ -291,9 +291,7 @@ export async function scheduleGroupTipExpiry(client, tipId) {
         try {
             console.log(`🔥 FINALIZATION timer fired for tip ${tipId}! Processing now...`);
             await announceResult(client, tipId);
-            // Update Discord embed to final distributed state
-            console.log(`📝 Updating embed to final distributed state for tip ${tipId}...`);
-            await updateGroupTipMessageToFinalState(client, tipId);
+            // Skip embed update - already done by the first timer
             console.log(`✅ Timer processing completed for tip ${tipId}`);
         }
         catch (error) {
