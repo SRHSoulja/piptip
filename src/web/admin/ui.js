@@ -129,6 +129,40 @@ const createAdTableRow = (ad) => {
   return tr;
 };
 
+const createTransactionTableRow = (transaction) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${transaction.id}</td>
+    <td>${escapeHtml(transaction.type)}</td>
+    <td>${escapeHtml(transaction.userId || 'System')}</td>
+    <td>${formatNumber(transaction.amount)}</td>
+    <td>${escapeHtml(transaction.tokenId || 'N/A')}</td>
+    <td>${formatNumber(transaction.fee)}</td>
+    <td>${new Date(transaction.createdAt).toLocaleString()}</td>
+    <td>${escapeHtml(transaction.guildId || 'N/A')}</td>
+    <td>${escapeHtml(transaction.metadata || '')}</td>
+    <td><button onclick="deleteTransaction(${transaction.id})" style="background:#dc2626; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:11px;">🗑️ Delete</button></td>
+  `;
+  return tr;
+};
+
+const createGroupTipTableRow = (groupTip) => {
+  const tr = document.createElement('tr');
+  const creatorId = groupTip.Creator?.discordId?.slice(0, 8) || groupTip.creatorId || 'Unknown';
+  tr.innerHTML = `
+    <td>${groupTip.id}</td>
+    <td>${escapeHtml(creatorId)}...</td>
+    <td>${formatNumber(groupTip.totalAmount)}</td>
+    <td>${escapeHtml(groupTip.Token?.symbol || 'Unknown')}</td>
+    <td>${escapeHtml(groupTip.status)}</td>
+    <td>${groupTip.claimCount || 0}</td>
+    <td>${new Date(groupTip.createdAt).toLocaleString()}</td>
+    <td>${new Date(groupTip.expiresAt).toLocaleString()}</td>
+    <td><button class="expireGroupTip" data-id="${groupTip.id}" style="background:#f59e0b; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:11px;">Expire</button></td>
+  `;
+  return tr;
+};
+
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);
 const API = async (path, opts = {}) => {
