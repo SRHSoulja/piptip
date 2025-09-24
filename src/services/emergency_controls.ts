@@ -2,6 +2,29 @@
 import { prisma } from "./db.js";
 import { predictionMarkets } from "./prediction_markets.js";
 
+const FEATURE_FLAG_CACHE_TTL_MS = 30_000;
+
+interface CachedFlag {
+  value: boolean;
+  expiresAt: number;
+}
+
+let achievementsFlagCache: CachedFlag | null = null;
+let streakProtectionFlagCache: CachedFlag | null = null;
+
+function setAchievementsCache(value: boolean) {
+  achievementsFlagCache = { value, expiresAt: Date.now() + FEATURE_FLAG_CACHE_TTL_MS };
+}
+
+function setStreakProtectionCache(value: boolean) {
+  streakProtectionFlagCache = { value, expiresAt: Date.now() + FEATURE_FLAG_CACHE_TTL_MS };
+}
+
+export function clearFeatureFlagCache() {
+  achievementsFlagCache = null;
+  streakProtectionFlagCache = null;
+}
+
 interface EmergencyState {
   predictionsDisabled: boolean;
   tippingDisabled: boolean;
@@ -49,6 +72,9 @@ export class EmergencyControlsService {
           streakProtectionEnabled: false
         }
       });
+
+      setAchievementsCache(false);
+      setStreakProtectionCache(false);
 
       // Cancel all active prediction markets if predictions are disabled
       if (shutdownConfig.predictionsDisabled) {
@@ -105,6 +131,9 @@ export class EmergencyControlsService {
           streakProtectionEnabled: true
         }
       });
+
+      setAchievementsCache(true);
+      setStreakProtectionCache(true);
 
       const recoveryConfig = {
         predictionsEnabled: params.enablePredictions ?? true,
@@ -373,8 +402,12 @@ export class EmergencyControlsService {
           "emergencyMode" = true,
           "withdrawalsPaused" = true,
           "tippingPaused" = true,
-          "achievementsEnabled" = false
+          "achievementsEnabled" = false,
+          "streakProtectionEnabled" = false
       `;
+
+      setAchievementsCache(false);
+      setStreakProtectionCache(false);
 
       // Cancel all active markets immediately
       await prisma.$executeRaw`
@@ -404,6 +437,52 @@ export class EmergencyControlsService {
       };
     }
   }
+}
+
+async function loadAchievementsFlag(): Promise<boolean> {
+  try {
+    const config = await prisma.appConfig.findFirst({
+      select: { achievementsEnabled: true }
+    });
+    return config?.achievementsEnabled ?? true;
+  } catch (error) {
+    console.error('Failed to load achievements flag:', error);
+    return true;
+  }
+}
+
+async function loadStreakProtectionFlag(): Promise<boolean> {
+  try {
+    const config = await prisma.appConfig.findFirst({
+      select: { streakProtectionEnabled: true }
+    });
+    return config?.streakProtectionEnabled ?? true;
+  } catch (error) {
+    console.error('Failed to load streak protection flag:', error);
+    return true;
+  }
+}
+
+export async function areAchievementsEnabled(): Promise<boolean> {
+  const now = Date.now();
+  if (achievementsFlagCache && achievementsFlagCache.expiresAt > now) {
+    return achievementsFlagCache.value;
+  }
+
+  const value = await loadAchievementsFlag();
+  setAchievementsCache(value);
+  return value;
+}
+
+export async function isStreakProtectionEnabled(): Promise<boolean> {
+  const now = Date.now();
+  if (streakProtectionFlagCache && streakProtectionFlagCache.expiresAt > now) {
+    return streakProtectionFlagCache.value;
+  }
+
+  const value = await loadStreakProtectionFlag();
+  setStreakProtectionCache(value);
+  return value;
 }
 
 // Export singleton instance

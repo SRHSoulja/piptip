@@ -93,36 +93,35 @@ export async function updateStreak(discordId: string, won: boolean): Promise<{ n
     let achievementUnlocked: string | undefined;
 
     if (await areAchievementsEnabled()) {
-
-    if (won && newCurrentWins > userStreak.currentWins) {
-      // Check for streak milestones
-      const streakMilestones = [3, 5, 10, 15, 25, 50, 100];
-      for (const milestone of streakMilestones) {
-        if (newCurrentWins === milestone) {
-          await createAchievement(user.id, "win_streak", milestone, {
-            streak: milestone,
-            date: now.toISOString()
-          });
-          achievementUnlocked = `🔥🐧 ${milestone} Victory Streak!`;
-          break;
-        }
-      }
-
-      // Check for longest streak achievements
-      if (newCurrentWins === newLongestWins && newLongestWins > userStreak.longestWins) {
-        const longestMilestones = [10, 25, 50, 100];
-        for (const milestone of longestMilestones) {
-          if (newLongestWins === milestone) {
-            await createAchievement(user.id, "longest_streak", milestone, {
-              longestStreak: milestone,
+      if (won && newCurrentWins > userStreak.currentWins) {
+        // Check for streak milestones
+        const streakMilestones = [3, 5, 10, 15, 25, 50, 100];
+        for (const milestone of streakMilestones) {
+          if (newCurrentWins === milestone) {
+            await createAchievement(user.id, "win_streak", milestone, {
+              streak: milestone,
               date: now.toISOString()
             });
-            achievementUnlocked = `🏆🐧 Personal Best: ${milestone} Victories!`;
+            achievementUnlocked = `🔥🐧 ${milestone} Victory Streak!`;
             break;
           }
         }
+
+        // Check for longest streak achievements
+        if (newCurrentWins === newLongestWins && newLongestWins > userStreak.longestWins) {
+          const longestMilestones = [10, 25, 50, 100];
+          for (const milestone of longestMilestones) {
+            if (newLongestWins === milestone) {
+              await createAchievement(user.id, "longest_streak", milestone, {
+                longestStreak: milestone,
+                date: now.toISOString()
+              });
+              achievementUnlocked = `🏆🐧 Personal Best: ${milestone} Victories!`;
+              break;
+            }
+          }
+        }
       }
-    }
     } else {
       console.log(`⚠️ Achievements disabled globally - no achievements processed for ${discordId}`);
     }

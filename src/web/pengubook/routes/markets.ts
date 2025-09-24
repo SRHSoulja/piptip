@@ -1,4 +1,5 @@
 // src/web/pengubook/routes/markets.ts - Prediction markets integration in PenguBook
+import type { PredictionBet } from "@prisma/client";
 import { Request, Response } from "express";
 import { getCurrentUser } from "../../auth.js";
 import { generateBaseHTML } from "../templates.js";
@@ -107,18 +108,6 @@ export async function marketDetailHandler(req: Request, res: Response) {
     const market = await prisma.predictionMarket.findUnique({
       where: { id: marketId },
       include: {
-        bets: include_bets === "true" ? {
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-          include: {
-            User: {
-              select: {
-                username: true,
-                discordId: true
-              }
-            }
-          }
-        } : false,
         _count: {
           select: { bets: true }
         }
@@ -137,6 +126,48 @@ export async function marketDetailHandler(req: Request, res: Response) {
         userId: currentUser.discordId
       }
     });
+
+    let bettingHistory: Array<PredictionBet & { User?: { username: string; discordId: string } | null }> = [];
+
+    if (include_bets === "true") {
+      const bets = await prisma.predictionBet.findMany({
+        where: { marketId },
+        orderBy: { createdAt: 'desc' },
+        take: 50
+      });
+
+      if (bets.length > 0) {
+        const uniqueUserIds = [...new Set(bets.map(bet => bet.userId))];
+
+        const users = await prisma.user.findMany({
+          where: { discordId: { in: uniqueUserIds } },
+          select: {
+            discordId: true,
+            xUsername: true
+          }
+        });
+
+        const userMap = new Map(users.map(user => [user.discordId, user.xUsername ?? null]));
+
+        bettingHistory = bets.map(bet => {
+          const cachedUsername = userMap.get(bet.userId) ?? undefined;
+          const isCurrentUser = bet.userId === currentUser.discordId;
+          const username = cachedUsername
+            ? `@${cachedUsername}`
+            : (isCurrentUser
+              ? currentUser.username || `You (${bet.userId.slice(-4)})`
+              : `User#${bet.userId.slice(-4)}`);
+
+          return {
+            ...bet,
+            User: {
+              username,
+              discordId: bet.userId
+            }
+          };
+        });
+      }
+    }
 
     const marketObj = predictionMarkets['mapDbMarket'](market);
     const odds = predictionMarkets.calculateOdds(marketObj);
@@ -158,7 +189,7 @@ export async function marketDetailHandler(req: Request, res: Response) {
     const content = generateMarketDetailContent(marketWithOdds, {
       userBet,
       currentUser,
-      bettingHistory: market.bets || []
+      bettingHistory
     });
 
     const html = generateBaseHTML(content, `${market.title} - Prediction Markets`, "markets", { user: currentUser });
