@@ -515,9 +515,23 @@ export function generateHomeContent(user: any, currentUser: any): string {
                                 <div class="pg-balance-item">
                                     <div class="pg-balance-amount">\${balance.amount}</div>
                                     <div class="pg-balance-token">\${balance.Token.symbol}</div>
+                                    <div class="pg-balance-usd" style="margin-top: 4px; font-size: var(--pg-text-xs); color: var(--pg-dark-500);">
+                                        \${balance.formattedUSD ? \`\${balance.formattedUSD} USD\` : 'USD price unavailable'}
+                                    </div>
                                 </div>
                             \`).join('')}
                         </div>
+                        \${data.formattedTotalUSD ? \`
+                        <div style="margin-top: var(--pg-space-4); padding-top: var(--pg-space-3); border-top: 1px solid var(--pg-dark-300); display: flex; justify-content: space-between; align-items: center; font-size: var(--pg-text-sm);">
+                            <span style="color: var(--pg-dark-500);">Total USD Value</span>
+                            <strong style="color: var(--pg-dark-800);">\${data.formattedTotalUSD} USD</strong>
+                        </div>
+                        \` : ''}
+                        \${data.priceDisclaimer ? \`
+                        <div style="margin-top: var(--pg-space-2); font-size: var(--pg-text-xs); color: var(--pg-dark-400);">
+                            \${data.priceDisclaimer}
+                        </div>
+                        \` : ''}
                     \`;
                     container.innerHTML = balanceHTML;
                 } else {

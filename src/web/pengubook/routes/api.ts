@@ -5,6 +5,7 @@ import { getUnreadMessageCount } from "../../../interactions/buttons/pengubook.j
 import { getDiscordClient } from "../../../services/discord_users.js";
 import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { prisma } from "../../../services/db.js";
+import { priceAPI } from "../../../services/price_api.js";
 
 export const apiHandlers = {
   // GET /pengubook/api/unread-count
@@ -130,17 +131,63 @@ export const apiHandlers = {
         orderBy: { Token: { symbol: "asc" } }
       });
 
-      // Format balances with max 2 decimal places, remove trailing zeros
+      const tokenSymbols = Array.from(new Set(balances.map(balance => balance.Token.symbol)));
+
+      let priceResult: { prices: Record<string, number>; source: string } | null = null;
+
+      if (tokenSymbols.length > 0) {
+        try {
+          priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+        } catch (error) {
+          console.warn("Failed to fetch USD prices for balances:", error);
+        }
+      }
+
+      const priceMap = priceResult?.prices ?? {};
+      const priceSource = priceResult?.source ?? "fallback";
+
+      // Format balances with max 2 decimal places, remove trailing zeros, and attach USD estimates
       const formattedBalances = balances.map(balance => {
-        const amount = Number(balance.amount.toString());
-        const formatted = amount.toFixed(2).replace(/\.?0+$/, "");
+        const amountNumber = Number(balance.amount.toString());
+        const amount = amountNumber.toFixed(2).replace(/\.?0+$/, "");
+
+        const priceUSD = priceMap[balance.Token.symbol] ?? 0;
+        const usdValue = priceUSD > 0 ? amountNumber * priceUSD : 0;
+
+        let formattedUSD: string | null = null;
+        if (priceUSD > 0) {
+          if (usdValue === 0) {
+            formattedUSD = "$0.00";
+          } else if (usdValue < 0.01) {
+            formattedUSD = "< $0.01";
+          } else {
+            formattedUSD = `$${usdValue.toFixed(2)}`;
+          }
+        }
+
         return {
           ...balance,
-          amount: formatted
+          amount,
+          priceUSD: priceUSD > 0 ? priceUSD : null,
+          usdValue,
+          formattedUSD
         };
       });
 
-      res.json({ success: true, balances: formattedBalances });
+      const totalUSD = formattedBalances.reduce((sum, balance) => sum + (balance.usdValue || 0), 0);
+      const formattedTotalUSD = totalUSD > 0 ? `$${totalUSD.toFixed(2)}` : null;
+      const priceDisclaimer = tokenSymbols.length > 0
+        ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}`
+        : null;
+
+      res.json({
+        success: true,
+        balances: formattedBalances,
+        totalUSD,
+        formattedTotalUSD,
+        priceSource,
+        priceDisclaimer
+      });
     } catch (error) {
       console.error("Balance fetch error:", error);
       res.status(500).json({ success: false, error: "Failed to fetch balance" });

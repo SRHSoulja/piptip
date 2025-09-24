@@ -9,6 +9,7 @@ import { processTip } from "../services/tip_processor.js";
 import { getDiscordClient } from "../services/discord_users.js";
 import { getConfig } from "../config.js";
 import { getReferralStats, createReferralCode } from "../services/referrals.js";
+import { priceAPI } from "../services/price_api.js";
 export const pengubookRouter = Router();
 // Middleware to require authentication for all PenguBook routes
 pengubookRouter.use(requireAuth);
@@ -337,7 +338,56 @@ pengubookRouter.get("/api/balance", async (req, res) => {
             include: { Token: true },
             orderBy: { Token: { symbol: "asc" } }
         });
-        res.json({ success: true, balances });
+        const tokenSymbols = Array.from(new Set(balances.map(balance => balance.Token.symbol)));
+        let priceResult = null;
+        if (tokenSymbols.length > 0) {
+            try {
+                priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+            }
+            catch (error) {
+                console.warn("Failed to fetch USD prices for balances:", error);
+            }
+        }
+        const priceMap = priceResult && priceResult.prices ? priceResult.prices : {};
+        const priceSource = priceResult && priceResult.source ? priceResult.source : "fallback";
+        const formattedBalances = balances.map(balance => {
+            const amountNumber = Number(balance.amount.toString());
+            const amount = amountNumber.toFixed(2).replace(/\.?0+$/, "");
+            const priceUSD = priceMap[balance.Token.symbol] ?? 0;
+            const usdValue = priceUSD > 0 ? amountNumber * priceUSD : 0;
+            let formattedUSD = null;
+            if (priceUSD > 0) {
+                if (usdValue === 0) {
+                    formattedUSD = "$0.00";
+                }
+                else if (usdValue < 0.01) {
+                    formattedUSD = "< $0.01";
+                }
+                else {
+                    formattedUSD = `$${usdValue.toFixed(2)}`;
+                }
+            }
+            return {
+                ...balance,
+                amount,
+                priceUSD: priceUSD > 0 ? priceUSD : null,
+                usdValue,
+                formattedUSD
+            };
+        });
+        const totalUSD = formattedBalances.reduce((sum, balance) => sum + (balance.usdValue || 0), 0);
+        const formattedTotalUSD = totalUSD > 0 ? `$${totalUSD.toFixed(2)}` : null;
+        const priceDisclaimer = tokenSymbols.length > 0
+            ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}`
+            : null;
+        res.json({
+            success: true,
+            balances: formattedBalances,
+            totalUSD,
+            formattedTotalUSD,
+            priceSource,
+            priceDisclaimer
+        });
     }
     catch (error) {
         console.error("Balance fetch error:", error);
