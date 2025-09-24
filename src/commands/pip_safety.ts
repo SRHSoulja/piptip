@@ -24,10 +24,10 @@ export default async function pipSafety(i: ChatInputCommandInteraction) {
 }
 
 async function handleLimits(i: ChatInputCommandInteraction) {
-  const maxDailyLoss = i.options.getInteger('max_daily_loss');
-  const maxDailyPredictions = i.options.getInteger('max_daily_predictions');
+  const maxDailyLossInput = i.options.getInteger('max_daily_loss');
+  const maxDailyPredictionsInput = i.options.getInteger('max_daily_predictions');
 
-  if (!maxDailyLoss && !maxDailyPredictions) {
+  if (maxDailyLossInput == null && maxDailyPredictionsInput == null) {
     // Show current limits
     const status = await responsibleGaming.getUserStatus(i.user.id);
 
@@ -76,8 +76,8 @@ async function handleLimits(i: ChatInputCommandInteraction) {
 
   // Update limits
   const result = await responsibleGaming.updateUserLimits(i.user.id, {
-    maxDailyLoss,
-    maxDailyPredictions
+    maxDailyLoss: maxDailyLossInput ?? undefined,
+    maxDailyPredictions: maxDailyPredictionsInput ?? undefined
   });
 
   const embed = new EmbedBuilder()
