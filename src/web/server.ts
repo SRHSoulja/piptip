@@ -94,10 +94,10 @@ serverRouter.get("/:guildId", requireAuth, requireGuildAdmin, async (req: Reques
     const htmlPath = join(__dirname, "server", "dashboard.html");
     let html = await readFile(htmlPath, "utf-8");
 
-    // Replace placeholders with actual data
-    html = html.replace("{{GUILD_ID}}", guildId);
-    html = html.replace("{{GUILD_NAME}}", guildInfo.guildName || `Server ${guildId.slice(-4)}`);
-    html = html.replace("{{USER_NAME}}", req.session.username || "User");
+    // Replace placeholders with actual data (use replaceAll for multiple occurrences)
+    html = html.replaceAll("{{GUILD_ID}}", guildId);
+    html = html.replaceAll("{{GUILD_NAME}}", guildInfo.guildName || `Server ${guildId.slice(-4)}`);
+    html = html.replaceAll("{{USER_NAME}}", req.session.username || "User");
 
     res.send(html);
   } catch (error) {
@@ -293,9 +293,9 @@ serverRouter.get("/", requireAuth, async (req: Request, res: Response) => {
     const htmlPath = join(__dirname, "server", "select.html");
     let html = await readFile(htmlPath, "utf-8");
 
-    // Replace placeholder with server data
-    html = html.replace("{{SERVERS_JSON}}", JSON.stringify(adminGuilds));
-    html = html.replace("{{USER_NAME}}", req.session.username || "User");
+    // Replace placeholder with server data (use replaceAll for multiple occurrences)
+    html = html.replaceAll("{{SERVERS_JSON}}", JSON.stringify(adminGuilds));
+    html = html.replaceAll("{{USER_NAME}}", req.session.username || "User");
 
     res.send(html);
   } catch (error) {
