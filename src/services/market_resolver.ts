@@ -312,10 +312,16 @@ export class MarketResolverService {
       switch (market.marketType) {
         case 'PRICE_UP_DOWN':
         case 'PRICE_ABOVE_BELOW':
+        case 'CRYPTO_PRICE_TARGET':
           resolutionResult = await this.resolvePriceMarket(market);
           break;
 
+        case 'CRYPTO_PRICE_RANGE':
+          resolutionResult = await this.resolvePriceRangeMarket(market);
+          break;
+
         case 'VOLUME_RANKING':
+        case 'CRYPTO_RANK_TARGET':
           resolutionResult = await this.resolveRankingMarket(market);
           break;
 
@@ -343,6 +349,39 @@ export class MarketResolverService {
       console.error(`Error resolving market ${marketId}:`, error);
       return { success: false, error: `Resolution failed: ${error}` };
     }
+  }
+
+  /**
+   * Resolve price range market (token within min/max range)
+   */
+  async resolvePriceRangeMarket(market: Market): Promise<{ outcome: 'YES' | 'NO' | 'CANCEL'; data: MarketResolutionData }> {
+    const marketData = market.marketData as any;
+    const { tokenSymbol, minPrice, maxPrice } = marketData;
+
+    // Fetch current price
+    const priceData = this.isMajorToken(tokenSymbol)
+      ? await this.fetchCoinGeckoPrice(this.getCoinGeckoId(tokenSymbol)!)
+      : await this.fetchDexScreenerPrice(tokenSymbol);
+
+    if (!priceData.success || priceData.price === 0) {
+      console.error(`Failed to fetch price for ${tokenSymbol}`);
+      return {
+        outcome: 'CANCEL',
+        data: { error: `Could not fetch price data for ${tokenSymbol}` }
+      };
+    }
+
+    const currentPrice = priceData.price;
+    const outcome = currentPrice >= minPrice && currentPrice <= maxPrice ? 'YES' : 'NO';
+
+    return {
+      outcome,
+      data: {
+        currentPrice,
+        targetPrice: (minPrice + maxPrice) / 2, // midpoint for reference
+        chain: priceData.chain
+      }
+    };
   }
 
   /**

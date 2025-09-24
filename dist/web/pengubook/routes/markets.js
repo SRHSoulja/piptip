@@ -4,6 +4,7 @@ import { prisma } from "../../../services/db.js";
 import { predictionMarkets } from "../../../services/prediction_markets.js";
 import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { getActiveTokens } from "../../../services/token.js";
+import { marketConfig } from "../../../services/market_config.js";
 export async function marketsHandler(req, res) {
     try {
         const currentUser = getCurrentUser(req);
@@ -173,6 +174,61 @@ export async function marketDetailHandler(req, res) {
         res.status(500).send('Error loading market details');
     }
 }
+export async function createMarketHandler(req, res) {
+    try {
+        const currentUser = getCurrentUser(req);
+        if (!currentUser) {
+            return res.status(401).json({ success: false, error: "Not authenticated" });
+        }
+        if (req.method === 'GET') {
+            // Show create market form
+            const activeTokens = await getActiveTokens();
+            const templates = marketConfig.getConfig().templates;
+            const content = generateCreateMarketContent({
+                templates,
+                tokens: activeTokens
+            });
+            const html = generateBaseHTML(content, "Create Prediction Market", "markets", { user: currentUser });
+            return res.send(html);
+        }
+        else if (req.method === 'POST') {
+            // Create the market
+            const { title, description, marketType, resolveAt, tokenSymbol, marketData } = req.body;
+            // Validate inputs
+            if (!title || !description || !marketType || !resolveAt || !tokenSymbol) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields"
+                });
+            }
+            const user = await findOrCreateUser(currentUser.discordId);
+            // Create market via prediction markets service
+            const market = await predictionMarkets.createMarket({
+                title,
+                description,
+                resolveAt: new Date(resolveAt),
+                creatorId: user.id.toString(),
+                guildId: "web", // Mark as web-created
+                channelId: "pengubook",
+                tokenSymbol,
+                marketType,
+                marketData: JSON.parse(marketData || "{}")
+            });
+            return res.json({
+                success: true,
+                marketId: market.id,
+                redirectUrl: `/pengubook/markets/${market.id}`
+            });
+        }
+    }
+    catch (error) {
+        console.error('Create market error:', error);
+        return res.status(500).json({
+            success: false,
+            error: "Failed to create market"
+        });
+    }
+}
 export async function placeBetHandler(req, res) {
     try {
         const currentUser = getCurrentUser(req);
@@ -257,7 +313,12 @@ function generateMarketsPageContent(markets, options) {
     return `
     <div class="pg-content">
       <div class="pg-content__header">
-        <h1>🔮 Prediction Markets</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
+          <h1>🔮 Prediction Markets</h1>
+          <a href="/pengubook/markets/create" class="pg-btn pg-btn--primary" style="text-decoration: none;">
+            ➕ Create Market
+          </a>
+        </div>
         <p class="pg-content__subtitle">
           Trade your predictions on crypto prices, sports, and more.
           ${hasMarkets ? `Showing ${markets.length} of ${pagination.total} markets` : 'No markets found'}
@@ -649,4 +710,152 @@ function formatRelativeTime(date) {
     if (minutes > 0)
         return `${minutes}m ago`;
     return 'Just now';
+}
+function generateCreateMarketContent(data) {
+    const { templates, tokens } = data;
+    return `
+    <div class="pg-container">
+      <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">🔮 Create Prediction Market</h1>
+
+      <div class="pg-card">
+        <form id="createMarketForm" style="display: grid; gap: var(--pg-space-4);">
+
+          <!-- Market Type Selection -->
+          <div>
+            <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">Market Type</label>
+            <select id="marketType" name="marketType" required style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              <option value="">Select a market type...</option>
+              ${Object.entries(templates).map(([key, template]) => `
+                <option value="${key}">${template.name}</option>
+              `).join('')}
+            </select>
+            <small id="marketTypeDescription" style="color: var(--pg-dark-600);"></small>
+          </div>
+
+          <!-- Basic Market Info -->
+          <div>
+            <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">Market Title</label>
+            <input type="text" name="title" required maxlength="200" placeholder="e.g., Will BTC reach $100,000 by Dec 31?"
+                   style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+          </div>
+
+          <div>
+            <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">Description</label>
+            <textarea name="description" required maxlength="500" rows="3" placeholder="Provide more details about the market..."
+                      style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);"></textarea>
+          </div>
+
+          <!-- Token Selection -->
+          <div>
+            <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">Betting Token</label>
+            <select name="tokenSymbol" required style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              <option value="">Select token...</option>
+              ${tokens.map(token => `
+                <option value="${token.symbol}">${token.symbol}</option>
+              `).join('')}
+            </select>
+          </div>
+
+          <!-- Market-specific parameters -->
+          <div id="marketParams" style="display: none;">
+            <!-- Dynamic params will be inserted here -->
+          </div>
+
+          <!-- Resolution Time -->
+          <div>
+            <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">Resolution Time</label>
+            <input type="datetime-local" name="resolveAt" required
+                   style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+            <small style="color: var(--pg-dark-600);">When should this market be resolved?</small>
+          </div>
+
+          <!-- Submit Button -->
+          <div style="text-align: center; margin-top: var(--pg-space-4);">
+            <button type="submit" class="pg-btn pg-btn--primary" style="padding: var(--pg-space-3) var(--pg-space-6);">
+              🔮 Create Market
+            </button>
+            <a href="/pengubook/markets" class="pg-btn pg-btn--secondary" style="margin-left: var(--pg-space-3);">
+              Cancel
+            </a>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
+    <script>
+      const templates = ${JSON.stringify(templates)};
+
+      function generateMarketParams(template) {
+        let html = '<h3 style="color: var(--pg-dark-700); margin-bottom: var(--pg-space-3);">Market Parameters</h3>';
+
+        if (template.marketType === 'CRYPTO_PRICE_TARGET') {
+          html += \`
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--pg-space-3); margin-bottom: var(--pg-space-3);">
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol</label>
+                <input type="text" name="cryptoToken" required placeholder="BTC, ETH, SOL..."
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Target Price ($)</label>
+                <input type="number" name="targetPrice" required step="0.01" placeholder="100000"
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+            </div>
+          \`;
+        }
+
+        return html;
+      }
+
+      document.getElementById('marketType').addEventListener('change', function(e) {
+        const templateKey = e.target.value;
+        const template = templates[templateKey];
+        const descElement = document.getElementById('marketTypeDescription');
+        const paramsElement = document.getElementById('marketParams');
+
+        if (template) {
+          descElement.textContent = template.description;
+          paramsElement.innerHTML = generateMarketParams(template);
+          paramsElement.style.display = 'block';
+        } else {
+          descElement.textContent = '';
+          paramsElement.style.display = 'none';
+        }
+      });
+
+      document.getElementById('createMarketForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData.entries());
+
+        // Build market-specific data
+        const marketData = {};
+        if (data.cryptoToken) marketData.tokenSymbol = data.cryptoToken;
+        if (data.targetPrice) marketData.targetPrice = parseFloat(data.targetPrice);
+
+        data.marketData = JSON.stringify(marketData);
+
+        try {
+          const response = await fetch('/pengubook/markets/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            window.location.href = result.redirectUrl;
+          } else {
+            alert('Failed to create market: ' + result.error);
+          }
+        } catch (error) {
+          alert('Failed to create market: ' + error.message);
+        }
+      });
+    </script>
+  `;
 }

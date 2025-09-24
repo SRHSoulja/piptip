@@ -12,7 +12,7 @@ import { userHandler, userTipHandler } from "./routes/user.js";
 import { statsHandler } from "./routes/stats.js";
 import { transactionsHandler } from "./routes/transactions.js";
 import { applyHandler, applyPostHandler } from "./routes/apply.js";
-import { marketsHandler, marketDetailHandler, placeBetHandler } from "./routes/markets.js";
+import { marketsHandler, marketDetailHandler, placeBetHandler, createMarketHandler } from "./routes/markets.js";
 import { apiHandlers } from "./routes/api.js";
 
 export const pengubookModularRouter = Router();
@@ -35,6 +35,8 @@ pengubookModularRouter.post("/user/:discordId/tip", userTipHandler);
 
 // Prediction Markets routes
 pengubookModularRouter.get("/markets", marketsHandler);
+pengubookModularRouter.get("/markets/create", createMarketHandler);
+pengubookModularRouter.post("/markets/create", createMarketHandler);
 pengubookModularRouter.get("/markets/:marketId", marketDetailHandler);
 pengubookModularRouter.post("/markets/bet", placeBetHandler);
 

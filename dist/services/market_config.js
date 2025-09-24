@@ -87,6 +87,33 @@ export class MarketConfigService {
                 enabledChains: ["ethereum", "polygon", "arbitrum"]
             },
             templates: {
+                CRYPTO_PRICE_TARGET: {
+                    name: "Crypto Price Target",
+                    description: "Predict if a token will reach a specific price",
+                    marketType: "CRYPTO_PRICE_TARGET",
+                    requiredParams: ["tokenSymbol", "targetPrice", "comparison"],
+                    defaultDuration: 86400, // 24 hours default
+                    category: "Crypto Predictions",
+                    examples: ["Will BTC reach $100,000?", "Will ETH go above $5,000?"]
+                },
+                CRYPTO_PRICE_RANGE: {
+                    name: "Crypto Price Range",
+                    description: "Predict if a token will be within a price range",
+                    marketType: "CRYPTO_PRICE_RANGE",
+                    requiredParams: ["tokenSymbol", "minPrice", "maxPrice"],
+                    defaultDuration: 86400, // 24 hours default
+                    category: "Crypto Predictions",
+                    examples: ["Will BTC stay between $90k-$110k?", "Will ETH be in $4k-$6k range?"]
+                },
+                CRYPTO_RANK_TARGET: {
+                    name: "Market Cap Ranking",
+                    description: "Predict if a token will reach a specific market cap rank",
+                    marketType: "CRYPTO_RANK_TARGET",
+                    requiredParams: ["tokenSymbol", "targetRank", "comparison"],
+                    defaultDuration: 604800, // 1 week default
+                    category: "Crypto Predictions",
+                    examples: ["Will SOL reach top 5?", "Will DOGE stay in top 10?"]
+                },
                 SPORTS_WINNER: {
                     name: "Team Winner Prediction",
                     description: "Predict which team will win the game",
