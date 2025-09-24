@@ -382,7 +382,7 @@ export function generateHomeContent(user: any, currentUser: any): string {
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
                 <h2 style="margin: 0; color: var(--pg-dark-800);">💰 Wallet Balance</h2>
-                <button onclick="refreshBalances()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshBalanceBtn">
+                <button onclick="window.refreshBalances()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshBalanceBtn">
                     🔄 Refresh
                 </button>
             </div>
@@ -395,7 +395,7 @@ export function generateHomeContent(user: any, currentUser: any): string {
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
                 <h2 style="margin: 0; color: var(--pg-dark-800);">🔥 Recent Activity</h2>
-                <button onclick="refreshActivity()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshActivityBtn">
+                <button onclick="window.refreshActivity()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshActivityBtn">
                     🔄 Refresh
                 </button>
             </div>
@@ -489,21 +489,6 @@ export function generateHomeContent(user: any, currentUser: any): string {
             <a href="/pengubook/profile" class="pg-btn pg-btn--outline">Set Up Profile</a>
         </div>
         `}
-    </div>`;
-}
-
-// Generate empty state content
-export function generateEmptyState(icon: string, title: string, description: string, buttonText?: string, buttonLink?: string): string {
-  return `
-    <div class="pg-empty-state">
-        <div class="pg-empty-state__icon">${icon}</div>
-        <h2 class="pg-empty-state__title">${title}</h2>
-        <p class="pg-empty-state__description">${description}</p>
-        ${buttonText && buttonLink ? `
-        <div style="margin-top: var(--pg-space-6);">
-            <a href="${buttonLink}" class="pg-btn pg-btn--primary">${buttonText}</a>
-        </div>
-        ` : ''}
     </div>
 
     <script>
@@ -511,6 +496,10 @@ export function generateEmptyState(icon: string, title: string, description: str
         async function loadBalances() {
             const container = document.getElementById('balanceContainer');
             const refreshBtn = document.getElementById('refreshBalanceBtn');
+
+            if (!container || !refreshBtn) {
+                return;
+            }
 
             try {
                 refreshBtn.disabled = true;
@@ -526,9 +515,23 @@ export function generateEmptyState(icon: string, title: string, description: str
                                 <div class="pg-balance-item">
                                     <div class="pg-balance-amount">\${balance.amount}</div>
                                     <div class="pg-balance-token">\${balance.Token.symbol}</div>
+                                    <div class="pg-balance-usd" style="margin-top: 4px; font-size: var(--pg-text-xs); color: var(--pg-dark-500);">
+                                        \${balance.formattedUSD ? \`\${balance.formattedUSD} USD\` : 'USD price unavailable'}
+                                    </div>
                                 </div>
                             \`).join('')}
                         </div>
+                        \${data.formattedTotalUSD ? \`
+                        <div style="margin-top: var(--pg-space-4); padding-top: var(--pg-space-3); border-top: 1px solid var(--pg-dark-300); display: flex; justify-content: space-between; align-items: center; font-size: var(--pg-text-sm);">
+                            <span style="color: var(--pg-dark-500);">Total USD Value</span>
+                            <strong style="color: var(--pg-dark-800);">\${data.formattedTotalUSD} USD</strong>
+                        </div>
+                        \` : ''}
+                        \${data.priceDisclaimer ? \`
+                        <div style="margin-top: var(--pg-space-2); font-size: var(--pg-text-xs); color: var(--pg-dark-400);">
+                            \${data.priceDisclaimer}
+                        </div>
+                        \` : ''}
                     \`;
                     container.innerHTML = balanceHTML;
                 } else {
@@ -564,6 +567,10 @@ export function generateEmptyState(icon: string, title: string, description: str
         async function loadActivity() {
             const container = document.getElementById('activityContainer');
             const refreshBtn = document.getElementById('refreshActivityBtn');
+
+            if (!container || !refreshBtn) {
+                return;
+            }
 
             try {
                 refreshBtn.disabled = true;
@@ -628,4 +635,19 @@ export function generateEmptyState(icon: string, title: string, description: str
         window.refreshBalances = refreshBalances;
         window.refreshActivity = refreshActivity;
     </script>`;
+}
+
+// Generate empty state content
+export function generateEmptyState(icon: string, title: string, description: string, buttonText?: string, buttonLink?: string): string {
+  return `
+    <div class="pg-empty-state">
+        <div class="pg-empty-state__icon">${icon}</div>
+        <h2 class="pg-empty-state__title">${title}</h2>
+        <p class="pg-empty-state__description">${description}</p>
+        ${buttonText && buttonLink ? `
+        <div style="margin-top: var(--pg-space-6);">
+            <a href="${buttonLink}" class="pg-btn pg-btn--primary">${buttonText}</a>
+        </div>
+        ` : ''}
+    </div>`;
 }
