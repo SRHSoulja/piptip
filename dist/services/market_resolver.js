@@ -6,16 +6,101 @@ import { sportsResolver } from "./sports_resolver.js";
  */
 export class MarketResolverService {
     /**
-     * Fetch token price from DexScreener API
+     * Enhanced token verification with Abstract chain priority
      */
-    async fetchDexScreenerPrice(symbol) {
+    getVerifiedTokenConfig(symbol) {
+        const verifiedTokens = {
+            // Abstract ecosystem tokens get highest priority
+            'ABSTER': {
+                minLiquidity: 10000,
+                minVolume: 5000,
+                preferredChain: 'abstract',
+                expectedPriceRange: [0.001, 0.1]
+            },
+            // Major tokens with Abstract support when available
+            'PENGU': {
+                minLiquidity: 1000000,
+                minVolume: 100000,
+                expectedPriceRange: [0.02, 0.05],
+                preferredChain: 'abstract', // Abstract chain has PENGU now
+                coinGeckoId: 'pudgy-penguins',
+                contracts: {
+                    'abstract': '0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62',
+                    'solana': '2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv',
+                    'ethereum': '0x16cb3449e99D2d40414Fd3D1a4da3b3f75C8e9c6' // TBD - placeholder
+                }
+            },
+            'PEPE': {
+                minLiquidity: 5000000,
+                minVolume: 1000000,
+                expectedPriceRange: [0.000001, 0.00001],
+                preferredChain: 'ethereum'
+            },
+            'SHIB': {
+                minLiquidity: 10000000,
+                minVolume: 5000000,
+                expectedPriceRange: [0.000001, 0.00005],
+                preferredChain: 'ethereum'
+            },
+            'BTC': {
+                minLiquidity: 50000000,
+                minVolume: 10000000,
+                expectedPriceRange: [30000, 100000],
+                preferredChain: 'ethereum'
+            },
+            'ETH': {
+                minLiquidity: 20000000,
+                minVolume: 5000000,
+                expectedPriceRange: [1500, 5000],
+                preferredChain: 'ethereum'
+            }
+        };
+        return verifiedTokens[symbol.toUpperCase()];
+    }
+    /**
+     * Check if input is a contract address
+     */
+    isContractAddress(input) {
+        return input.startsWith('0x') && input.length === 42;
+    }
+    /**
+     * Get contract address for a verified token on a specific chain
+     */
+    getTokenContract(symbol, chain) {
+        const verifiedConfig = this.getVerifiedTokenConfig(symbol);
+        if (!verifiedConfig?.contracts)
+            return null;
+        // Try preferred chain first
+        const targetChain = chain || verifiedConfig.preferredChain || 'abstract';
+        return verifiedConfig.contracts[targetChain] || null;
+    }
+    /**
+     * Try to fetch token using known contract address for guaranteed accuracy
+     */
+    async tryFetchByKnownContract(symbol, preferredChain) {
+        const contractAddress = this.getTokenContract(symbol, preferredChain);
+        if (!contractAddress)
+            return null;
+        console.log(`🎯 Using known contract for ${symbol} on ${preferredChain || 'default'}: ${contractAddress}`);
         try {
-            const url = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(symbol)}`;
-            console.log(`Fetching DexScreener data for ${symbol}...`);
+            return await this.fetchTokenByAddress(contractAddress);
+        }
+        catch (error) {
+            console.log(`⚠️ Known contract fetch failed for ${symbol}:`, error);
+            return null;
+        }
+    }
+    /**
+     * Fetch token data by contract address (guaranteed accuracy)
+     */
+    async fetchTokenByAddress(address) {
+        try {
+            const url = `https://api.dexscreener.com/latest/dex/tokens/${address}`;
+            console.log(`🎯 Fetching token by exact address: ${address}...`);
             const response = await fetch(url);
             if (!response.ok) {
                 return {
-                    symbol,
+                    symbol: address,
                     price: 0,
                     success: false,
                     error: `DexScreener API error: ${response.status}`
@@ -24,24 +109,27 @@ export class MarketResolverService {
             const data = await response.json();
             if (!data.pairs || data.pairs.length === 0) {
                 return {
-                    symbol,
+                    symbol: address,
                     price: 0,
                     success: false,
-                    error: `No trading pairs found for ${symbol}`
+                    error: `No trading pairs found for contract address ${address}`
                 };
             }
-            // Get the pair with highest volume (most reliable price)
-            const bestPair = data.pairs.reduce((best, current) => {
-                const currentVolume = parseFloat(current.volume?.h24 || '0');
-                const bestVolume = parseFloat(best.volume?.h24 || '0');
-                return currentVolume > bestVolume ? current : best;
-            });
+            // Sort by volume to get most liquid pair
+            const bestPair = data.pairs
+                .sort((a, b) => {
+                const aVolume = parseFloat(a.volume?.h24 || '0');
+                const bVolume = parseFloat(b.volume?.h24 || '0');
+                return bVolume - aVolume;
+            })[0];
             const price = parseFloat(bestPair.priceUsd || '0');
             const volume24h = parseFloat(bestPair.volume?.h24 || '0');
             const priceChange24h = parseFloat(bestPair.priceChange?.h24 || '0');
-            console.log(`DexScreener: ${symbol} = $${price} (24h vol: $${volume24h}, change: ${priceChange24h}%)`);
+            const symbol = bestPair.baseToken?.symbol || 'UNKNOWN';
+            console.log(`✅ Contract ${address}: ${symbol} = $${price} (24h vol: $${volume24h.toLocaleString()})`);
             return {
                 symbol,
+                address,
                 price,
                 volume24h,
                 priceChange24h,
@@ -50,12 +138,209 @@ export class MarketResolverService {
             };
         }
         catch (error) {
-            console.error(`DexScreener API error for ${symbol}:`, error);
+            console.error('Error fetching token by address:', error);
             return {
-                symbol,
+                symbol: address,
                 price: 0,
                 success: false,
-                error: `API request failed: ${error}`
+                error: error.message
+            };
+        }
+    }
+    /**
+     * Fetch token price with Abstract chain priority and enhanced filtering
+     */
+    async fetchDexScreenerPrice(symbolOrAddress, preferredChain) {
+        try {
+            // Check if input is a contract address
+            if (this.isContractAddress(symbolOrAddress)) {
+                console.log(`📍 Detected contract address: ${symbolOrAddress}`);
+                return await this.fetchTokenByAddress(symbolOrAddress);
+            }
+            const symbol = symbolOrAddress.toUpperCase();
+            const verifiedConfig = this.getVerifiedTokenConfig(symbol);
+            // For verified tokens, try using known contract address first (most reliable)
+            if (verifiedConfig?.contracts) {
+                const contractResult = await this.tryFetchByKnownContract(symbol, preferredChain);
+                if (contractResult && contractResult.success) {
+                    console.log(`✅ Successfully fetched ${symbol} via known contract (fast path)`);
+                    return contractResult;
+                }
+            }
+            // Use preferred chain or verified token's preferred chain or default to 'all'
+            const chainToSearch = preferredChain || verifiedConfig?.preferredChain || 'all';
+            console.log(`🔍 Searching for ${symbol} on chain: ${chainToSearch} (Abstract priority: ${chainToSearch === 'abstract'})`);
+            // Construct search URL with chain filtering if specified
+            let url = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(symbol)}`;
+            if (chainToSearch !== 'all') {
+                // Note: DexScreener search doesn't directly support chain filtering,
+                // so we'll filter results after fetching
+            }
+            console.log(`📡 API URL: ${url}`);
+            console.log(`📡 Fetching DexScreener data for ${symbol}...`);
+            const response = await fetch(url, {
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'PIPTip-Market-Bot/1.0'
+                }
+            });
+            console.log(`📊 Response status: ${response.status}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`❌ DexScreener API error: ${response.status} - ${errorText}`);
+                return {
+                    symbol,
+                    price: 0,
+                    success: false,
+                    error: `DexScreener API error: ${response.status} - ${errorText.slice(0, 100)}`
+                };
+            }
+            const data = await response.json();
+            console.log(`📊 Raw API response:`, JSON.stringify(data).slice(0, 200) + '...');
+            if (!data.pairs || data.pairs.length === 0) {
+                console.log(`❌ No pairs found in response for ${symbol}`);
+                // Try known contract address first (most reliable)
+                const contractResult = await this.tryFetchByKnownContract(symbol, preferredChain);
+                if (contractResult && contractResult.success) {
+                    console.log(`✅ Found ${symbol} via known contract address`);
+                    return contractResult;
+                }
+                // Try CoinGecko fallback if this is a major token
+                if (verifiedConfig?.coinGeckoId) {
+                    console.log(`🔄 Trying CoinGecko fallback for ${symbol}...`);
+                    return await this.fetchCoinGeckoPrice(verifiedConfig.coinGeckoId);
+                }
+                return {
+                    symbol,
+                    price: 0,
+                    success: false,
+                    error: `No trading pairs found for ${symbol}`
+                };
+            }
+            console.log(`📊 Found ${data.pairs.length} total pairs for ${symbol}`);
+            // Step 1: Filter by chain preference if specified
+            let chainFilteredPairs = data.pairs;
+            if (chainToSearch !== 'all') {
+                chainFilteredPairs = data.pairs.filter((pair) => pair.chainId === chainToSearch);
+                console.log(`⛓️  Filtered to ${chainFilteredPairs.length} pairs on ${chainToSearch}`);
+                // If no pairs on preferred chain but we have Abstract priority, try Abstract
+                if (chainFilteredPairs.length === 0 && chainToSearch !== 'abstract') {
+                    const abstractPairs = data.pairs.filter((pair) => pair.chainId === 'abstract');
+                    if (abstractPairs.length > 0) {
+                        console.log(`⭐ No pairs on ${chainToSearch}, using ${abstractPairs.length} Abstract pairs`);
+                        chainFilteredPairs = abstractPairs;
+                    }
+                }
+                // If still no matches, fall back to all chains
+                if (chainFilteredPairs.length === 0) {
+                    console.log(`⚠️ No pairs found on ${chainToSearch}, using all chains`);
+                    chainFilteredPairs = data.pairs;
+                }
+            }
+            // Step 2: Apply minimum quality thresholds
+            const minVolume = verifiedConfig?.minVolume || 1000;
+            const minLiquidity = verifiedConfig?.minLiquidity || 5000;
+            let filteredPairs = chainFilteredPairs.filter((pair) => {
+                const volume24h = parseFloat(pair.volume?.h24 || '0');
+                const liquidity = parseFloat(pair.liquidity?.usd || '0');
+                return volume24h >= minVolume && liquidity >= minLiquidity;
+            });
+            console.log(`✅ ${filteredPairs.length} pairs meet quality thresholds (vol>${minVolume}, liq>${minLiquidity})`);
+            // If no pairs meet minimum criteria, lower standards
+            if (filteredPairs.length === 0) {
+                console.log(`⚠️ No pairs meet strict criteria, using relaxed thresholds`);
+                filteredPairs = chainFilteredPairs.filter((pair) => {
+                    const volume24h = parseFloat(pair.volume?.h24 || '0');
+                    return volume24h > 100; // Very low bar
+                });
+            }
+            // Step 3: Sort and select best pair
+            if (verifiedConfig || symbol === 'PENGU') {
+                console.log(`🎯 Applying enhanced filtering for verified token: ${symbol}`);
+                // Log top candidates
+                filteredPairs.slice(0, 5).forEach((pair, index) => {
+                    const liquidity = parseFloat(pair.liquidity?.usd || '0');
+                    const volume = parseFloat(pair.volume?.h24 || '0');
+                    const price = parseFloat(pair.priceUsd || '0');
+                    console.log(`  ${index + 1}. ${symbol} $${price} | Liq: $${liquidity.toLocaleString()} | Vol: $${volume.toLocaleString()} | Chain: ${pair.chainId}`);
+                });
+                // Sort by combined score (prioritize liquidity for major tokens)
+                filteredPairs.sort((a, b) => {
+                    const aLiquidity = parseFloat(a.liquidity?.usd || '0');
+                    const bLiquidity = parseFloat(b.liquidity?.usd || '0');
+                    const aVolume = parseFloat(a.volume?.h24 || '0');
+                    const bVolume = parseFloat(b.volume?.h24 || '0');
+                    // For verified tokens, weight liquidity higher
+                    const aScore = (aLiquidity * 3) + aVolume;
+                    const bScore = (bLiquidity * 3) + bVolume;
+                    return bScore - aScore;
+                });
+            }
+            else {
+                // For unverified tokens, sort by volume only
+                filteredPairs.sort((a, b) => {
+                    const aVolume = parseFloat(a.volume?.h24 || '0');
+                    const bVolume = parseFloat(b.volume?.h24 || '0');
+                    return bVolume - aVolume;
+                });
+            }
+            const bestPair = filteredPairs[0];
+            if (!bestPair) {
+                return {
+                    symbol,
+                    price: 0,
+                    success: false,
+                    error: `No suitable trading pairs found for ${symbol} after filtering`
+                };
+            }
+            const price = parseFloat(bestPair.priceUsd || '0');
+            const volume24h = parseFloat(bestPair.volume?.h24 || '0');
+            const priceChange24h = parseFloat(bestPair.priceChange?.h24 || '0');
+            const liquidity = parseFloat(bestPair.liquidity?.usd || '0');
+            // Validate price against expected range for verified tokens
+            let priceWarning = '';
+            if (verifiedConfig && verifiedConfig.expectedPriceRange) {
+                const [minPrice, maxPrice] = verifiedConfig.expectedPriceRange;
+                if (price < minPrice || price > maxPrice) {
+                    priceWarning = `⚠️ Price $${price} outside expected range $${minPrice}-$${maxPrice}`;
+                    console.log(priceWarning);
+                }
+            }
+            const selectedChain = bestPair.chainId;
+            console.log(`✅ Selected ${symbol}: $${price} | Chain: ${selectedChain} ${selectedChain === 'abstract' ? '⭐' : ''} | Vol: $${volume24h.toLocaleString()} | Liq: $${liquidity.toLocaleString()}`);
+            return {
+                symbol,
+                price,
+                volume24h,
+                priceChange24h,
+                liquidity,
+                chain: selectedChain,
+                address: bestPair.baseToken?.address,
+                success: true,
+                warning: priceWarning || undefined,
+                isAbstractChain: selectedChain === 'abstract',
+                isVerifiedToken: !!verifiedConfig
+            };
+        }
+        catch (error) {
+            console.error(`❌ DexScreener API error for ${symbolOrAddress}:`, error);
+            // Try CoinGecko fallback for major tokens
+            const verifiedConfig = this.getVerifiedTokenConfig(symbolOrAddress.toUpperCase());
+            if (verifiedConfig?.coinGeckoId) {
+                console.log(`🔄 Trying CoinGecko fallback due to error for ${symbolOrAddress}...`);
+                try {
+                    return await this.fetchCoinGeckoPrice(verifiedConfig.coinGeckoId);
+                }
+                catch (fallbackError) {
+                    console.error(`❌ CoinGecko fallback also failed:`, fallbackError);
+                }
+            }
+            return {
+                symbol: symbolOrAddress.toUpperCase(),
+                price: 0,
+                success: false,
+                error: `API request failed: ${error instanceof Error ? error.message : String(error)}. Try using contract address or different chain.`,
+                suggestion: 'Try using the contract address instead of symbol, or select a specific chain.'
             };
         }
     }
@@ -65,8 +350,15 @@ export class MarketResolverService {
     async fetchCoinGeckoPrice(tokenId) {
         try {
             const url = `https://api.coingecko.com/api/v3/simple/price?ids=${tokenId}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true`;
-            console.log(`Fetching CoinGecko data for ${tokenId}...`);
-            const response = await fetch(url);
+            console.log(`🦎 CoinGecko URL: ${url}`);
+            console.log(`🦎 Fetching CoinGecko data for ${tokenId}...`);
+            const response = await fetch(url, {
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'PIPTip-Market-Bot/1.0'
+                }
+            });
+            console.log(`🦎 CoinGecko response status: ${response.status}`);
             if (!response.ok) {
                 return {
                     symbol: tokenId,
@@ -402,6 +694,149 @@ export class MarketResolverService {
                 chain: priceData.chain
             }
         };
+    }
+    /**
+     * Check for postponed or cancelled sports games and handle market cancellations
+     */
+    async checkSportsGameStatus() {
+        let checked = 0;
+        let cancelled = 0;
+        let updated = 0;
+        try {
+            // Get all active sports markets
+            const sportsMarkets = await predictionMarkets.getActiveMarkets().then(markets => markets.filter(m => m.marketType.startsWith('SPORTS_') && m.marketData?.eventId));
+            console.log(`🏈 Checking ${sportsMarkets.length} sports markets for game status changes`);
+            for (const market of sportsMarkets) {
+                try {
+                    checked++;
+                    const marketData = market.marketData;
+                    const eventId = marketData.eventId || marketData.gameId;
+                    if (!eventId)
+                        continue;
+                    // Fetch current game status from TheSportsDB
+                    const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/lookupevent.php?id=${eventId}`);
+                    if (!response.ok) {
+                        console.warn(`Failed to check game status for market ${market.id}: API error ${response.status}`);
+                        continue;
+                    }
+                    const data = await response.json();
+                    if (!data.events || data.events.length === 0) {
+                        console.warn(`Game ${eventId} not found for market ${market.id}`);
+                        continue;
+                    }
+                    const game = data.events[0];
+                    const isPostponed = game.strPostponed === "yes";
+                    const isCancelled = game.strStatus === "Match Cancelled" || game.strStatus === "Cancelled";
+                    const originalGameTime = marketData.gameStartTime ? new Date(marketData.gameStartTime) : null;
+                    const currentGameTime = game.strTimestamp ? new Date(game.strTimestamp) : null;
+                    // Handle postponed/cancelled games
+                    if (isPostponed || isCancelled) {
+                        console.log(`🚨 Game ${eventId} is ${isPostponed ? 'postponed' : 'cancelled'} - cancelling market ${market.id}`);
+                        await this.cancelSportsMarket(market.id, `Game ${isPostponed ? 'postponed' : 'cancelled'}`, {
+                            originalGameTime: originalGameTime?.toISOString(),
+                            gameStatus: game.strStatus,
+                            reason: isPostponed ? 'GAME_POSTPONED' : 'GAME_CANCELLED'
+                        });
+                        cancelled++;
+                    }
+                    // Handle game time changes
+                    else if (originalGameTime && currentGameTime && Math.abs(currentGameTime.getTime() - originalGameTime.getTime()) > 15 * 60 * 1000) {
+                        console.log(`⏰ Game ${eventId} time changed from ${originalGameTime.toISOString()} to ${currentGameTime.toISOString()}`);
+                        await this.updateSportsMarketTiming(market.id, currentGameTime, {
+                            originalGameTime: originalGameTime.toISOString(),
+                            newGameTime: currentGameTime.toISOString(),
+                            reason: 'GAME_TIME_CHANGED'
+                        });
+                        updated++;
+                    }
+                    // Add small delay to avoid API rate limits
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                catch (error) {
+                    console.error(`Error checking game status for market ${market.id}:`, error);
+                }
+            }
+        }
+        catch (error) {
+            console.error('Error in checkSportsGameStatus:', error);
+        }
+        console.log(`🏈 Sports game status check complete: ${checked} checked, ${cancelled} cancelled, ${updated} updated`);
+        return { checked, cancelled, updated };
+    }
+    /**
+     * Cancel a sports market due to game postponement/cancellation with auto-refunds
+     */
+    async cancelSportsMarket(marketId, reason, metadata) {
+        try {
+            const { prisma } = await import("./db.js");
+            // Get all bets on this market
+            const bets = await prisma.predictionBet.findMany({
+                where: { marketId },
+                include: { User: true }
+            });
+            // Refund all bets
+            await prisma.$transaction(async (tx) => {
+                // Update market status
+                await tx.predictionMarket.update({
+                    where: { id: marketId },
+                    data: {
+                        status: 'CANCELLED',
+                        outcome: null,
+                        marketData: {
+                            ...metadata,
+                            cancelledAt: new Date().toISOString(),
+                            cancelReason: reason,
+                            refundsProcessed: bets.length
+                        }
+                    }
+                });
+                // Process refunds
+                for (const bet of bets) {
+                    if (bet.User) {
+                        await tx.userBalance.updateMany({
+                            where: {
+                                userId: bet.User.id,
+                                tokenSymbol: bet.tokenSymbol
+                            },
+                            data: {
+                                amount: { increment: bet.amount }
+                            }
+                        });
+                    }
+                }
+            });
+            console.log(`✅ Sports market ${marketId} cancelled and ${bets.length} bets refunded due to: ${reason}`);
+        }
+        catch (error) {
+            console.error(`Failed to cancel sports market ${marketId}:`, error);
+        }
+    }
+    /**
+     * Update sports market timing when game time changes
+     */
+    async updateSportsMarketTiming(marketId, newGameTime, metadata) {
+        try {
+            const { prisma } = await import("./db.js");
+            const newBettingCutoff = newGameTime; // Betting still closes at game start
+            const newResolutionTime = new Date(newGameTime.getTime() + (3 * 60 * 60 * 1000)); // 3h after game
+            await prisma.predictionMarket.update({
+                where: { id: marketId },
+                data: {
+                    resolveAt: newResolutionTime,
+                    marketData: {
+                        ...metadata,
+                        gameStartTime: newGameTime.toISOString(),
+                        bettingClosesAt: newBettingCutoff.toISOString(),
+                        timeUpdateAt: new Date().toISOString(),
+                        timeUpdateReason: 'GAME_TIME_CHANGED'
+                    }
+                }
+            });
+            console.log(`✅ Sports market ${marketId} timing updated - new game time: ${newGameTime.toISOString()}`);
+        }
+        catch (error) {
+            console.error(`Failed to update sports market timing ${marketId}:`, error);
+        }
     }
     /**
      * Resolve all active markets that have expired

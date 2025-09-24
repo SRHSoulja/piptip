@@ -1026,3 +1026,100 @@ model AutoMarketLog {
   @@index([success, createdAt]) // Success/failure analysis
   @@index([guildId, createdAt]) // Guild-specific automation logs
 }
+
+// Market payout tracking for financial integrity
+model Payout {
+  id             String   @id @default(cuid())
+  marketId       String   // Reference to PredictionMarket.id
+  idempotencyKey String   @unique // Prevents duplicate payouts
+  totalAmount    String   // Total pool amount (BigInt as string)
+  winningShares  String   // Total winning shares (BigInt as string)
+  status         String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  payoutCount    Int?     // Number of individual payouts processed
+  actualTotal    String?  // Actual amount processed (should match totalAmount)
+  processedAt    DateTime @default(now())
+  completedAt    DateTime?
+  metadata       Json?    // Additional payout metadata
+  createdAt      DateTime @default(now())
+
+  @@index([marketId, status])
+  @@index([idempotencyKey])
+  @@index([status, processedAt])
+}
+
+// Dead letter queue tracking for failed jobs
+model DeadLetterJob {
+  id                   String   @id @default(cuid())
+  originalQueue        String   // Which queue the job originally came from
+  originalJobId        String   // Original job ID
+  originalPayload      Json     // Original job data
+  failureReason        String   // Why the job failed
+  attempts             Int      // Number of attempts made
+  lastError            Json     // Last error details
+  canRetry             Boolean  @default(false) // Whether automatic retry is safe
+  requiresManualReview Boolean  @default(true) // Needs admin review
+  escalationLevel      String   // low, medium, high, critical
+  estimatedResolution  String?  // Description of what's needed to fix
+  status               String   @default("PENDING") // PENDING, RETRIED, DISMISSED, RESOLVED
+  reviewedBy           String?  // Admin who reviewed/acted on this
+  dismissalReason      String?  // Reason for dismissal if applicable
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status, escalationLevel])
+  @@index([originalQueue, createdAt])
+  @@index([createdAt])
+  @@index([requiresManualReview, status])
+}
+
+// Reconciliation results tracking for balance integrity
+model ReconciliationResult {
+  id                String   @id @default(cuid())
+  type              String   // user_balance, market_pool, treasury, full_audit
+  status            String   // PASSED, FAILED, DRIFT_DETECTED, CORRECTED
+  scope             Json     // Reconciliation scope parameters
+  driftsFound       Int      @default(0) // Number of drifts detected
+  correctionsMade   Int      @default(0) // Number of corrections applied
+  toleranceExceeded Int      @default(0) // Number of drifts exceeding tolerance
+  details           Json     // Full reconciliation result details
+  createdAt         DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([status, createdAt])
+  @@index([type, status])
+}
+
+// Outbox pattern for reliable Discord message delivery
+model OutboxMessage {
+  id            String      @id @default(cuid())
+  aggregateId   String      // e.g., marketId, userId for grouping related messages
+  aggregateType String      // MARKET, USER, SYSTEM, PAYOUT
+  eventType     String      // MARKET_RESOLVED, PAYOUT_COMPLETED, NOTIFICATION
+  channelId     String?     // Discord channel ID
+  userId        String?     // Discord user ID for DMs
+  guildId       String?     // Discord guild ID
+  payload       Json        // Message content, embeds, components
+  status        OutboxStatus @default(PENDING)
+  attempts      Int         @default(0)
+  maxAttempts   Int         @default(5)
+  lastError     String?     // Last error message
+  nextRetryAt   DateTime    @default(now()) // When to retry next
+  messageHash   String      // Deduplication hash
+  priority      Int         @default(5) // 1=highest, 10=lowest
+  createdAt     DateTime    @default(now())
+  processedAt   DateTime?   // When successfully sent
+
+  @@unique([messageHash]) // Prevent duplicate messages
+  @@index([status, nextRetryAt]) // For processing queue
+  @@index([aggregateId, eventType]) // For related message queries
+  @@index([status, priority]) // For priority processing
+  @@index([createdAt]) // For cleanup and analysis
+}
+
+enum OutboxStatus {
+  PENDING     // Waiting to be sent
+  PROCESSING  // Currently being sent
+  SENT        // Successfully delivered
+  FAILED      // Failed after max attempts
+  DLQ         // Moved to dead letter queue
+}

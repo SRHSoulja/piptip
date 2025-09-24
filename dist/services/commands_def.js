@@ -202,6 +202,9 @@ export function getCommandsJson() {
             .addSubcommand(subcommand => subcommand
             .setName("reminder")
             .setDescription("View responsible gaming guidelines and resources")),
+        new SlashCommandBuilder()
+            .setName("pip_automation_status")
+            .setDescription("🤖 View prediction market automation system status and activity"),
     ];
     return defs.map(d => d.toJSON());
 }

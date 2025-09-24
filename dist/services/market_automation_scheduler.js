@@ -47,12 +47,10 @@ export class MarketAutomationScheduler {
             defaultGuildId: null,
             crypto: {
                 enabled: true,
-                tokens: ["BTC", "ETH"],
-                types: ["price_increase_24h"],
+                chainsToScan: ["ethereum", "arbitrum", "base", "polygon", "optimism", "avalanche", "bsc"],
                 maxPerDay: 2,
-                priceTargetMultipliers: [1.1, 1.2],
-                durationHours: [24],
                 minVolumeUSD: 100000,
+                minLiquidityUSD: 50000,
                 excludeStablecoins: true
             },
             sports: {
@@ -139,6 +137,16 @@ export class MarketAutomationScheduler {
             timezone: this.config.timezone
         });
         this.scheduledJobs.set('daily-reset', resetJob);
+        // Schedule sports game status monitoring (every 15 minutes)
+        if (this.config.sports.enabled) {
+            const sportsMonitorJob = cron.schedule('*/15 * * * *', async () => {
+                await this.checkSportsGameStatuses();
+            }, {
+                timezone: this.config.timezone
+            });
+            this.scheduledJobs.set('sports-monitor', sportsMonitorJob);
+            console.log('📅 Sports game status monitoring scheduled every 15 minutes');
+        }
         console.log(`✅ Market automation started with ${this.config.schedule.length} scheduled times`);
     }
     /**
@@ -253,77 +261,61 @@ export class MarketAutomationScheduler {
         }
     }
     /**
-     * Create an automated crypto market
+     * Create automated crypto markets using intelligent token scanning
      */
     async createCryptoMarket() {
         try {
-            // Randomly select token and market type
-            const token = this.getRandomElement(this.config.crypto.tokens);
-            const marketType = this.getRandomElement(this.config.crypto.types);
-            const duration = this.getRandomElement(this.config.crypto.durationHours);
-            console.log(`📈 Creating crypto market: ${token} ${marketType} for ${duration}h`);
-            let market;
-            let marketData = { symbol: token };
-            switch (marketType) {
-                case 'price_increase_24h':
-                    // Get current price and create "will price go up" market
-                    const currentPriceData = await marketResolver.fetchDexScreenerPrice(token);
-                    if (!currentPriceData.success) {
-                        throw new Error(`Failed to fetch price for ${token}: ${currentPriceData.error}`);
-                    }
-                    // Skip if volume too low
-                    if (currentPriceData.volume24h && currentPriceData.volume24h < this.config.crypto.minVolumeUSD) {
-                        console.log(`⏸️ Skipping ${token}: volume too low (${currentPriceData.volume24h})`);
-                        return null;
-                    }
-                    marketData.initialPrice = currentPriceData.price;
-                    market = await predictionMarkets.createMarket({
-                        title: `📈 Will ${token.toUpperCase()} price increase?`,
-                        description: `Predict if ${token.toUpperCase()} will be higher than $${currentPriceData.price.toFixed(6)} in ${duration} hours`,
-                        resolveAt: new Date(Date.now() + duration * 60 * 60 * 1000),
-                        creatorId: 'automation',
-                        guildId: this.config.defaultGuildId || '',
-                        channelId: '',
-                        tokenSymbol: 'PENGUIN',
-                        marketType: 'PRICE_UP_DOWN',
-                        marketData
-                    });
-                    break;
-                case 'price_above_target':
-                    // Get current price and set target based on multiplier
-                    const priceData = await marketResolver.fetchDexScreenerPrice(token);
-                    if (!priceData.success) {
-                        throw new Error(`Failed to fetch price for ${token}: ${priceData.error}`);
-                    }
-                    const multiplier = this.getRandomElement(this.config.crypto.priceTargetMultipliers);
-                    const targetPrice = priceData.price * multiplier;
-                    marketData.targetPrice = targetPrice;
-                    market = await predictionMarkets.createMarket({
-                        title: `🎯 Will ${token.toUpperCase()} hit $${targetPrice.toFixed(6)}?`,
-                        description: `Predict if ${token.toUpperCase()} will reach $${targetPrice.toFixed(6)} in ${duration} hours`,
-                        resolveAt: new Date(Date.now() + duration * 60 * 60 * 1000),
-                        creatorId: 'automation',
-                        guildId: this.config.defaultGuildId || '',
-                        channelId: '',
-                        tokenSymbol: 'PENGUIN',
-                        marketType: 'PRICE_ABOVE_BELOW',
-                        marketData
-                    });
-                    break;
-                default:
-                    throw new Error(`Unknown crypto market type: ${marketType}`);
+            console.log('💰 Starting intelligent crypto market creation...');
+            // STEP 1: Scan crypto opportunities across multiple chains
+            const opportunities = await this.scanCryptoOpportunities();
+            if (opportunities.length === 0) {
+                console.log('📭 No suitable crypto opportunities found');
+                return null;
+            }
+            console.log(`🔍 Scanned and found ${opportunities.length} crypto opportunities`);
+            // STEP 2: Check existing markets to prevent duplicates
+            const existingCryptoMarkets = await this.getActiveCryptoMarkets();
+            const availableOpportunities = opportunities.filter(opp => {
+                const marketExists = existingCryptoMarkets.some(market => market.marketData?.symbol === opp.symbol);
+                return !marketExists;
+            });
+            console.log(`📊 Found ${availableOpportunities.length} tokens without existing markets`);
+            if (availableOpportunities.length === 0) {
+                console.log('📭 All suitable tokens already have markets');
+                return null;
+            }
+            // STEP 3: Select the best opportunity
+            const selectedOpportunity = availableOpportunities[0];
+            console.log(`🎯 Selected top opportunity: ${selectedOpportunity.symbol} (${selectedOpportunity.chain})`);
+            console.log(`📈 Opportunity score: ${selectedOpportunity.score} | Metrics:`, {
+                volume24h: `$${(selectedOpportunity.volume24h / 1000).toFixed(0)}k`,
+                priceChange24h: `${selectedOpportunity.priceChange24h.toFixed(1)}%`,
+                volatility: `${selectedOpportunity.volatility.toFixed(1)}%`,
+                marketType: selectedOpportunity.marketType.type
+            });
+            // STEP 4: Create market for selected opportunity
+            const market = await this.createMarketForToken(selectedOpportunity);
+            if (!market) {
+                console.log('❌ Failed to create market for selected token');
+                return null;
             }
             const log = {
                 id: `crypto-${Date.now()}`,
                 marketId: market.id,
                 type: 'crypto',
-                subtype: marketType,
+                subtype: selectedOpportunity.marketType.type,
                 success: true,
-                config: { token, marketType, duration, marketData },
+                config: {
+                    opportunity: selectedOpportunity,
+                    marketData: market.marketData,
+                    scannedOpportunities: opportunities.length,
+                    availableOpportunities: availableOpportunities.length
+                },
                 createdAt: new Date(),
                 guildId: this.config.defaultGuildId || undefined
             };
             await this.logMarketCreation(log);
+            console.log(`✅ Created crypto market: ${selectedOpportunity.symbol} (${selectedOpportunity.marketType.type})`);
             return log;
         }
         catch (error) {
@@ -342,89 +334,451 @@ export class MarketAutomationScheduler {
         }
     }
     /**
-     * Create an automated sports market
+     * Scan crypto opportunities across multiple chains
      */
-    async createSportsMarket() {
-        try {
-            // Find a suitable upcoming game
-            const game = await this.findUpcomingSportsGame();
-            if (!game) {
-                console.log('📭 No suitable sports games found for market creation');
-                return null;
+    async scanCryptoOpportunities() {
+        // Get chains to scan from configuration - no hardcoded lists!
+        const chainsToScan = this.config.crypto.chainsToScan || ['ethereum', 'arbitrum', 'base', 'polygon', 'optimism', 'avalanche', 'bsc'];
+        const opportunities = [];
+        console.log(`🔍 Scanning crypto opportunities across ${chainsToScan.length} chains from config...`);
+        for (const chain of chainsToScan) {
+            try {
+                console.log(`📊 Scanning ${chain} for top trading tokens...`);
+                // Get top tokens by volume for this chain
+                const tokens = await this.getTopTokensByChain(chain);
+                for (const token of tokens) {
+                    try {
+                        // Calculate opportunity score
+                        const score = this.calculateOpportunityScore(token, chain);
+                        // Only include tokens with sufficient opportunity score
+                        if (score >= 20) {
+                            const marketType = this.determineMarketType(token);
+                            opportunities.push({
+                                symbol: token.symbol,
+                                chain: chain,
+                                volume24h: token.volume24h || 0,
+                                priceChange24h: token.priceChange24h || 0,
+                                volatility: token.volatility || 0,
+                                liquidity: token.liquidity || 0,
+                                txCount24h: token.txCount24h || 0,
+                                price: token.price || 0,
+                                score: score,
+                                marketType: marketType,
+                                isAbstract: chain === 'abstract'
+                            });
+                        }
+                    }
+                    catch (tokenError) {
+                        console.error(`❌ Error processing token data for ${chain}:`, tokenError);
+                    }
+                }
             }
-            const marketType = this.getRandomElement(this.config.sports.marketTypes);
-            console.log(`🏈 Creating sports market: ${game.homeTeam} vs ${game.awayTeam} (${marketType})`);
-            let market;
-            let marketData = {
-                eventId: game.id,
-                homeTeam: game.homeTeam,
-                awayTeam: game.awayTeam
+            catch (chainError) {
+                console.error(`❌ Error scanning ${chain}:`, chainError);
+            }
+        }
+        // Sort by opportunity score (highest first)
+        const sortedOpportunities = opportunities
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 20); // Top 20 opportunities
+        console.log(`✅ Found ${sortedOpportunities.length} high-quality crypto opportunities`);
+        // Log chain distribution
+        const chainBreakdown = sortedOpportunities.reduce((acc, opp) => {
+            acc[opp.chain] = (acc[opp.chain] || 0) + 1;
+            return acc;
+        }, {});
+        console.log(`📊 Chain distribution:`, chainBreakdown);
+        return sortedOpportunities;
+    }
+    /**
+     * Get top tokens by chain using ONLY DexScreener API - NO HARDCODED LISTS
+     */
+    async getTopTokensByChain(chain) {
+        try {
+            console.log(`🔍 Fetching top tokens from DexScreener for ${chain}...`);
+            // ONLY use DexScreener API - no fallbacks to hardcoded lists
+            const topTokens = await this.fetchDexScreenerTopTokens(chain);
+            if (topTokens.length === 0) {
+                console.log(`⚠️ No trading tokens found on DexScreener for ${chain}`);
+                return []; // Return empty array - no fallback to hardcoded lists!
+            }
+            console.log(`✅ Found ${topTokens.length} trading tokens on ${chain} from DexScreener`);
+            return topTokens;
+        }
+        catch (error) {
+            console.error(`❌ Error getting tokens for ${chain}:`, error);
+            return []; // Return empty array on error - no fallback!
+        }
+    }
+    /**
+     * Fetch top tokens from DexScreener API by chain - PURE API DISCOVERY
+     */
+    async fetchDexScreenerTopTokens(chain) {
+        try {
+            // Use DexScreener's tokens endpoint for each chain
+            const url = `https://api.dexscreener.com/latest/dex/tokens/${chain}`;
+            console.log(`📡 Fetching from DexScreener tokens API: ${url}`);
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.log(`⚠️ DexScreener API error for ${chain}: ${response.status}`);
+                return [];
+            }
+            const data = await response.json();
+            if (!data.pairs || !Array.isArray(data.pairs)) {
+                console.log(`⚠️ Invalid DexScreener response format for ${chain}`);
+                return [];
+            }
+            // Process and filter the pairs to extract tokens
+            const tokens = [];
+            const seenTokens = new Set();
+            console.log(`📊 Processing ${data.pairs.length} trading pairs from ${chain}...`);
+            for (const pair of data.pairs) {
+                try {
+                    // Skip if volume too low - minimum threshold
+                    const volume24h = pair.volume?.h24 || 0;
+                    if (volume24h < this.config.crypto.minVolumeUSD)
+                        continue;
+                    // Extract token info - prefer the non-stablecoin token
+                    let tokenSymbol = pair.baseToken?.symbol;
+                    let tokenAddress = pair.baseToken?.address;
+                    // Common stablecoins and base tokens - prefer the other token in the pair
+                    const stablecoins = ['USDC', 'USDT', 'DAI', 'FRAX', 'BUSD'];
+                    const baseTokens = ['WETH', 'ETH', 'WBTC', 'BTC', 'WMATIC', 'MATIC', 'WAVAX', 'AVAX', 'BNB', 'WBNB'];
+                    if ([...stablecoins, ...baseTokens].includes(tokenSymbol) && pair.quoteToken?.symbol) {
+                        tokenSymbol = pair.quoteToken.symbol;
+                        tokenAddress = pair.quoteToken.address;
+                    }
+                    // Skip if we've already processed this token
+                    if (seenTokens.has(tokenSymbol))
+                        continue;
+                    seenTokens.add(tokenSymbol);
+                    // Filter out scam/junk tokens
+                    if (!this.isValidToken(tokenSymbol))
+                        continue;
+                    const priceChange24h = pair.priceChange?.h24 || 0;
+                    const liquidity = pair.liquidity?.usd || 0;
+                    const price = parseFloat(pair.priceUsd || '0');
+                    // Skip tokens with insufficient liquidity
+                    if (liquidity < 50000)
+                        continue; // Min $50k liquidity
+                    tokens.push({
+                        symbol: tokenSymbol,
+                        address: tokenAddress,
+                        price: price,
+                        volume24h: volume24h,
+                        priceChange24h: priceChange24h,
+                        volatility: Math.abs(priceChange24h),
+                        liquidity: liquidity,
+                        txCount24h: (pair.txns?.h24?.buys || 0) + (pair.txns?.h24?.sells || 0),
+                        pairAddress: pair.pairAddress,
+                        dexId: pair.dexId,
+                        chainId: pair.chainId
+                    });
+                }
+                catch (pairError) {
+                    console.error(`Error processing pair data:`, pairError);
+                    continue;
+                }
+            }
+            // Sort by volume and return top tokens
+            const topTokens = tokens
+                .sort((a, b) => b.volume24h - a.volume24h)
+                .slice(0, 50); // Top 50 by volume
+            console.log(`✅ Extracted ${topTokens.length} valid tokens from ${chain} (from ${data.pairs.length} pairs)`);
+            return topTokens;
+        }
+        catch (error) {
+            console.error(`❌ Error fetching from DexScreener tokens API for ${chain}:`, error);
+            return [];
+        }
+    }
+    /**
+     * Validate if a token symbol is legitimate (not scam/junk)
+     */
+    isValidToken(symbol) {
+        if (!symbol || typeof symbol !== 'string')
+            return false;
+        // Basic validation rules
+        if (symbol.length > 15)
+            return false; // Too long
+        if (symbol.length < 2)
+            return false; // Too short
+        if (symbol.includes('�') || symbol.includes('\x00'))
+            return false; // Invalid chars
+        if (symbol.match(/[^\w]/g) && symbol.match(/[^\w]/g).length > 2)
+            return false; // Too many special chars
+        // Skip obvious scam patterns
+        const scamPatterns = ['TEST', 'FAKE', 'SCAM', 'RUG', 'PONZI'];
+        if (scamPatterns.some(pattern => symbol.toUpperCase().includes(pattern)))
+            return false;
+        // Skip tokens that are just numbers or weird patterns
+        if (/^\d+$/.test(symbol))
+            return false; // All numbers
+        if (/^[^\w]+$/.test(symbol))
+            return false; // All special chars
+        return true;
+    }
+    // NO FALLBACK FUNCTIONS - PURE API DISCOVERY ONLY!
+    /**
+     * Calculate opportunity score for a token (higher = better)
+     */
+    calculateOpportunityScore(token, chain) {
+        let score = 0;
+        // Base score for all tokens
+        score += 10;
+        // Abstract chain gets major priority boost
+        if (chain === 'abstract')
+            score += 25;
+        // Volume scoring - higher volume = more interest
+        if (token.volume24h > 1000000)
+            score += 30; // >$1M volume
+        else if (token.volume24h > 100000)
+            score += 20; // >$100k volume
+        else if (token.volume24h > 10000)
+            score += 10; // >$10k volume
+        // Volatility scoring - more volatile = more exciting
+        if (token.volatility > 15)
+            score += 20;
+        else if (token.volatility > 10)
+            score += 15;
+        else if (token.volatility > 5)
+            score += 10;
+        // Recent price action - current interest indicator
+        const absPriceChange = Math.abs(token.priceChange24h);
+        if (absPriceChange > 20)
+            score += 15; // >20% change
+        else if (absPriceChange > 10)
+            score += 10; // >10% change
+        else if (absPriceChange > 5)
+            score += 5; // >5% change
+        // Transaction activity - more txs = more engagement
+        if (token.txCount24h > 1000)
+            score += 10;
+        else if (token.txCount24h > 500)
+            score += 5;
+        // Liquidity scoring - sufficient liquidity for fair markets
+        if (token.liquidity > 500000)
+            score += 10;
+        else if (token.liquidity > 100000)
+            score += 5;
+        // Chain priority scoring
+        const chainScores = {
+            'abstract': 25, // Our ecosystem - highest priority
+            'ethereum': 15, // Mainnet
+            'arbitrum': 12, // L2 popular
+            'base': 10, // Growing ecosystem
+            'polygon': 8 // Established L2
+        };
+        score += chainScores[chain] || 5;
+        return score;
+    }
+    /**
+     * Determine optimal market type based on token behavior
+     */
+    determineMarketType(token) {
+        const volatility = token.volatility || 0;
+        const volume = token.volume24h || 0;
+        const priceChange = Math.abs(token.priceChange24h || 0);
+        // Highly volatile token = shorter timeframe prediction
+        if (volatility > 15) {
+            return {
+                type: 'PRICE_UP_DOWN',
+                duration: 4, // 4 hour market
+                threshold: 5, // 5% movement threshold
+                description: 'Short-term volatility play'
             };
-            // Calculate resolution time (game time + buffer)
-            const gameTime = new Date(`${game.date} ${game.time}`);
-            const resolveAt = new Date(gameTime.getTime() + 4 * 60 * 60 * 1000); // Game + 4 hours
-            switch (marketType) {
-                case 'winner':
-                    marketData.betTeam = game.homeTeam;
+        }
+        // Trending token with big move = continuation prediction
+        if (priceChange > 15) {
+            return {
+                type: 'PRICE_UP_DOWN',
+                duration: 8, // 8 hour market
+                threshold: 3, // 3% movement threshold
+                description: 'Trend continuation'
+            };
+        }
+        // High volume but stable = breakout prediction
+        if (volume > 500000 && volatility < 8) {
+            return {
+                type: 'PRICE_ABOVE_BELOW',
+                duration: 24, // 24 hour market
+                multiplier: 1.05, // 5% target
+                description: 'Breakout prediction'
+            };
+        }
+        // Default: moderate volatility market
+        return {
+            type: 'PRICE_UP_DOWN',
+            duration: 12, // 12 hour market
+            threshold: 3, // 3% movement threshold
+            description: 'Medium-term prediction'
+        };
+    }
+    /**
+     * Create market for a specific token opportunity
+     */
+    async createMarketForToken(opportunity) {
+        try {
+            const resolveAt = new Date(Date.now() + opportunity.marketType.duration * 60 * 60 * 1000);
+            let marketData = {
+                symbol: opportunity.symbol,
+                chain: opportunity.chain,
+                initialPrice: opportunity.price,
+                volume24h: opportunity.volume24h,
+                volatility: opportunity.volatility,
+                opportunityScore: opportunity.score,
+                bettingCutoffTime: new Date(resolveAt.getTime() - (resolveAt.getTime() - Date.now()) * 0.20).toISOString(),
+                templateBased: true,
+                dataGuaranteed: true
+            };
+            let market;
+            switch (opportunity.marketType.type) {
+                case 'PRICE_UP_DOWN':
+                    marketData.marketType = 'PRICE_UP_DOWN';
+                    marketData.thresholdPercentage = opportunity.marketType.threshold;
                     market = await predictionMarkets.createMarket({
-                        title: `🏈 ${game.homeTeam} vs ${game.awayTeam} - Winner`,
-                        description: `Predict if ${game.homeTeam} will win against ${game.awayTeam}. Game on ${game.date}`,
+                        title: `📈 Will ${opportunity.symbol} price increase by ${opportunity.marketType.threshold}%?`,
+                        description: `Predict if ${opportunity.symbol} will move up by ${opportunity.marketType.threshold}% or more in ${opportunity.marketType.duration} hours. Current: $${opportunity.price.toFixed(6)}`,
                         resolveAt,
                         creatorId: 'automation',
                         guildId: this.config.defaultGuildId || '',
                         channelId: '',
                         tokenSymbol: 'PENGUIN',
-                        marketType: 'SPORTS_WINNER',
+                        marketType: 'PRICE_UP_DOWN',
                         marketData
                     });
                     break;
-                case 'over_under':
-                    // Set a reasonable total based on sport (simplified)
-                    const estimatedTotal = this.estimateGameTotal(game.league);
-                    marketData.targetTotal = estimatedTotal;
+                case 'PRICE_ABOVE_BELOW':
+                    const targetPrice = opportunity.price * opportunity.marketType.multiplier;
+                    marketData.targetPrice = targetPrice;
+                    marketData.marketType = 'PRICE_ABOVE_BELOW';
                     market = await predictionMarkets.createMarket({
-                        title: `🎯 ${game.homeTeam} vs ${game.awayTeam} - Over ${estimatedTotal}`,
-                        description: `Predict if total score will be over ${estimatedTotal} points. Game on ${game.date}`,
+                        title: `🎯 Will ${opportunity.symbol} reach $${targetPrice.toFixed(6)}?`,
+                        description: `Predict if ${opportunity.symbol} will reach $${targetPrice.toFixed(6)} in ${opportunity.marketType.duration} hours. Current: $${opportunity.price.toFixed(6)}`,
                         resolveAt,
                         creatorId: 'automation',
                         guildId: this.config.defaultGuildId || '',
                         channelId: '',
                         tokenSymbol: 'PENGUIN',
-                        marketType: 'SPORTS_OVER_UNDER',
-                        marketData
-                    });
-                    break;
-                case 'spread':
-                    // Set a reasonable spread (simplified)
-                    const spread = 3.5;
-                    marketData.spreadTeam = game.homeTeam;
-                    marketData.spreadPoints = spread;
-                    market = await predictionMarkets.createMarket({
-                        title: `📊 ${game.homeTeam} -${spread} vs ${game.awayTeam}`,
-                        description: `Predict if ${game.homeTeam} will win by more than ${spread} points. Game on ${game.date}`,
-                        resolveAt,
-                        creatorId: 'automation',
-                        guildId: this.config.defaultGuildId || '',
-                        channelId: '',
-                        tokenSymbol: 'PENGUIN',
-                        marketType: 'SPORTS_SPREAD',
+                        marketType: 'PRICE_ABOVE_BELOW',
                         marketData
                     });
                     break;
                 default:
-                    throw new Error(`Unknown sports market type: ${marketType}`);
+                    throw new Error(`Unknown market type: ${opportunity.marketType.type}`);
+            }
+            return { ...market, marketData };
+        }
+        catch (error) {
+            console.error(`❌ Error creating market for ${opportunity.symbol}:`, error);
+            return null;
+        }
+    }
+    /**
+     * Get active crypto markets to prevent duplicates
+     */
+    async getActiveCryptoMarkets() {
+        try {
+            const markets = await prisma.predictionMarket.findMany({
+                where: {
+                    status: 'ACTIVE',
+                    marketType: {
+                        in: ['PRICE_UP_DOWN', 'PRICE_ABOVE_BELOW', 'VOLUME_THRESHOLD']
+                    }
+                },
+                select: {
+                    id: true,
+                    marketData: true,
+                    title: true,
+                    resolveAt: true,
+                    createdAt: true
+                }
+            });
+            return markets;
+        }
+        catch (error) {
+            console.error('❌ Error fetching active crypto markets:', error);
+            return [];
+        }
+    }
+    /**
+     * Create automated sports markets using intelligent game scanning
+     */
+    async createSportsMarket() {
+        try {
+            console.log('🏈 Starting intelligent sports market creation...');
+            // STEP 1: Scan all upcoming games across leagues
+            const availableGames = await this.scanUpcomingGames();
+            if (availableGames.length === 0) {
+                console.log('📭 No suitable games found in 24-48 hour window');
+                return null;
+            }
+            console.log(`🔍 Scanned and found ${availableGames.length} suitable games for next 48 hours`);
+            // Log breakdown by league
+            const leagueBreakdown = availableGames.reduce((acc, game) => {
+                acc[game.league] = (acc[game.league] || 0) + 1;
+                return acc;
+            }, {});
+            console.log(`📊 League breakdown:`, leagueBreakdown);
+            // STEP 2: Check existing markets to prevent duplicates
+            const existingMarkets = await this.getActiveMarkets();
+            const availableGamesWithoutMarkets = availableGames.filter(game => {
+                const marketExists = existingMarkets.some(market => market.marketData?.eventId === game.eventId);
+                return !marketExists;
+            });
+            console.log(`📊 Found ${availableGamesWithoutMarkets.length} games without existing markets`);
+            if (availableGamesWithoutMarkets.length < availableGames.length) {
+                const duplicateCount = availableGames.length - availableGamesWithoutMarkets.length;
+                console.log(`🔄 Skipped ${duplicateCount} games that already have markets`);
+            }
+            if (availableGamesWithoutMarkets.length === 0) {
+                console.log('📭 All suitable games already have markets');
+                return null;
+            }
+            // STEP 3: Prioritize games and select the best one
+            const prioritizedGames = this.prioritizeGames(availableGamesWithoutMarkets);
+            if (prioritizedGames.length === 0) {
+                console.log('📭 No games passed priority filtering');
+                return null;
+            }
+            const selectedGame = prioritizedGames[0];
+            console.log(`🎯 Selected priority game: ${selectedGame.homeTeam} vs ${selectedGame.awayTeam} (${selectedGame.league})`);
+            console.log(`📈 Priority score: ${selectedGame.priorityScore} | Priority factors:`, {
+                preferredTeam: selectedGame.isPreferredTeam,
+                rivalry: selectedGame.isRivalry,
+                primeTime: selectedGame.isPrimeTime,
+                weekend: selectedGame.isWeekend,
+                hoursUntilGame: Math.round(selectedGame.hoursUntilGame * 10) / 10
+            });
+            // Log top alternatives if available
+            if (prioritizedGames.length > 1) {
+                const alternatives = prioritizedGames.slice(1, 4).map(game => `${game.homeTeam} vs ${game.awayTeam} (${game.priorityScore})`).join(', ');
+                console.log(`🔄 Alternative options: ${alternatives}`);
+            }
+            // STEP 4: Create market for selected game
+            const market = await this.createMarketForGame(selectedGame);
+            if (!market) {
+                console.log('❌ Failed to create market for selected game');
+                return null;
             }
             const log = {
                 id: `sports-${Date.now()}`,
                 marketId: market.id,
                 type: 'sports',
-                subtype: marketType,
+                subtype: selectedGame.marketType,
                 success: true,
-                config: { game, marketType, marketData },
+                config: {
+                    game: selectedGame,
+                    marketType: selectedGame.marketType,
+                    marketData: market.marketData,
+                    scannedGames: availableGames.length,
+                    availableGames: availableGamesWithoutMarkets.length
+                },
                 createdAt: new Date(),
                 guildId: this.config.defaultGuildId || undefined
             };
             await this.logMarketCreation(log);
+            console.log(`✅ Created sports market: ${selectedGame.homeTeam} vs ${selectedGame.awayTeam} (${selectedGame.marketType})`);
             return log;
         }
         catch (error) {
@@ -443,7 +797,282 @@ export class MarketAutomationScheduler {
         }
     }
     /**
-     * Find an upcoming sports game suitable for market creation
+     * Scan all upcoming games across multiple leagues
+     */
+    async scanUpcomingGames() {
+        const leagues = ['NFL', 'NBA', 'Premier League', 'MLB', 'NHL'];
+        const availableGames = [];
+        const now = new Date();
+        console.log(`🔍 Scanning upcoming games across ${leagues.length} leagues...`);
+        for (const league of leagues) {
+            try {
+                const upcomingGames = await sportsResolver.fetchUpcomingGames(league);
+                if (!upcomingGames.success || !upcomingGames.games) {
+                    console.log(`⚠️  No games found for ${league}`);
+                    continue;
+                }
+                console.log(`📊 Found ${upcomingGames.games.length} upcoming games in ${league}`);
+                for (const game of upcomingGames.games) {
+                    try {
+                        // Parse game time
+                        const gameTime = new Date(game.strTimestamp || `${game.strDate} ${game.strTime || '20:00'}`);
+                        const hoursUntilGame = (gameTime.getTime() - now.getTime()) / (60 * 60 * 1000);
+                        // Only consider games 24-48 hours out
+                        if (hoursUntilGame >= 24 && hoursUntilGame <= 48) {
+                            availableGames.push({
+                                eventId: game.idEvent,
+                                homeTeam: game.strHomeTeam,
+                                awayTeam: game.strAwayTeam,
+                                gameTime,
+                                hoursUntilGame,
+                                league,
+                                sport: game.strSport,
+                                date: game.strDate,
+                                time: game.strTime,
+                                season: game.strSeason,
+                                venue: game.strVenue,
+                                // Add priority indicators
+                                isWeekend: this.isWeekendGame(gameTime),
+                                isPrimeTime: this.isPrimeTimeGame(gameTime),
+                                isRivalry: this.isRivalryGame(game.strHomeTeam, game.strAwayTeam, league),
+                                isPreferredTeam: this.hasPreferredTeam(game.strHomeTeam, game.strAwayTeam, league)
+                            });
+                        }
+                    }
+                    catch (parseError) {
+                        console.error(`❌ Error parsing game data for ${league}:`, parseError);
+                    }
+                }
+            }
+            catch (leagueError) {
+                console.error(`❌ Error fetching games for ${league}:`, leagueError);
+            }
+        }
+        console.log(`✅ Scanned ${leagues.length} leagues, found ${availableGames.length} games in 24-48 hour window`);
+        return availableGames;
+    }
+    /**
+     * Prioritize games based on importance, timing, and preferences
+     */
+    prioritizeGames(games) {
+        return games
+            .map(game => ({
+            ...game,
+            priorityScore: this.calculateGamePriority(game)
+        }))
+            .sort((a, b) => b.priorityScore - a.priorityScore)
+            .slice(0, 10); // Top 10 priority games
+    }
+    /**
+     * Calculate priority score for a game (higher = better)
+     */
+    calculateGamePriority(game) {
+        let score = 0;
+        // Base score for all games
+        score += 10;
+        // Preferred teams get major boost
+        if (game.isPreferredTeam)
+            score += 50;
+        // League preferences
+        const leagueScores = {
+            'NFL': 40,
+            'NBA': 35,
+            'Premier League': 30,
+            'MLB': 25,
+            'NHL': 20
+        };
+        score += leagueScores[game.league] || 15;
+        // Rivalry games are exciting
+        if (game.isRivalry)
+            score += 30;
+        // Prime time games get more attention
+        if (game.isPrimeTime)
+            score += 20;
+        // Weekend games are popular
+        if (game.isWeekend)
+            score += 15;
+        // Prefer games not too far out (closer to 24h is better than 48h)
+        const timingBonus = Math.max(0, 25 - (game.hoursUntilGame - 24));
+        score += timingBonus;
+        // Avoid odd hours (very early/late games)
+        const gameHour = game.gameTime.getHours();
+        if (gameHour < 6 || gameHour > 23)
+            score -= 20;
+        return score;
+    }
+    /**
+     * Create market for a specific game
+     */
+    async createMarketForGame(game) {
+        try {
+            const marketType = this.selectMarketTypeForGame(game);
+            const bettingClosesAt = game.gameTime; // Betting closes exactly at game start
+            const resolveAt = new Date(game.gameTime.getTime() + (3 * 60 * 60 * 1000)); // Resolution 3 hours after game start
+            let marketData = {
+                eventId: game.eventId,
+                homeTeam: game.homeTeam,
+                awayTeam: game.awayTeam,
+                gameStartTime: game.gameTime.toISOString(),
+                bettingClosesAt: bettingClosesAt.toISOString(),
+                bettingClosesAtGameStart: true,
+                sport: game.sport,
+                league: game.league,
+                venue: game.venue,
+                templateBased: true,
+                apiGuaranteed: true,
+                disputeProof: true,
+                priorityScore: game.priorityScore
+            };
+            let market;
+            switch (marketType) {
+                case 'winner':
+                    marketData.betTeam = game.homeTeam;
+                    marketData.marketType = 'SPORTS_WINNER';
+                    market = await predictionMarkets.createMarket({
+                        title: `🏈 ${game.homeTeam} vs ${game.awayTeam} - Winner`,
+                        description: `Predict if ${game.homeTeam} will beat ${game.awayTeam}. Game on ${game.date} at ${game.time || 'TBD'}`,
+                        resolveAt,
+                        creatorId: 'automation',
+                        guildId: this.config.defaultGuildId || '',
+                        channelId: '',
+                        tokenSymbol: 'PENGUIN',
+                        marketType: 'SPORTS_WINNER',
+                        marketData
+                    });
+                    break;
+                case 'over_under':
+                    const estimatedTotal = this.estimateGameTotal(game.league);
+                    marketData.targetTotal = estimatedTotal;
+                    marketData.marketType = 'SPORTS_OVER_UNDER';
+                    market = await predictionMarkets.createMarket({
+                        title: `🎯 ${game.homeTeam} vs ${game.awayTeam} - Over ${estimatedTotal}`,
+                        description: `Predict if total score will be over ${estimatedTotal} points. Game on ${game.date} at ${game.time || 'TBD'}`,
+                        resolveAt,
+                        creatorId: 'automation',
+                        guildId: this.config.defaultGuildId || '',
+                        channelId: '',
+                        tokenSymbol: 'PENGUIN',
+                        marketType: 'SPORTS_OVER_UNDER',
+                        marketData
+                    });
+                    break;
+                case 'spread':
+                    const spread = this.estimateGameSpread(game.league);
+                    marketData.spreadTeam = game.homeTeam;
+                    marketData.spreadPoints = spread;
+                    marketData.marketType = 'SPORTS_SPREAD';
+                    market = await predictionMarkets.createMarket({
+                        title: `📊 ${game.homeTeam} -${spread} vs ${game.awayTeam}`,
+                        description: `Predict if ${game.homeTeam} will win by more than ${spread} points. Game on ${game.date} at ${game.time || 'TBD'}`,
+                        resolveAt,
+                        creatorId: 'automation',
+                        guildId: this.config.defaultGuildId || '',
+                        channelId: '',
+                        tokenSymbol: 'PENGUIN',
+                        marketType: 'SPORTS_SPREAD',
+                        marketData
+                    });
+                    break;
+                default:
+                    throw new Error(`Unknown market type: ${marketType}`);
+            }
+            return { ...market, marketData: { ...marketData, marketType } };
+        }
+        catch (error) {
+            console.error(`❌ Error creating market for ${game.homeTeam} vs ${game.awayTeam}:`, error);
+            return null;
+        }
+    }
+    /**
+     * Get active markets with metadata
+     */
+    async getActiveMarkets() {
+        try {
+            const markets = await prisma.predictionMarket.findMany({
+                where: { status: 'ACTIVE' },
+                select: {
+                    id: true,
+                    marketData: true,
+                    title: true,
+                    createdAt: true
+                }
+            });
+            return markets;
+        }
+        catch (error) {
+            console.error('❌ Error fetching active markets:', error);
+            return [];
+        }
+    }
+    /**
+     * Select appropriate market type for game
+     */
+    selectMarketTypeForGame(game) {
+        const availableTypes = this.config.sports.marketTypes || ['winner', 'over_under'];
+        // Prefer winner markets for high-priority games
+        if (game.priorityScore > 80 && availableTypes.includes('winner')) {
+            return 'winner';
+        }
+        // Random selection from available types
+        return this.getRandomElement(availableTypes);
+    }
+    /**
+     * Check if game is on weekend
+     */
+    isWeekendGame(gameTime) {
+        const day = gameTime.getDay();
+        return day === 0 || day === 6; // Sunday or Saturday
+    }
+    /**
+     * Check if game is in prime time (evening)
+     */
+    isPrimeTimeGame(gameTime) {
+        const hour = gameTime.getHours();
+        return hour >= 19 && hour <= 22; // 7 PM - 10 PM
+    }
+    /**
+     * Check if this is a rivalry game (simplified)
+     */
+    isRivalryGame(homeTeam, awayTeam, league) {
+        const rivalries = {
+            'NFL': [
+                ['Patriots', 'Jets'], ['Cowboys', 'Giants'], ['Packers', 'Bears'],
+                ['Ravens', 'Steelers'], ['49ers', 'Seahawks']
+            ],
+            'NBA': [
+                ['Lakers', 'Celtics'], ['Warriors', 'Cavaliers'], ['Heat', 'Knicks']
+            ],
+            'Premier League': [
+                ['Manchester United', 'Manchester City'], ['Arsenal', 'Tottenham'], ['Liverpool', 'Everton']
+            ]
+        };
+        const leagueRivalries = rivalries[league] || [];
+        return leagueRivalries.some(rivalry => (homeTeam.includes(rivalry[0]) && awayTeam.includes(rivalry[1])) ||
+            (homeTeam.includes(rivalry[1]) && awayTeam.includes(rivalry[0])));
+    }
+    /**
+     * Check if game involves preferred teams
+     */
+    hasPreferredTeam(homeTeam, awayTeam, league) {
+        const preferredTeams = this.config.sports.preferredTeams[league] || [];
+        return preferredTeams.some(team => homeTeam.toLowerCase().includes(team.toLowerCase()) ||
+            awayTeam.toLowerCase().includes(team.toLowerCase()));
+    }
+    /**
+     * Estimate game spread based on league
+     */
+    estimateGameSpread(league) {
+        const spreads = {
+            'NFL': 3.5,
+            'NBA': 5.5,
+            'Premier League': 1.5,
+            'MLB': 1.5,
+            'NHL': 1.5
+        };
+        return spreads[league] || 3.0;
+    }
+    /**
+     * Find an upcoming sports game suitable for market creation (DEPRECATED - replaced by intelligent scanning)
      */
     async findUpcomingSportsGame() {
         for (const [league, teams] of Object.entries(this.config.sports.preferredTeams)) {
@@ -615,6 +1244,26 @@ export class MarketAutomationScheduler {
      */
     getRandomElement(array) {
         return array[Math.floor(Math.random() * array.length)];
+    }
+    /**
+     * Check sports game statuses for postponements/cancellations
+     */
+    async checkSportsGameStatuses() {
+        if (!this.config.sports.enabled)
+            return;
+        try {
+            console.log('🏈 Checking sports game statuses for postponements/cancellations...');
+            const result = await marketResolver.checkSportsGameStatus();
+            if (result.checked > 0) {
+                console.log(`✅ Checked ${result.checked} sports markets - Cancelled: ${result.cancelled}, Updated: ${result.updated}`);
+                if (result.cancelled > 0 && this.config.notifications.adminNotifyOnFailure) {
+                    await this.notifyAdmin(`Automatically cancelled ${result.cancelled} sports markets due to game postponements`, 'error');
+                }
+            }
+        }
+        catch (error) {
+            console.error('❌ Error checking sports game statuses:', error);
+        }
     }
     /**
      * Manual trigger for testing/admin control
