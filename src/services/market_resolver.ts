@@ -49,8 +49,13 @@ export class MarketResolverService {
         minLiquidity: 1000000,
         minVolume: 100000,
         expectedPriceRange: [0.02, 0.05],
-        preferredChain: 'ethereum', // Until listed on Abstract
-        coinGeckoId: 'pudgy-penguins'
+        preferredChain: 'abstract', // Abstract chain has PENGU now
+        coinGeckoId: 'pudgy-penguins',
+        contracts: {
+          'abstract': '0x9eBe3A824Ca958e4b3Da772D2065518F009CBa62',
+          'solana': '2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv',
+          'ethereum': '0x16cb3449e99D2d40414Fd3D1a4da3b3f75C8e9c6' // TBD - placeholder
+        }
       },
       'PEPE': {
         minLiquidity: 5000000,
@@ -86,6 +91,34 @@ export class MarketResolverService {
    */
   private isContractAddress(input: string): boolean {
     return input.startsWith('0x') && input.length === 42;
+  }
+
+  /**
+   * Get contract address for a verified token on a specific chain
+   */
+  private getTokenContract(symbol: string, chain?: string): string | null {
+    const verifiedConfig = this.getVerifiedTokenConfig(symbol);
+    if (!verifiedConfig?.contracts) return null;
+
+    // Try preferred chain first
+    const targetChain = chain || verifiedConfig.preferredChain || 'abstract';
+    return verifiedConfig.contracts[targetChain] || null;
+  }
+
+  /**
+   * Try to fetch token using known contract address for guaranteed accuracy
+   */
+  private async tryFetchByKnownContract(symbol: string, preferredChain?: string): Promise<TokenPriceData | null> {
+    const contractAddress = this.getTokenContract(symbol, preferredChain);
+    if (!contractAddress) return null;
+
+    console.log(`🎯 Using known contract for ${symbol} on ${preferredChain || 'default'}: ${contractAddress}`);
+    try {
+      return await this.fetchTokenByAddress(contractAddress);
+    } catch (error) {
+      console.log(`⚠️ Known contract fetch failed for ${symbol}:`, error);
+      return null;
+    }
   }
 
   /**
@@ -168,6 +201,15 @@ export class MarketResolverService {
       const symbol = symbolOrAddress.toUpperCase();
       const verifiedConfig = this.getVerifiedTokenConfig(symbol);
 
+      // For verified tokens, try using known contract address first (most reliable)
+      if (verifiedConfig?.contracts) {
+        const contractResult = await this.tryFetchByKnownContract(symbol, preferredChain);
+        if (contractResult && contractResult.success) {
+          console.log(`✅ Successfully fetched ${symbol} via known contract (fast path)`);
+          return contractResult;
+        }
+      }
+
       // Use preferred chain or verified token's preferred chain or default to 'all'
       const chainToSearch = preferredChain || verifiedConfig?.preferredChain || 'all';
 
@@ -180,22 +222,47 @@ export class MarketResolverService {
         // so we'll filter results after fetching
       }
 
+      console.log(`📡 API URL: ${url}`);
       console.log(`📡 Fetching DexScreener data for ${symbol}...`);
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'PIPTip-Market-Bot/1.0'
+        }
+      });
+
+      console.log(`📊 Response status: ${response.status}`);
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ DexScreener API error: ${response.status} - ${errorText}`);
         return {
           symbol,
           price: 0,
           success: false,
-          error: `DexScreener API error: ${response.status}`
+          error: `DexScreener API error: ${response.status} - ${errorText.slice(0, 100)}`
         };
       }
 
       const data = await response.json();
+      console.log(`📊 Raw API response:`, JSON.stringify(data).slice(0, 200) + '...');
 
       if (!data.pairs || data.pairs.length === 0) {
+        console.log(`❌ No pairs found in response for ${symbol}`);
+
+        // Try known contract address first (most reliable)
+        const contractResult = await this.tryFetchByKnownContract(symbol, preferredChain);
+        if (contractResult && contractResult.success) {
+          console.log(`✅ Found ${symbol} via known contract address`);
+          return contractResult;
+        }
+
+        // Try CoinGecko fallback if this is a major token
+        if (verifiedConfig?.coinGeckoId) {
+          console.log(`🔄 Trying CoinGecko fallback for ${symbol}...`);
+          return await this.fetchCoinGeckoPrice(verifiedConfig.coinGeckoId);
+        }
         return {
           symbol,
           price: 0,
@@ -327,12 +394,25 @@ export class MarketResolverService {
       };
 
     } catch (error) {
-      console.error(`DexScreener API error for ${symbol}:`, error);
+      console.error(`❌ DexScreener API error for ${symbol}:`, error);
+
+      // Try CoinGecko fallback for major tokens
+      const verifiedConfig = this.getVerifiedTokenConfig(symbolOrAddress.toUpperCase());
+      if (verifiedConfig?.coinGeckoId) {
+        console.log(`🔄 Trying CoinGecko fallback due to error for ${symbolOrAddress}...`);
+        try {
+          return await this.fetchCoinGeckoPrice(verifiedConfig.coinGeckoId);
+        } catch (fallbackError) {
+          console.error(`❌ CoinGecko fallback also failed:`, fallbackError);
+        }
+      }
+
       return {
-        symbol,
+        symbol: symbolOrAddress.toUpperCase(),
         price: 0,
         success: false,
-        error: `API request failed: ${error}`
+        error: `API request failed: ${error instanceof Error ? error.message : String(error)}. Try using contract address or different chain.`,
+        suggestion: 'Try using the contract address instead of symbol, or select a specific chain.'
       };
     }
   }
@@ -343,9 +423,17 @@ export class MarketResolverService {
   async fetchCoinGeckoPrice(tokenId: string): Promise<TokenPriceData> {
     try {
       const url = `https://api.coingecko.com/api/v3/simple/price?ids=${tokenId}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true`;
-      console.log(`Fetching CoinGecko data for ${tokenId}...`);
+      console.log(`🦎 CoinGecko URL: ${url}`);
+      console.log(`🦎 Fetching CoinGecko data for ${tokenId}...`);
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'PIPTip-Market-Bot/1.0'
+        }
+      });
+
+      console.log(`🦎 CoinGecko response status: ${response.status}`);
 
       if (!response.ok) {
         return {
