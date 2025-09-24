@@ -36,6 +36,7 @@ pengubookModularRouter.get("/markets/:marketId", marketDetailHandler);
 pengubookModularRouter.post("/markets/bet", placeBetHandler);
 // API routes
 pengubookModularRouter.get("/api/unread-count", apiHandlers.unreadCount);
+pengubookModularRouter.get("/api/token-price/:tokenSymbol", apiHandlers.tokenPrice);
 pengubookModularRouter.get("/api/discord-user/:discordId", apiHandlers.discordUser);
 pengubookModularRouter.get("/api/user-data", apiHandlers.userData);
 pengubookModularRouter.post("/api/tip", apiHandlers.tip);

@@ -110,6 +110,39 @@ export class PredictionMarketService {
         return { success: false, error: "Market has expired" };
       }
 
+      // Check sports-specific betting cutoff (game start time)
+      const marketData = market.marketData as any;
+      if (marketData?.bettingClosesAtGameStart || marketData?.gameStartTime) {
+        const currentTime = new Date();
+        let bettingCutoffTime: Date;
+
+        if (marketData.bettingClosesAt) {
+          bettingCutoffTime = new Date(marketData.bettingClosesAt);
+        } else if (marketData.gameStartTime) {
+          bettingCutoffTime = new Date(marketData.gameStartTime);
+        }
+
+        if (bettingCutoffTime && currentTime >= bettingCutoffTime) {
+          const gameInfo = marketData.homeTeam && marketData.awayTeam
+            ? `${marketData.homeTeam} vs ${marketData.awayTeam}`
+            : 'this game';
+          const minutesSinceCutoff = Math.floor((currentTime.getTime() - bettingCutoffTime.getTime()) / (60 * 1000));
+
+          return {
+            success: false,
+            error: `⏰ Betting closed for ${gameInfo} at game start (${minutesSinceCutoff} minutes ago) to prevent late-information advantage.`
+          };
+        }
+
+        // Warning for bets close to game start
+        if (bettingCutoffTime) {
+          const minutesUntilCutoff = Math.floor((bettingCutoffTime.getTime() - currentTime.getTime()) / (60 * 1000));
+          if (minutesUntilCutoff > 0 && minutesUntilCutoff <= 30) {
+            console.log(`⚠️  Late sports bet: User ${userId} betting with ${minutesUntilCutoff} minutes until game start on market ${marketId}`);
+          }
+        }
+      }
+
       if (amount < market.minBet || amount > market.maxBet) {
         return { success: false, error: `Prediction must be between ${market.minBet} and ${market.maxBet} ${market.tokenSymbol}` };
       }

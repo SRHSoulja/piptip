@@ -10,16 +10,47 @@ interface TokenPrice {
 interface PriceAPIResponse {
   success: boolean;
   prices: Record<string, number>; // symbol -> USD price
+  change24h?: Record<string, number>; // symbol -> 24h change %
   error?: string;
   source: 'dexscreener' | 'coingecko' | 'coinmarketcap' | 'fallback';
 }
 
 class PriceAPIService {
-  private cache = new Map<string, { price: number; timestamp: number }>();
+  private cache = new Map<string, { price: number; change24h?: number; timestamp: number }>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private lastAPICall = new Map<string, number>(); // Track API call times
+  private readonly MIN_CALL_INTERVAL = 1000; // 1 second between calls per API
+  private apiCallCount = new Map<string, number>(); // Track call counts per hour
 
   /**
-   * Get USD prices for multiple tokens
+   * Check if we can make an API call (rate limiting)
+   */
+  private canMakeAPICall(apiName: string): boolean {
+    const now = Date.now();
+    const lastCall = this.lastAPICall.get(apiName) || 0;
+
+    if (now - lastCall < this.MIN_CALL_INTERVAL) {
+      console.warn(`🚫 Rate limit: ${apiName} called too recently, using cache`);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Record API call for rate limiting
+   */
+  private recordAPICall(apiName: string): void {
+    const now = Date.now();
+    this.lastAPICall.set(apiName, now);
+
+    const hourKey = Math.floor(now / (60 * 60 * 1000));
+    const callKey = `${apiName}-${hourKey}`;
+    this.apiCallCount.set(callKey, (this.apiCallCount.get(callKey) || 0) + 1);
+  }
+
+  /**
+   * Get USD prices for multiple tokens with enhanced caching and rate limiting
    */
   async getTokenPrices(symbols: string[]): Promise<PriceAPIResponse> {
     try {
@@ -64,6 +95,7 @@ class PriceAPIService {
       // Get token addresses from our database/config
       const tokenAddresses = await this.getTokenAddresses(symbols);
       const prices: Record<string, number> = {};
+      const change24h: Record<string, number> = {};
 
       if (Object.keys(tokenAddresses).length === 0) {
         console.warn('No token addresses found for symbols:', symbols);
@@ -98,11 +130,12 @@ class PriceAPIService {
           const data = await response.json();
 
           if (data.pairs && Array.isArray(data.pairs)) {
-            // Process pairs and extract prices
+            // Process pairs and extract prices + 24h change
             data.pairs.forEach((pair: any) => {
               if (pair.baseToken && pair.priceUsd) {
                 const address = pair.baseToken.address?.toLowerCase();
                 const priceUsd = parseFloat(pair.priceUsd);
+                const priceChange24h = parseFloat(pair.priceChange?.h24 || '0');
 
                 if (address && priceUsd > 0) {
                   // Find symbol for this address
@@ -112,8 +145,9 @@ class PriceAPIService {
 
                   if (symbol) {
                     prices[symbol] = priceUsd;
-                    this.updateCache(symbol, priceUsd);
-                    console.log(`✅ DexScreener price for ${symbol}: $${priceUsd}`);
+                    change24h[symbol] = priceChange24h;
+                    this.updateCache(symbol, priceUsd, priceChange24h);
+                    console.log(`✅ DexScreener price for ${symbol}: $${priceUsd} (24h: ${priceChange24h}%)`);
                   }
                 }
               }
@@ -131,6 +165,7 @@ class PriceAPIService {
       return {
         success: Object.keys(prices).length > 0,
         prices,
+        change24h,
         source: 'dexscreener' as const
       };
 
@@ -300,9 +335,10 @@ class PriceAPIService {
   /**
    * Update price cache
    */
-  private updateCache(symbol: string, price: number): void {
+  private updateCache(symbol: string, price: number, change24h?: number): void {
     this.cache.set(symbol, {
       price,
+      change24h,
       timestamp: Date.now()
     });
   }

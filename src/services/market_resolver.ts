@@ -22,6 +22,7 @@ export interface MarketResolutionData {
   currentRank?: number;
   targetVolume?: number;
   currentVolume?: number;
+  priceChange24h?: number;
   chain?: string;
   error?: string;
 }
@@ -307,13 +308,27 @@ export class MarketResolverService {
         return { success: false, error: "Market is not active" };
       }
 
+      // BULLETPROOF VALIDATION: Only allow API-guaranteed markets
+      if (!this.isAPIGuaranteedMarket(market)) {
+        console.error(`SECURITY: Attempted to resolve non-API market ${market.id} - ${market.title}`);
+        return {
+          success: false,
+          error: "REJECTED: Market is not API-guaranteed and cannot be resolved automatically"
+        };
+      }
+
       let resolutionResult: { outcome: 'YES' | 'NO' | 'CANCEL'; data: MarketResolutionData };
 
       switch (market.marketType) {
         case 'PRICE_UP_DOWN':
         case 'PRICE_ABOVE_BELOW':
         case 'CRYPTO_PRICE_TARGET':
-          resolutionResult = await this.resolvePriceMarket(market);
+        case 'CRYPTO_PRICE_DIRECTION':
+          resolutionResult = await this.resolveTemplateBasedPriceMarket(market);
+          break;
+
+        case 'CRYPTO_DAILY_CHANGE':
+          resolutionResult = await this.resolveDailyChangeMarket(market);
           break;
 
         case 'CRYPTO_PRICE_RANGE':
@@ -322,12 +337,14 @@ export class MarketResolverService {
 
         case 'VOLUME_RANKING':
         case 'CRYPTO_RANK_TARGET':
+        case 'CRYPTO_VOLUME':
           resolutionResult = await this.resolveRankingMarket(market);
           break;
 
         case 'SPORTS_WINNER':
         case 'SPORTS_OVER_UNDER':
         case 'SPORTS_SPREAD':
+        case 'SPORTS_TOTAL':
           resolutionResult = await sportsResolver.resolveSportsMarket(market);
           break;
 
@@ -347,8 +364,112 @@ export class MarketResolverService {
 
     } catch (error) {
       console.error(`Error resolving market ${marketId}:`, error);
+
+      // Check if this is an API downtime scenario
+      if (this.isAPIDowntimeError(error)) {
+        console.warn(`⚠️  API DOWNTIME DETECTED for market ${marketId} - flagging for manual resolution`);
+        await this.flagForManualResolution(marketId, String(error));
+        return { success: false, error: `API downtime - market flagged for manual resolution: ${error}` };
+      }
+
       return { success: false, error: `Resolution failed: ${error}` };
     }
+  }
+
+  /**
+   * Resolve template-based price direction market
+   */
+  async resolveTemplateBasedPriceMarket(market: Market): Promise<{ outcome: 'YES' | 'NO' | 'CANCEL'; data: MarketResolutionData }> {
+    const marketData = market.marketData as any;
+    const targetTokenSymbol = marketData.targetTokenSymbol || marketData.tokenSymbol || market.tokenSymbol;
+
+    if (!targetTokenSymbol) {
+      return {
+        outcome: 'CANCEL',
+        data: { error: 'No token symbol specified for price market' }
+      };
+    }
+
+    // Fetch current price using API
+    const { priceAPI } = await import("./price_api.js");
+    const tokenData = await priceAPI.getTokenPrices([targetTokenSymbol]);
+
+    if (!tokenData.success || !tokenData.prices[targetTokenSymbol]) {
+      console.error(`Failed to fetch price for ${targetTokenSymbol}, cancelling market ${market.id}`);
+      return {
+        outcome: 'CANCEL',
+        data: { error: `Could not fetch current price for ${targetTokenSymbol}` }
+      };
+    }
+
+    const currentPrice = tokenData.prices[targetTokenSymbol];
+
+    let outcome: 'YES' | 'NO';
+
+    if (market.marketType === 'CRYPTO_PRICE_DIRECTION') {
+      const { targetPrice, direction } = marketData;
+      if (direction === 'up') {
+        outcome = currentPrice >= targetPrice ? 'YES' : 'NO';
+      } else {
+        outcome = currentPrice < targetPrice ? 'YES' : 'NO';
+      }
+    } else {
+      // Legacy price market logic
+      const targetPrice = marketData.targetPrice || marketData.initialPrice;
+      outcome = currentPrice > targetPrice ? 'YES' : 'NO';
+    }
+
+    console.log(`Template price market ${market.id} resolved: ${outcome} (current: $${currentPrice}, target: $${marketData.targetPrice})`);
+
+    return {
+      outcome,
+      data: {
+        currentPrice,
+        targetPrice: marketData.targetPrice,
+        initialPrice: marketData.currentPrice
+      }
+    };
+  }
+
+  /**
+   * Resolve daily change percentage market
+   */
+  async resolveDailyChangeMarket(market: Market): Promise<{ outcome: 'YES' | 'NO' | 'CANCEL'; data: MarketResolutionData }> {
+    const marketData = market.marketData as any;
+    const targetTokenSymbol = marketData.targetTokenSymbol || marketData.tokenSymbol;
+    const changeThreshold = marketData.changeThreshold;
+
+    if (!targetTokenSymbol || !changeThreshold) {
+      return {
+        outcome: 'CANCEL',
+        data: { error: 'Missing token symbol or change threshold' }
+      };
+    }
+
+    // Fetch current price and 24h change
+    const { priceAPI } = await import("./price_api.js");
+    const tokenData = await priceAPI.getTokenPrices([targetTokenSymbol]);
+
+    if (!tokenData.success || !tokenData.prices[targetTokenSymbol]) {
+      console.error(`Failed to fetch 24h change for ${targetTokenSymbol}, cancelling market ${market.id}`);
+      return {
+        outcome: 'CANCEL',
+        data: { error: `Could not fetch 24h change data for ${targetTokenSymbol}` }
+      };
+    }
+
+    const change24h = tokenData.change24h?.[targetTokenSymbol] || 0;
+    const outcome = Math.abs(change24h) >= changeThreshold ? 'YES' : 'NO';
+
+    console.log(`Daily change market ${market.id} resolved: ${outcome} (24h change: ${change24h}%, threshold: ${changeThreshold}%)`);
+
+    return {
+      outcome,
+      data: {
+        currentPrice: tokenData.prices[targetTokenSymbol],
+        priceChange24h: change24h
+      }
+    };
   }
 
   /**
@@ -382,6 +503,175 @@ export class MarketResolverService {
         chain: priceData.chain
       }
     };
+  }
+
+  /**
+   * Check for postponed or cancelled sports games and handle market cancellations
+   */
+  async checkSportsGameStatus(): Promise<{ checked: number; cancelled: number; updated: number }> {
+    let checked = 0;
+    let cancelled = 0;
+    let updated = 0;
+
+    try {
+      // Get all active sports markets
+      const sportsMarkets = await predictionMarkets.getActiveMarkets().then(markets =>
+        markets.filter(m => m.marketType.startsWith('SPORTS_') && m.marketData?.eventId)
+      );
+
+      console.log(`🏈 Checking ${sportsMarkets.length} sports markets for game status changes`);
+
+      for (const market of sportsMarkets) {
+        try {
+          checked++;
+          const marketData = market.marketData as any;
+          const eventId = marketData.eventId || marketData.gameId;
+
+          if (!eventId) continue;
+
+          // Fetch current game status from TheSportsDB
+          const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/lookupevent.php?id=${eventId}`);
+
+          if (!response.ok) {
+            console.warn(`Failed to check game status for market ${market.id}: API error ${response.status}`);
+            continue;
+          }
+
+          const data = await response.json();
+          if (!data.events || data.events.length === 0) {
+            console.warn(`Game ${eventId} not found for market ${market.id}`);
+            continue;
+          }
+
+          const game = data.events[0];
+          const isPostponed = game.strPostponed === "yes";
+          const isCancelled = game.strStatus === "Match Cancelled" || game.strStatus === "Cancelled";
+          const originalGameTime = marketData.gameStartTime ? new Date(marketData.gameStartTime) : null;
+          const currentGameTime = game.strTimestamp ? new Date(game.strTimestamp) : null;
+
+          // Handle postponed/cancelled games
+          if (isPostponed || isCancelled) {
+            console.log(`🚨 Game ${eventId} is ${isPostponed ? 'postponed' : 'cancelled'} - cancelling market ${market.id}`);
+
+            await this.cancelSportsMarket(market.id, `Game ${isPostponed ? 'postponed' : 'cancelled'}`, {
+              originalGameTime: originalGameTime?.toISOString(),
+              gameStatus: game.strStatus,
+              reason: isPostponed ? 'GAME_POSTPONED' : 'GAME_CANCELLED'
+            });
+
+            cancelled++;
+          }
+          // Handle game time changes
+          else if (originalGameTime && currentGameTime && Math.abs(currentGameTime.getTime() - originalGameTime.getTime()) > 15 * 60 * 1000) {
+            console.log(`⏰ Game ${eventId} time changed from ${originalGameTime.toISOString()} to ${currentGameTime.toISOString()}`);
+
+            await this.updateSportsMarketTiming(market.id, currentGameTime, {
+              originalGameTime: originalGameTime.toISOString(),
+              newGameTime: currentGameTime.toISOString(),
+              reason: 'GAME_TIME_CHANGED'
+            });
+
+            updated++;
+          }
+
+          // Add small delay to avoid API rate limits
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+        } catch (error) {
+          console.error(`Error checking game status for market ${market.id}:`, error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error in checkSportsGameStatus:', error);
+    }
+
+    console.log(`🏈 Sports game status check complete: ${checked} checked, ${cancelled} cancelled, ${updated} updated`);
+    return { checked, cancelled, updated };
+  }
+
+  /**
+   * Cancel a sports market due to game postponement/cancellation with auto-refunds
+   */
+  private async cancelSportsMarket(marketId: string, reason: string, metadata: any): Promise<void> {
+    try {
+      const { prisma } = await import("./db.js");
+
+      // Get all bets on this market
+      const bets = await prisma.predictionBet.findMany({
+        where: { marketId },
+        include: { User: true }
+      });
+
+      // Refund all bets
+      await prisma.$transaction(async (tx) => {
+        // Update market status
+        await tx.predictionMarket.update({
+          where: { id: marketId },
+          data: {
+            status: 'CANCELLED',
+            outcome: null,
+            marketData: {
+              ...metadata,
+              cancelledAt: new Date().toISOString(),
+              cancelReason: reason,
+              refundsProcessed: bets.length
+            }
+          }
+        });
+
+        // Process refunds
+        for (const bet of bets) {
+          if (bet.User) {
+            await tx.userBalance.updateMany({
+              where: {
+                userId: bet.User.id,
+                tokenSymbol: bet.tokenSymbol
+              },
+              data: {
+                amount: { increment: bet.amount }
+              }
+            });
+          }
+        }
+      });
+
+      console.log(`✅ Sports market ${marketId} cancelled and ${bets.length} bets refunded due to: ${reason}`);
+
+    } catch (error) {
+      console.error(`Failed to cancel sports market ${marketId}:`, error);
+    }
+  }
+
+  /**
+   * Update sports market timing when game time changes
+   */
+  private async updateSportsMarketTiming(marketId: string, newGameTime: Date, metadata: any): Promise<void> {
+    try {
+      const { prisma } = await import("./db.js");
+
+      const newBettingCutoff = newGameTime; // Betting still closes at game start
+      const newResolutionTime = new Date(newGameTime.getTime() + (3 * 60 * 60 * 1000)); // 3h after game
+
+      await prisma.predictionMarket.update({
+        where: { id: marketId },
+        data: {
+          resolveAt: newResolutionTime,
+          marketData: {
+            ...metadata,
+            gameStartTime: newGameTime.toISOString(),
+            bettingClosesAt: newBettingCutoff.toISOString(),
+            timeUpdateAt: new Date().toISOString(),
+            timeUpdateReason: 'GAME_TIME_CHANGED'
+          }
+        }
+      });
+
+      console.log(`✅ Sports market ${marketId} timing updated - new game time: ${newGameTime.toISOString()}`);
+
+    } catch (error) {
+      console.error(`Failed to update sports market timing ${marketId}:`, error);
+    }
   }
 
   /**
@@ -428,11 +718,121 @@ export class MarketResolverService {
   }
 
   /**
+   * SECURITY: Check if market is API-guaranteed and bulletproof
+   */
+  private isAPIGuaranteedMarket(market: Market): boolean {
+    // Check if market was created via template-only system
+    const marketData = market.marketData as any;
+
+    if (marketData?.templateBased !== true || marketData?.apiGuaranteed !== true) {
+      console.warn(`Market ${market.id} lacks template/API guarantees`);
+      return false;
+    }
+
+    // Validate market type is in approved list
+    const apiGuaranteedTypes = [
+      'CRYPTO_PRICE_DIRECTION', 'CRYPTO_DAILY_CHANGE', 'CRYPTO_VOLUME',
+      'CRYPTO_PRICE_TARGET', 'CRYPTO_PRICE_RANGE', 'CRYPTO_RANK_TARGET',
+      'SPORTS_WINNER', 'SPORTS_TOTAL', 'SPORTS_SPREAD',
+      'PRICE_UP_DOWN', 'PRICE_ABOVE_BELOW', 'VOLUME_RANKING' // Legacy types
+    ];
+
+    if (!apiGuaranteedTypes.includes(market.marketType)) {
+      console.warn(`Market ${market.id} has unsupported type: ${market.marketType}`);
+      return false;
+    }
+
+    // Validate API endpoint is specified for resolution
+    if (!marketData?.apiEndpoint && !marketData?.resolutionCriteria) {
+      console.warn(`Market ${market.id} lacks API endpoint/criteria`);
+      return false;
+    }
+
+    // For crypto markets, validate token symbol exists
+    if (market.marketType.startsWith('CRYPTO_')) {
+      const targetToken = marketData?.targetTokenSymbol || marketData?.tokenSymbol;
+      if (!targetToken) {
+        console.warn(`Crypto market ${market.id} missing token symbol`);
+        return false;
+      }
+    }
+
+    // For sports markets, validate game ID exists
+    if (market.marketType.startsWith('SPORTS_')) {
+      const gameId = marketData?.gameId || marketData?.eventId;
+      if (!gameId) {
+        console.warn(`Sports market ${market.id} missing game/event ID`);
+        return false;
+      }
+    }
+
+    console.log(`✅ Market ${market.id} passed API guarantee validation`);
+    return true;
+  }
+
+  /**
    * Check if a token is a major token available on CoinGecko
    */
   private isMajorToken(symbol: string): boolean {
     const majorTokens = ['BTC', 'ETH', 'USDC', 'USDT', 'BNB', 'SOL', 'ADA', 'AVAX', 'DOT', 'MATIC'];
     return majorTokens.includes(symbol.toUpperCase());
+  }
+
+  /**
+   * Check if error indicates API downtime requiring manual intervention
+   */
+  private isAPIDowntimeError(error: unknown): boolean {
+    const errorMessage = String(error).toLowerCase();
+    const downTimeIndicators = [
+      'api error', 'fetch failed', 'network error', 'timeout',
+      'service unavailable', '503', '502', '504', 'connection refused',
+      'could not fetch', 'api request failed', 'no response'
+    ];
+
+    return downTimeIndicators.some(indicator => errorMessage.includes(indicator));
+  }
+
+  /**
+   * Flag market for manual resolution during API downtime
+   */
+  private async flagForManualResolution(marketId: string, errorDetails: string): Promise<void> {
+    try {
+      const { prisma } = await import("./db.js");
+
+      // Create a manual resolution flag record
+      await prisma.predictionMarket.update({
+        where: { id: marketId },
+        data: {
+          marketData: {
+            ...await this.getMarketData(marketId),
+            manualResolutionRequired: true,
+            apiDowntimeError: errorDetails,
+            flaggedForManualAt: new Date().toISOString(),
+            resolutionMethod: 'MANUAL_OVERRIDE_DUE_TO_API_DOWNTIME'
+          }
+        }
+      });
+
+      // TODO: Send admin notification (Slack/Discord webhook)
+      console.error(`🚨 ADMIN ALERT: Market ${marketId} requires manual resolution due to API downtime`);
+      console.error(`Error details: ${errorDetails}`);
+
+    } catch (flagError) {
+      console.error(`Failed to flag market ${marketId} for manual resolution:`, flagError);
+    }
+  }
+
+  /**
+   * Get current market data for updating
+   */
+  private async getMarketData(marketId: string): Promise<any> {
+    try {
+      const market = await predictionMarkets.getMarket(marketId);
+      return market?.marketData || {};
+    } catch (error) {
+      console.error(`Failed to get market data for ${marketId}:`, error);
+      return {};
+    }
   }
 
   /**

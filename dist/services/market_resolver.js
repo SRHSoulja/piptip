@@ -238,23 +238,37 @@ export class MarketResolverService {
             if (market.status !== 'ACTIVE') {
                 return { success: false, error: "Market is not active" };
             }
+            // BULLETPROOF VALIDATION: Only allow API-guaranteed markets
+            if (!this.isAPIGuaranteedMarket(market)) {
+                console.error(`SECURITY: Attempted to resolve non-API market ${market.id} - ${market.title}`);
+                return {
+                    success: false,
+                    error: "REJECTED: Market is not API-guaranteed and cannot be resolved automatically"
+                };
+            }
             let resolutionResult;
             switch (market.marketType) {
                 case 'PRICE_UP_DOWN':
                 case 'PRICE_ABOVE_BELOW':
                 case 'CRYPTO_PRICE_TARGET':
-                    resolutionResult = await this.resolvePriceMarket(market);
+                case 'CRYPTO_PRICE_DIRECTION':
+                    resolutionResult = await this.resolveTemplateBasedPriceMarket(market);
+                    break;
+                case 'CRYPTO_DAILY_CHANGE':
+                    resolutionResult = await this.resolveDailyChangeMarket(market);
                     break;
                 case 'CRYPTO_PRICE_RANGE':
                     resolutionResult = await this.resolvePriceRangeMarket(market);
                     break;
                 case 'VOLUME_RANKING':
                 case 'CRYPTO_RANK_TARGET':
+                case 'CRYPTO_VOLUME':
                     resolutionResult = await this.resolveRankingMarket(market);
                     break;
                 case 'SPORTS_WINNER':
                 case 'SPORTS_OVER_UNDER':
                 case 'SPORTS_SPREAD':
+                case 'SPORTS_TOTAL':
                     resolutionResult = await sportsResolver.resolveSportsMarket(market);
                     break;
                 default:
@@ -270,8 +284,96 @@ export class MarketResolverService {
         }
         catch (error) {
             console.error(`Error resolving market ${marketId}:`, error);
+            // Check if this is an API downtime scenario
+            if (this.isAPIDowntimeError(error)) {
+                console.warn(`⚠️  API DOWNTIME DETECTED for market ${marketId} - flagging for manual resolution`);
+                await this.flagForManualResolution(marketId, String(error));
+                return { success: false, error: `API downtime - market flagged for manual resolution: ${error}` };
+            }
             return { success: false, error: `Resolution failed: ${error}` };
         }
+    }
+    /**
+     * Resolve template-based price direction market
+     */
+    async resolveTemplateBasedPriceMarket(market) {
+        const marketData = market.marketData;
+        const targetTokenSymbol = marketData.targetTokenSymbol || marketData.tokenSymbol || market.tokenSymbol;
+        if (!targetTokenSymbol) {
+            return {
+                outcome: 'CANCEL',
+                data: { error: 'No token symbol specified for price market' }
+            };
+        }
+        // Fetch current price using API
+        const { priceAPI } = await import("./price_api.js");
+        const tokenData = await priceAPI.getTokenPrices([targetTokenSymbol]);
+        if (!tokenData.success || !tokenData.prices[targetTokenSymbol]) {
+            console.error(`Failed to fetch price for ${targetTokenSymbol}, cancelling market ${market.id}`);
+            return {
+                outcome: 'CANCEL',
+                data: { error: `Could not fetch current price for ${targetTokenSymbol}` }
+            };
+        }
+        const currentPrice = tokenData.prices[targetTokenSymbol];
+        let outcome;
+        if (market.marketType === 'CRYPTO_PRICE_DIRECTION') {
+            const { targetPrice, direction } = marketData;
+            if (direction === 'up') {
+                outcome = currentPrice >= targetPrice ? 'YES' : 'NO';
+            }
+            else {
+                outcome = currentPrice < targetPrice ? 'YES' : 'NO';
+            }
+        }
+        else {
+            // Legacy price market logic
+            const targetPrice = marketData.targetPrice || marketData.initialPrice;
+            outcome = currentPrice > targetPrice ? 'YES' : 'NO';
+        }
+        console.log(`Template price market ${market.id} resolved: ${outcome} (current: $${currentPrice}, target: $${marketData.targetPrice})`);
+        return {
+            outcome,
+            data: {
+                currentPrice,
+                targetPrice: marketData.targetPrice,
+                initialPrice: marketData.currentPrice
+            }
+        };
+    }
+    /**
+     * Resolve daily change percentage market
+     */
+    async resolveDailyChangeMarket(market) {
+        const marketData = market.marketData;
+        const targetTokenSymbol = marketData.targetTokenSymbol || marketData.tokenSymbol;
+        const changeThreshold = marketData.changeThreshold;
+        if (!targetTokenSymbol || !changeThreshold) {
+            return {
+                outcome: 'CANCEL',
+                data: { error: 'Missing token symbol or change threshold' }
+            };
+        }
+        // Fetch current price and 24h change
+        const { priceAPI } = await import("./price_api.js");
+        const tokenData = await priceAPI.getTokenPrices([targetTokenSymbol]);
+        if (!tokenData.success || !tokenData.prices[targetTokenSymbol]) {
+            console.error(`Failed to fetch 24h change for ${targetTokenSymbol}, cancelling market ${market.id}`);
+            return {
+                outcome: 'CANCEL',
+                data: { error: `Could not fetch 24h change data for ${targetTokenSymbol}` }
+            };
+        }
+        const change24h = tokenData.change24h?.[targetTokenSymbol] || 0;
+        const outcome = Math.abs(change24h) >= changeThreshold ? 'YES' : 'NO';
+        console.log(`Daily change market ${market.id} resolved: ${outcome} (24h change: ${change24h}%, threshold: ${changeThreshold}%)`);
+        return {
+            outcome,
+            data: {
+                currentPrice: tokenData.prices[targetTokenSymbol],
+                priceChange24h: change24h
+            }
+        };
     }
     /**
      * Resolve price range market (token within min/max range)
@@ -338,11 +440,108 @@ export class MarketResolverService {
         return { resolved, errors };
     }
     /**
+     * SECURITY: Check if market is API-guaranteed and bulletproof
+     */
+    isAPIGuaranteedMarket(market) {
+        // Check if market was created via template-only system
+        const marketData = market.marketData;
+        if (marketData?.templateBased !== true || marketData?.apiGuaranteed !== true) {
+            console.warn(`Market ${market.id} lacks template/API guarantees`);
+            return false;
+        }
+        // Validate market type is in approved list
+        const apiGuaranteedTypes = [
+            'CRYPTO_PRICE_DIRECTION', 'CRYPTO_DAILY_CHANGE', 'CRYPTO_VOLUME',
+            'CRYPTO_PRICE_TARGET', 'CRYPTO_PRICE_RANGE', 'CRYPTO_RANK_TARGET',
+            'SPORTS_WINNER', 'SPORTS_TOTAL', 'SPORTS_SPREAD',
+            'PRICE_UP_DOWN', 'PRICE_ABOVE_BELOW', 'VOLUME_RANKING' // Legacy types
+        ];
+        if (!apiGuaranteedTypes.includes(market.marketType)) {
+            console.warn(`Market ${market.id} has unsupported type: ${market.marketType}`);
+            return false;
+        }
+        // Validate API endpoint is specified for resolution
+        if (!marketData?.apiEndpoint && !marketData?.resolutionCriteria) {
+            console.warn(`Market ${market.id} lacks API endpoint/criteria`);
+            return false;
+        }
+        // For crypto markets, validate token symbol exists
+        if (market.marketType.startsWith('CRYPTO_')) {
+            const targetToken = marketData?.targetTokenSymbol || marketData?.tokenSymbol;
+            if (!targetToken) {
+                console.warn(`Crypto market ${market.id} missing token symbol`);
+                return false;
+            }
+        }
+        // For sports markets, validate game ID exists
+        if (market.marketType.startsWith('SPORTS_')) {
+            const gameId = marketData?.gameId || marketData?.eventId;
+            if (!gameId) {
+                console.warn(`Sports market ${market.id} missing game/event ID`);
+                return false;
+            }
+        }
+        console.log(`✅ Market ${market.id} passed API guarantee validation`);
+        return true;
+    }
+    /**
      * Check if a token is a major token available on CoinGecko
      */
     isMajorToken(symbol) {
         const majorTokens = ['BTC', 'ETH', 'USDC', 'USDT', 'BNB', 'SOL', 'ADA', 'AVAX', 'DOT', 'MATIC'];
         return majorTokens.includes(symbol.toUpperCase());
+    }
+    /**
+     * Check if error indicates API downtime requiring manual intervention
+     */
+    isAPIDowntimeError(error) {
+        const errorMessage = String(error).toLowerCase();
+        const downTimeIndicators = [
+            'api error', 'fetch failed', 'network error', 'timeout',
+            'service unavailable', '503', '502', '504', 'connection refused',
+            'could not fetch', 'api request failed', 'no response'
+        ];
+        return downTimeIndicators.some(indicator => errorMessage.includes(indicator));
+    }
+    /**
+     * Flag market for manual resolution during API downtime
+     */
+    async flagForManualResolution(marketId, errorDetails) {
+        try {
+            const { prisma } = await import("./db.js");
+            // Create a manual resolution flag record
+            await prisma.predictionMarket.update({
+                where: { id: marketId },
+                data: {
+                    marketData: {
+                        ...await this.getMarketData(marketId),
+                        manualResolutionRequired: true,
+                        apiDowntimeError: errorDetails,
+                        flaggedForManualAt: new Date().toISOString(),
+                        resolutionMethod: 'MANUAL_OVERRIDE_DUE_TO_API_DOWNTIME'
+                    }
+                }
+            });
+            // TODO: Send admin notification (Slack/Discord webhook)
+            console.error(`🚨 ADMIN ALERT: Market ${marketId} requires manual resolution due to API downtime`);
+            console.error(`Error details: ${errorDetails}`);
+        }
+        catch (flagError) {
+            console.error(`Failed to flag market ${marketId} for manual resolution:`, flagError);
+        }
+    }
+    /**
+     * Get current market data for updating
+     */
+    async getMarketData(marketId) {
+        try {
+            const market = await predictionMarkets.getMarket(marketId);
+            return market?.marketData || {};
+        }
+        catch (error) {
+            console.error(`Failed to get market data for ${marketId}:`, error);
+            return {};
+        }
     }
     /**
      * Get CoinGecko token ID from symbol

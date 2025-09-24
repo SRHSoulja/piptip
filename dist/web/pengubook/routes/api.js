@@ -20,6 +20,46 @@ export const apiHandlers = {
             res.status(500).json({ success: false, error: "Failed to fetch unread count" });
         }
     },
+    // GET /pengubook/api/token-price/:tokenSymbol
+    async tokenPrice(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            const tokenSymbol = req.params.tokenSymbol.toUpperCase();
+            if (!tokenSymbol) {
+                return res.status(400).json({ success: false, error: "Token symbol required" });
+            }
+            // Fetch real-time price data from APIs
+            const tokenData = await priceAPI.getTokenPrices([tokenSymbol]);
+            if (!tokenData.success || !tokenData.prices[tokenSymbol]) {
+                return res.json({
+                    success: false,
+                    error: `Token ${tokenSymbol} not found in price APIs`,
+                    tokenSymbol
+                });
+            }
+            const price = tokenData.prices[tokenSymbol];
+            const change24h = tokenData.change24h?.[tokenSymbol] || null;
+            return res.json({
+                success: true,
+                tokenSymbol,
+                price,
+                change24h,
+                source: "DexScreener/CoinGecko",
+                timestamp: new Date().toISOString()
+            });
+        }
+        catch (error) {
+            console.error("Token price fetch error:", error);
+            res.status(500).json({
+                success: false,
+                error: "API error fetching token price",
+                tokenSymbol: req.params.tokenSymbol
+            });
+        }
+    },
     // GET /pengubook/api/discord-user/:discordId
     async discordUser(req, res) {
         try {
