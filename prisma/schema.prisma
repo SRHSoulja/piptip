@@ -99,9 +99,25 @@ model User {
 
   stats        UserStats? @relation("UserToStats")
 
+  // Social gaming features
+  reactionsGiven    ProfileReaction[] @relation("ReactionGiver")
+  reactionsReceived ProfileReaction[] @relation("ReactionReceiver")
+  following         UserFollow[]      @relation("Follower")
+  followers         UserFollow[]      @relation("Following")
+  activityItems     ActivityFeedItem[] @relation("ActivityUser")
+
+  // Responsible gaming protection fields
+  predictionSelfExcluded      Boolean   @default(false)
+  predictionSelfExclusionEnd  DateTime?
+  predictionDailyLossLimit    Int?      // Custom daily loss limit (atomic units)
+  predictionDailyCountLimit   Int?      // Custom daily prediction count limit
+  predictionLimitsLastReset   DateTime? // Last time daily limits were reset
+  lastAgeReminderShown        DateTime? // Last time age verification reminder was shown
+
   @@index([agwAddress])
   @@index([createdAt])
   @@index([showInPenguBook, bioLastUpdated])
+  @@index([predictionSelfExcluded, predictionSelfExclusionEnd]) // Efficient exclusion checks
 }
 
 model Tier {
@@ -395,6 +411,15 @@ model AppConfig {
   tippingPaused    Boolean  @default(false)
   achievementsEnabled Boolean @default(true)
   streakProtectionEnabled Boolean @default(true)
+
+  // Treasury Safety Features
+  treasuryMaxHoldingUSD    Decimal? // Maximum USD value treasury should hold per token
+  treasuryWarningThresholdUSD Decimal? // USD threshold for warnings
+  coldWalletAddress        String? // Address for cold storage transfers
+  treasuryMonitoringEnabled Boolean @default(false) // Enable treasury monitoring
+  autoTransferEnabled      Boolean @default(false) // Enable automatic cold wallet transfers
+  treasuryCheckIntervalMins Int     @default(60) // How often to check treasury balances
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -406,6 +431,64 @@ model ApprovedServer {
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model GuildSettings {
+  id               Int      @id @default(autoincrement())
+  guildId          String   @unique
+  channelMode      String   @default("ALLOW_ALL") // ALLOW_ALL, WHITELIST, BLACKLIST
+  allowedChannels  Json?    // Array of channel IDs where commands are allowed
+  blockedChannels  Json?    // Array of channel IDs where commands are blocked
+  tipChannels      Json?    // Specific channels for tip commands
+  gameChannels     Json?    // Specific channels for game commands
+  announcementChannel String? // Single channel for bot announcements
+  perChannelCooldowns Json? // Per-channel cooldown settings
+  featureRestrictions Json? // Feature-specific channel restrictions
+  autoSuggestChannels Boolean @default(true) // Auto-suggest channels on join
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([guildId])
+}
+
+model ChannelActivity {
+  id          Int      @id @default(autoincrement())
+  guildId     String
+  channelId   String
+  commandType String   // tip, game, profile, etc.
+  commandName String   // specific command name
+  userId      String
+  timestamp   DateTime @default(now())
+  success     Boolean  @default(true) // Whether command executed successfully
+
+  @@index([guildId, channelId])
+  @@index([guildId, timestamp])
+  @@index([commandType])
+}
+
+model ServerApplication {
+  id            Int      @id @default(autoincrement())
+  guildId       String   @unique // Discord server ID
+  guildName     String   // Server name at time of application
+  applicantId   String   // Discord user ID of person applying
+  applicantTag  String   // Discord username#discriminator
+  applicantRoles String? // JSON array of applicant's roles in the server
+  applicantPermissions String? // Applicant's key permissions (Administrator, ManageGuild, etc.)
+  isServerOwner Boolean  @default(false) // Whether applicant is the server owner
+  contactInfo   String?  // Email or other contact method
+  serverSize    Int?     // Member count
+  description   String   // What the server is about
+  useCase       String   // How they plan to use PIPTip
+  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewedBy    String?  // Admin who reviewed
+  reviewNote    String?  // Admin review comments
+  rejectionReason String? // If rejected, why
+  submittedAt   DateTime @default(now())
+  reviewedAt    DateTime?
+
+  @@index([status])
+  @@index([submittedAt])
+  @@index([isServerOwner])
 }
 
 model Ad {
@@ -430,6 +513,12 @@ model Transaction {
   txHash      String?
   metadata    String?
   createdAt   DateTime @default(now())
+
+  // USD value tracking for tax reporting and historical context
+  usdValue    Decimal? // USD value of the amount at time of transaction
+  usdFeeValue Decimal? // USD value of the fee at time of transaction
+  usdPrice    Decimal? // Token price in USD at time of transaction
+  priceSource String?  // Source of price data (dexscreener, coingecko, etc.)
 
   Token Token? @relation(fields: [tokenId], references: [id])
 
@@ -804,4 +893,130 @@ model WithdrawalAttempt {
 
   @@index([userId, createdAt]) // Fast lookup for user's recent attempts
   @@index([userId, tokenId, createdAt]) // Per-token attempt tracking
+}
+
+// Social Gaming Features Models
+
+// Profile reactions system (like, fire, diamond, etc.)
+model ProfileReaction {
+  id           Int      @id @default(autoincrement())
+  giverId      Int      // User giving the reaction
+  receiverId   Int      // User receiving the reaction
+  reactionType String   // 'like', 'fire', 'diamond', 'rocket', 'star'
+  createdAt    DateTime @default(now())
+
+  // Relations
+  giver    User @relation("ReactionGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReactionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  // Ensure one reaction type per user pair
+  @@unique([giverId, receiverId, reactionType])
+  @@index([receiverId, reactionType]) // Fast lookup for reaction counts
+  @@index([giverId, createdAt]) // User's reaction history
+}
+
+// User following system
+model UserFollow {
+  id          Int      @id @default(autoincrement())
+  followerId  Int      // User doing the following
+  followingId Int      // User being followed
+  createdAt   DateTime @default(now())
+
+  // Relations
+  follower  User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  // Prevent duplicate follows and self-following
+  @@unique([followerId, followingId])
+  @@index([followingId, createdAt]) // Followers list
+  @@index([followerId, createdAt]) // Following list
+}
+
+// Activity feed for social features
+model ActivityFeedItem {
+  id         Int      @id @default(autoincrement())
+  userId     Int      // User who performed the action
+  type       String   // 'tip', 'reaction', 'follow', 'achievement', 'join', 'challenge'
+  data       Json     // Flexible data storage for activity details
+  visibility String   @default("public") // 'public', 'followers', 'private'
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user User @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([type, createdAt]) // Feed by activity type
+  @@index([userId, createdAt]) // User's activity history
+  @@index([visibility, createdAt]) // Public feed
+}
+
+// Prediction markets system
+model PredictionMarket {
+  id              String   @id @default(cuid())
+  title           String   // "Will BTC be above $70K by Friday?"
+  description     String   // Detailed market description
+  createdAt       DateTime @default(now())
+  resolveAt       DateTime // When the market should be resolved
+  status          String   @default("ACTIVE") // ACTIVE, RESOLVED, CANCELLED
+  outcome         String?  // YES, NO (null until resolved)
+
+  // Betting pools
+  totalYesBets    Int      @default(0) // Total amount bet on YES
+  totalNoBets     Int      @default(0) // Total amount bet on NO
+  totalBetCount   Int      @default(0) // Number of individual bets
+
+  // Market configuration
+  rakePercentage  Float    @default(3.0) // House rake (default 3%)
+  minBet          Int      @default(1)
+  maxBet          Int      @default(10000)
+
+  // Market metadata
+  creatorId       String   // Discord ID of market creator
+  guildId         String   // Discord guild/server ID
+  channelId       String   // Discord channel ID
+  tokenSymbol     String   // Token used for betting (PENGUIN, ICE, etc.)
+  marketType      String   // PRICE_UP_DOWN, PRICE_ABOVE_BELOW, VOLUME_RANKING
+  marketData      Json     // Market-specific data (target price, symbol, etc.)
+
+  // Relations
+  bets            PredictionBet[]
+
+  @@index([guildId, status]) // Active markets by guild
+  @@index([status, resolveAt]) // Markets to resolve
+  @@index([creatorId, createdAt]) // User's markets
+}
+
+// Individual bets on prediction markets
+model PredictionBet {
+  id          String          @id @default(cuid())
+  marketId    String          // Which market this bet is on
+  userId      String          // Discord ID of bettor
+  side        String          // YES or NO
+  amount      Int             // Bet amount in atomic units
+  tokenSymbol String          // Token used for the bet
+  createdAt   DateTime        @default(now())
+
+  // Relations
+  market      PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@index([marketId, side]) // Bets by market and side
+  @@index([userId, createdAt]) // User's betting history
+  @@index([marketId, userId]) // User's bets on specific market
+}
+
+// Automated market creation logging
+model AutoMarketLog {
+  id                String   @id // Unique identifier for this automation event
+  marketId          String?  // Market ID if creation was successful
+  type              String   // 'crypto' or 'sports'
+  subtype           String   // Specific subtype (e.g., 'price_increase_24h', 'winner')
+  success           Boolean  // Whether market creation succeeded
+  error             String?  // Error message if creation failed
+  config            Json     // Configuration and parameters used
+  guildId           String?  // Guild where market was created
+  engagementMetrics Json?    // Post-creation engagement data
+  createdAt         DateTime @default(now())
+
+  @@index([type, createdAt]) // Logs by type and date
+  @@index([success, createdAt]) // Success/failure analysis
+  @@index([guildId, createdAt]) // Guild-specific automation logs
 }

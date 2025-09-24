@@ -1,0 +1,157 @@
+{
+  "settings": {
+    "defaultRakePercentage": 3.0,
+    "minBet": 1,
+    "maxBet": 10000,
+    "minMarketDuration": 3600,
+    "maxMarketDuration": 604800,
+    "autoResolveEnabled": true,
+    "autoResolveInterval": 300000,
+    "maxActiveMarketsPerGuild": 10,
+    "maxBetsPerUser": 50,
+    "enabledTokens": ["PENGUIN", "ICE", "PEBBLE", "USDC", "ETH"],
+    "enabledChains": ["ethereum", "polygon", "arbitrum", "optimism", "base"]
+  },
+  "templates": {
+    "PRICE_UP_DOWN": {
+      "name": "Price Direction",
+      "description": "Will {symbol} price be higher than now at {resolveTime}?",
+      "marketType": "PRICE_UP_DOWN",
+      "requiredParams": ["symbol", "resolveTime"],
+      "defaultDuration": 86400,
+      "category": "price",
+      "examples": [
+        "Will BTC be higher than $67,000 at midnight?",
+        "Will ETH price go up from current level by tomorrow?",
+        "Will PEPE be worth more in 24 hours?"
+      ]
+    },
+    "PRICE_ABOVE_BELOW": {
+      "name": "Price Target",
+      "description": "Will {symbol} be above ${targetPrice} at {resolveTime}?",
+      "marketType": "PRICE_ABOVE_BELOW",
+      "requiredParams": ["symbol", "targetPrice", "resolveTime"],
+      "defaultDuration": 86400,
+      "category": "price",
+      "examples": [
+        "Will BTC be above $70,000 by Friday?",
+        "Will ETH reach $4,000 this week?",
+        "Will DOGE hit $0.50 by month end?"
+      ]
+    },
+    "VOLUME_RANKING": {
+      "name": "Volume Ranking",
+      "description": "Will {symbol} be in top {targetRank} by volume on {chain} today?",
+      "marketType": "VOLUME_RANKING",
+      "requiredParams": ["symbol", "targetRank", "chain"],
+      "defaultDuration": 86400,
+      "category": "trading",
+      "examples": [
+        "Will SHIB be in top 3 by volume on Ethereum today?",
+        "Will UNI be top 5 by trading volume?",
+        "Will this memecoin crack top 10 volume on Base?"
+      ]
+    }
+  },
+  "quickMarkets": {
+    "btc_70k": {
+      "title": "🚀 Bitcoin $70K Today?",
+      "template": "PRICE_ABOVE_BELOW",
+      "params": {
+        "symbol": "BTC",
+        "targetPrice": 70000,
+        "duration": 86400
+      }
+    },
+    "eth_4k": {
+      "title": "📈 Ethereum $4K This Week?",
+      "template": "PRICE_ABOVE_BELOW",
+      "params": {
+        "symbol": "ETH",
+        "targetPrice": 4000,
+        "duration": 604800
+      }
+    },
+    "daily_btc": {
+      "title": "📊 Bitcoin Up Today?",
+      "template": "PRICE_UP_DOWN",
+      "params": {
+        "symbol": "BTC",
+        "duration": 86400
+      }
+    },
+    "daily_eth": {
+      "title": "📊 Ethereum Up Today?",
+      "template": "PRICE_UP_DOWN",
+      "params": {
+        "symbol": "ETH",
+        "duration": 86400
+      }
+    }
+  },
+  "chains": {
+    "ethereum": {
+      "name": "Ethereum",
+      "symbol": "ETH",
+      "explorer": "https://etherscan.io"
+    },
+    "polygon": {
+      "name": "Polygon",
+      "symbol": "MATIC",
+      "explorer": "https://polygonscan.com"
+    },
+    "arbitrum": {
+      "name": "Arbitrum",
+      "symbol": "ARB",
+      "explorer": "https://arbiscan.io"
+    },
+    "optimism": {
+      "name": "Optimism",
+      "symbol": "OP",
+      "explorer": "https://optimistic.etherscan.io"
+    },
+    "base": {
+      "name": "Base",
+      "symbol": "ETH",
+      "explorer": "https://basescan.org"
+    }
+  },
+  "riskLimits": {
+    "maxBetAmount": {
+      "PENGUIN": 10000,
+      "ICE": 10000,
+      "PEBBLE": 10000,
+      "USDC": 1000,
+      "ETH": 10
+    },
+    "maxTotalMarketSize": {
+      "PENGUIN": 100000,
+      "ICE": 100000,
+      "PEBBLE": 100000,
+      "USDC": 10000,
+      "ETH": 100
+    },
+    "maxMarketsPerUser": 5,
+    "cooldownBetweenMarkets": 3600
+  },
+  "notifications": {
+    "marketCreated": {
+      "enabled": true,
+      "channel": "prediction-markets"
+    },
+    "marketResolved": {
+      "enabled": true,
+      "channel": "prediction-markets"
+    },
+    "bigBet": {
+      "enabled": true,
+      "threshold": 1000,
+      "channel": "prediction-markets"
+    },
+    "marketExpiring": {
+      "enabled": true,
+      "warningTime": 3600,
+      "channel": "prediction-markets"
+    }
+  }
+}

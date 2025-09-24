@@ -135,6 +135,206 @@ export function getCommandsJson() {
             { name: "💰 Wealth", value: "wealth" }
           )
       ),
+
+    new SlashCommandBuilder()
+      .setName("pip_apply")
+      .setDescription("📝 Apply for PIPTip access for your Discord server"),
+
+    new SlashCommandBuilder()
+      .setName("pip_markets")
+      .setDescription("📊 View active prediction markets in this server"),
+
+    new SlashCommandBuilder()
+      .setName("pip_bet")
+      .setDescription("💰 Place a bet on a prediction market")
+      .addStringOption(option =>
+        option.setName("market_id")
+          .setDescription("Market ID to bet on")
+          .setRequired(true)
+      )
+      .addStringOption(option =>
+        option.setName("side")
+          .setDescription("Bet YES or NO")
+          .setRequired(true)
+          .addChoices(
+            { name: "YES", value: "YES" },
+            { name: "NO", value: "NO" }
+          )
+      )
+      .addIntegerOption(option =>
+        option.setName("amount")
+          .setDescription("Amount to bet")
+          .setRequired(true)
+          .setMinValue(1)
+      ),
+
+    new SlashCommandBuilder()
+      .setName("pip_create_market")
+      .setDescription("📊 Create a new prediction market")
+      .addStringOption(option =>
+        option.setName("type")
+          .setDescription("Type of market to create")
+          .setRequired(true)
+          .addChoices(
+            { name: "Price Up/Down", value: "PRICE_UP_DOWN" },
+            { name: "Price Above/Below", value: "PRICE_ABOVE_BELOW" },
+            { name: "Volume Ranking", value: "VOLUME_RANKING" },
+            { name: "Sports: Winner Prediction", value: "SPORTS_WINNER" },
+            { name: "Sports: Score Prediction", value: "SPORTS_OVER_UNDER" },
+            { name: "Sports: Spread Prediction", value: "SPORTS_SPREAD" }
+          )
+      )
+      .addStringOption(option =>
+        option.setName("symbol")
+          .setDescription("Token symbol (e.g., BTC, ETH, PEPE) - not needed for sports markets")
+          .setRequired(false)
+      )
+      .addIntegerOption(option =>
+        option.setName("hours")
+          .setDescription("Hours until market resolves")
+          .setRequired(true)
+          .setMinValue(1)
+          .setMaxValue(168)
+      )
+      .addStringOption(option =>
+        option.setName("token")
+          .setDescription("Token to use for betting")
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
+      .addNumberOption(option =>
+        option.setName("target_price")
+          .setDescription("Target price (required for price target markets)")
+          .setRequired(false)
+      )
+      .addIntegerOption(option =>
+        option.setName("target_rank")
+          .setDescription("Target rank (required for volume ranking markets)")
+          .setRequired(false)
+          .setMinValue(1)
+          .setMaxValue(100)
+      )
+      .addStringOption(option =>
+        option.setName("chain")
+          .setDescription("Blockchain (required for volume ranking markets)")
+          .setRequired(false)
+          .addChoices(
+            { name: "Ethereum", value: "ethereum" },
+            { name: "Polygon", value: "polygon" },
+            { name: "Arbitrum", value: "arbitrum" },
+            { name: "Optimism", value: "optimism" },
+            { name: "Base", value: "base" }
+          )
+      )
+      .addStringOption(option =>
+        option.setName("teams")
+          .setDescription("Teams playing (e.g., 'Lakers vs Celtics') - for sports markets")
+          .setRequired(false)
+      )
+      .addStringOption(option =>
+        option.setName("bet_on")
+          .setDescription("What to predict (e.g., 'Lakers win', 'over 220 points') - for sports markets")
+          .setRequired(false)
+      )
+      .addStringOption(option =>
+        option.setName("league")
+          .setDescription("Sports league")
+          .setRequired(false)
+          .addChoices(
+            { name: "NFL", value: "NFL" },
+            { name: "NBA", value: "NBA" },
+            { name: "Premier League", value: "Premier League" },
+            { name: "MLB", value: "MLB" },
+            { name: "Champions League", value: "Champions League" },
+            { name: "La Liga", value: "La Liga" },
+            { name: "Serie A", value: "Serie A" },
+            { name: "Bundesliga", value: "Bundesliga" }
+          )
+      )
+      .addNumberOption(option =>
+        option.setName("total_points")
+          .setDescription("Total points for over/under prediction markets")
+          .setRequired(false)
+      )
+      .addNumberOption(option =>
+        option.setName("spread_points")
+          .setDescription("Point spread for spread prediction markets")
+          .setRequired(false)
+      ),
+
+    new SlashCommandBuilder()
+      .setName("pip_settings")
+      .setDescription("⚙️ Configure PIPTip channel settings and permissions")
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("channels")
+          .setDescription("View and configure channel settings")
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("setup")
+          .setDescription("Quick setup wizard for channel configuration")
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("activity")
+          .setDescription("View channel activity and usage statistics")
+          .addIntegerOption(option =>
+            option.setName("hours")
+              .setDescription("Hours to look back (default: 24)")
+              .setRequired(false)
+              .setMinValue(1)
+              .setMaxValue(168)
+          )
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("reset")
+          .setDescription("Reset all channel settings to defaults")
+      ),
+
+    new SlashCommandBuilder()
+      .setName("pip_safety")
+      .setDescription("🛡️ Responsible gaming and prediction safety controls")
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("limits")
+          .setDescription("View or set your daily prediction limits")
+          .addIntegerOption(option =>
+            option.setName("max_daily_loss")
+              .setDescription("Maximum tokens you can lose per day (0 to disable)")
+              .setRequired(false)
+              .setMinValue(0)
+          )
+          .addIntegerOption(option =>
+            option.setName("max_daily_predictions")
+              .setDescription("Maximum predictions you can make per day (0 to disable)")
+              .setRequired(false)
+              .setMinValue(0)
+          )
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("exclude")
+          .setDescription("Self-exclude from predictions for a specified time period")
+          .addIntegerOption(option =>
+            option.setName("duration_hours")
+              .setDescription("Hours to exclude yourself (24 hours default, 0 for permanent)")
+              .setRequired(false)
+              .setMinValue(0)
+              .setMaxValue(8760)
+          )
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("status")
+          .setDescription("View your current responsible gaming status and settings")
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName("reminder")
+          .setDescription("View responsible gaming guidelines and resources")
+      ),
   ];
   return defs.map(d => d.toJSON());
 }

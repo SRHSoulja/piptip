@@ -18,10 +18,17 @@ class RedisTimerService {
   async initialize(discordClient: Client): Promise<void> {
     this.discordClient = discordClient;
 
+    // Skip Redis initialization if disabled for testing or not configured
+    if (!process.env.REDIS_URL || process.env.REDIS_URL === '') {
+      console.log('Redis timer service disabled - falling back to existing timer system');
+      this.isConnected = false;
+      return;
+    }
+
     try {
       // Main Redis client for setting timers
       this.client = createClient({
-        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        url: process.env.REDIS_URL,
         socket: {
           connectTimeout: 5000
         }
@@ -29,7 +36,7 @@ class RedisTimerService {
 
       // Subscriber client for expiration events
       this.subscriber = createClient({
-        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        url: process.env.REDIS_URL,
         socket: {
           connectTimeout: 5000
         }

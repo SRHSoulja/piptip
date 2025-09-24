@@ -13,6 +13,8 @@ import { handlePromptLinkWallet, handleLinkWalletModal, handleLinkWalletSubmit }
 import { handleShowDepositInstructions, handleDepositToken, handleCancelDeposit } from "./buttons/deposits.js";
 import { handlePenguBookModes, handleBioToggle, handleTipFromBook, handleViewOwnBio, handlePenguBookCTA, handlePenguBookProfile, handlePenguBookInbox } from "./buttons/pengubook.js";
 import { handleRefreshAchievements, handleShowLeaderboard, handleViewOwnAchievements } from "./buttons/achievements.js";
+import { handleServerApplicationModal } from "./server_application_modal.js";
+import { handleSettingsMode, handleSettingsChannels, handleSelectMode, handleAddAllowed, handleAddBlocked, handleSelectAllowed, handleSelectBlocked, handleFeatureChannels, handleSetupEverywhere, handleSetupGaming, handleSetupStrict } from "./buttons/settings.js";
 /** Router for pip button customIds: pip:<action>:<matchId>:<move?> */
 // Main handler that routes by interaction type using type guards
 export async function handlePipButton(i) {
@@ -53,6 +55,38 @@ async function handlePipButtonInteraction(i) {
             return handleJoin(i, payload.matchId, payload.move);
         case 'PIP_CANCEL':
             return handleCancel(i, payload.matchId);
+        // Settings interactions
+        case 'PIP_SETTINGS_MODE':
+            return handleSettingsMode(i);
+        case 'PIP_SETTINGS_CHANNELS':
+            return handleSettingsChannels(i);
+        case 'PIP_FEATURE_CHANNELS':
+            return handleFeatureChannels(i);
+        case 'PIP_ADD_ALLOWED':
+            return handleAddAllowed(i);
+        case 'PIP_ADD_BLOCKED':
+            return handleAddBlocked(i);
+        case 'PIP_SETUP_EVERYWHERE':
+            return handleSetupEverywhere(i);
+        case 'PIP_SETUP_GAMING':
+            return handleSetupGaming(i);
+        case 'PIP_SETUP_STRICT':
+            return handleSetupStrict(i);
+        case 'PIP_OPEN_SETTINGS':
+            // Handle opening settings from error messages
+            const pipSettings = (await import("../commands/pip_settings.js")).default;
+            const fakeInteraction = Object.assign(Object.create(Object.getPrototypeOf(i)), i, {
+                options: {
+                    getSubcommand: () => "channels"
+                },
+                reply: async (options) => {
+                    if (options.flags === 64) {
+                        delete options.flags;
+                    }
+                    return i.update(options);
+                }
+            });
+            return pipSettings(fakeInteraction);
         case 'UNKNOWN':
             return handleLegacyPipButton(i);
         default:
@@ -72,6 +106,14 @@ async function handlePipModalInteraction(i) {
     switch (payload.kind) {
         case 'PIP_LINK_WALLET_SUBMIT':
             return handleLinkWalletSubmit(i);
+        case 'PIP_SERVER_APPLICATION_SUBMIT':
+            return handleServerApplicationModal(i);
+        case 'PIP_SELECT_MODE':
+            return handleSelectMode(i);
+        case 'PIP_SELECT_ALLOWED':
+            return handleSelectAllowed(i);
+        case 'PIP_SELECT_BLOCKED':
+            return handleSelectBlocked(i);
         case 'UNKNOWN':
             return handleLegacyPipModal(i);
         default:

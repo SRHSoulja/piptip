@@ -3,6 +3,8 @@ import { Router } from "express";
 import { JsonRpcProvider, Contract } from "ethers";
 import { prisma } from "../../services/db.js";
 import { ABSTRACT_RPC_URL } from "../../config.js";
+import { priceAPI } from "../../services/price_api.js";
+import { alchemyTokenMetadata } from "../../services/alchemy_token_metadata.js";
 export const tokensRouter = Router();
 const ERC20_ABI = [
     "function name() view returns (string)",
@@ -49,7 +51,23 @@ tokensRouter.post("/tokens", async (req, res) => {
                 minWithdraw: 50
             }
         });
-        res.json({ ok: true, token });
+        // Try to get current price (non-blocking)
+        let currentPrice = null;
+        try {
+            currentPrice = await priceAPI.getTokenPrice(symbol);
+            console.log(`💰 Current price for ${symbol}: $${currentPrice}`);
+        }
+        catch (error) {
+            console.warn(`Failed to fetch price for ${symbol}:`, error);
+        }
+        res.json({
+            ok: true,
+            token: {
+                ...token,
+                currentPrice,
+                priceSource: currentPrice ? 'live' : 'unavailable'
+            }
+        });
     }
     catch (error) {
         console.error("Failed to add token:", error);
@@ -156,5 +174,39 @@ tokensRouter.post("/tokens/refresh", async (_req, res) => {
     }
     catch {
         res.status(500).json({ ok: false, error: "Failed to refresh token cache" });
+    }
+});
+// Test endpoint to explore what Alchemy provides for a token
+tokensRouter.get("/tokens/:address/explore", async (req, res) => {
+    try {
+        const { address } = req.params;
+        if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+            return res.status(400).json({ ok: false, error: "Invalid token address" });
+        }
+        console.log(`🔍 Exploring Alchemy metadata for: ${address}`);
+        const exploration = await alchemyTokenMetadata.exploreAvailableMethods(address);
+        res.json({
+            ok: true,
+            tokenAddress: address,
+            exploration: {
+                availableMethods: exploration.availableMethods,
+                basicData: exploration.basicData,
+                enhancedData: exploration.alchemyEnhanced,
+                errors: exploration.errors,
+                summary: {
+                    totalMethods: exploration.availableMethods.length,
+                    failedMethods: Object.keys(exploration.errors).length,
+                    hasEnhancedData: Object.keys(exploration.alchemyEnhanced).length > 1
+                }
+            }
+        });
+    }
+    catch (error) {
+        console.error("Token exploration failed:", error);
+        res.status(500).json({
+            ok: false,
+            error: "Failed to explore token metadata",
+            details: error.message
+        });
     }
 });

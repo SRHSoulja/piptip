@@ -2,7 +2,7 @@
 import { MessageFlags } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { prisma } from "../services/db.js";
-import { formatDecimal } from "../services/token.js";
+import { formatDecimal, formatDecimalWithUSD } from "../services/token.js";
 export default async function pipStats(i) {
     try {
         // Check if user has account
@@ -143,13 +143,20 @@ export default async function pipStats(i) {
             })
         ]);
         // No need for tokenMap anymore since we include Token data in the transaction query
-        // Format balance display
-        const balanceText = balances.length > 0
-            ? balances
-                .filter(b => Number(b.amount) > 0)
-                .map(b => `${formatDecimal(b.amount, b.Token.symbol)} ${b.Token.symbol}`)
-                .join(", ") || "0 tokens"
-            : "0 tokens";
+        // Format balance display with USD values
+        let balanceText = "0 tokens";
+        if (balances.length > 0) {
+            const nonZeroBalances = balances.filter(b => Number(b.amount) > 0);
+            if (nonZeroBalances.length > 0) {
+                const formattedBalances = await Promise.all(nonZeroBalances.map(async (b) => {
+                    return await formatDecimalWithUSD(b.amount, b.Token.symbol, { compact: true });
+                }));
+                balanceText = formattedBalances.join(", ");
+            }
+            else {
+                balanceText = "0 tokens";
+            }
+        }
         // Calculate total transaction counts
         const totalDeposits = depositStats.reduce((sum, stat) => sum + stat._count.id, 0);
         const totalWithdrawals = withdrawStats.reduce((sum, stat) => sum + stat._count.id, 0);
@@ -201,8 +208,8 @@ export default async function pipStats(i) {
             .setTimestamp();
         // Add recent activity field if there are recent transactions
         if (recentTransactions.length > 0) {
-            const recentActivity = recentTransactions
-                .map(tx => {
+            const recentActivityPromises = recentTransactions
+                .map(async (tx) => {
                 // Determine direction based on user's role in the transaction
                 let direction = "";
                 if (tx.type === "TIP") {
@@ -215,10 +222,24 @@ export default async function pipStats(i) {
                 }
                 const timeAgo = `<t:${Math.floor(tx.createdAt.getTime() / 1000)}:R>`;
                 const tokenSymbol = tx.Token?.symbol || "tokens";
-                const amount = formatDecimal(tx.amount, tokenSymbol);
-                return `${tx.type}${direction}: ${amount} ${timeAgo}`;
-            })
-                .join("\n");
+                // Show historical USD value if available, otherwise current USD value
+                let formattedAmount;
+                if (tx.usdValue && tx.usdValue > 0) {
+                    // Use historical USD value from transaction record
+                    const historicalUSD = parseFloat(tx.usdValue);
+                    const usdFormatted = historicalUSD < 1
+                        ? `$${historicalUSD.toFixed(4).replace(/\.?0+$/, "")}`
+                        : `$${historicalUSD.toFixed(2).replace(/\.?0+$/, "")}`;
+                    formattedAmount = `${formatDecimal(Number(tx.amount), tokenSymbol)} (${usdFormatted} historical)`;
+                }
+                else {
+                    // Fall back to current USD value
+                    formattedAmount = await formatDecimalWithUSD(tx.amount, tokenSymbol, { compact: true });
+                }
+                return `${tx.type}${direction}: ${formattedAmount} ${timeAgo}`;
+            });
+            const recentActivityArray = await Promise.all(recentActivityPromises);
+            const recentActivity = recentActivityArray.join("\n");
             embed.addFields({
                 name: "🕒 Recent Activity",
                 value: recentActivity,

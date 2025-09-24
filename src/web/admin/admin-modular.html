@@ -27,6 +27,39 @@
         .fee-success { background: #065f46; color: #d1fae5; }
         .fee-warning { background: #92400e; color: #fef3c7; }
         .fee-error { background: #7f1d1d; color: #fecaca; }
+
+        /* Channel management styles */
+        .channel-mode { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .channel-mode.allow_all { background: #065f46; color: #d1fae5; }
+        .channel-mode.whitelist { background: #1e40af; color: #dbeafe; }
+        .channel-mode.blacklist { background: #92400e; color: #fef3c7; }
+        .overview-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; }
+        .stat-item { background: #333; padding: 10px; border-radius: 4px; text-align: center; }
+        .stat-value { font-size: 18px; font-weight: bold; color: #60a5fa; }
+        .stat-label { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .btn-primary { background: #3b82f6; }
+        .btn-secondary { background: #6b7280; }
+        .btn-danger { background: #ef4444; }
+        .btn-info { background: #0891b2; }
+        .channel-details { max-width: 100%; }
+        .detail-section { margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px; }
+        .detail-section h4 { margin-top: 0; color: #60a5fa; }
+        .channel-lists { display: grid; gap: 10px; }
+        .channel-list { padding: 10px; background: #2a2a2a; border-radius: 4px; }
+        .channel-ids { font-family: monospace; font-size: 11px; color: #9ca3af; margin-top: 4px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; background: #333; border: 1px solid #555; color: #e5e5e5; padding: 8px; border-radius: 4px; }
+        .form-actions { display: flex; gap: 10px; margin-top: 20px; }
+        .activity-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .summary-item { background: #333; padding: 15px; border-radius: 6px; text-align: center; }
+        .summary-value { font-size: 24px; font-weight: bold; color: #10b981; }
+        .summary-label { font-size: 12px; color: #9ca3af; margin-top: 5px; }
+        .activity-table table { width: 100%; margin-top: 10px; }
+        .command-list { display: grid; gap: 8px; }
+        .command-item { display: flex; justify-content: space-between; padding: 8px; background: #2a2a2a; border-radius: 4px; }
+        .command-name { font-weight: bold; }
+        .command-count { color: #9ca3af; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -122,6 +155,207 @@
             <table id="tiersTbl">
                 <thead>
                     <tr><th>ID</th><th>Name</th><th>Description</th><th>Price</th><th>Active</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Servers Section -->
+        <div class="section">
+            <h2>🖥️ Approved Servers</h2>
+            <div id="serversMsg"></div>
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">➕ Add Server</h3>
+                <label for="newServerGuildId">Guild ID:</label>
+                <input type="text" id="newServerGuildId" name="newServerGuildId" placeholder="Discord Guild ID" style="width: 200px;">
+                <label for="newServerName">Server Name (Optional):</label>
+                <input type="text" id="newServerName" name="newServerName" placeholder="Server name" style="width: 200px;">
+                <button id="addServer">Add Server</button>
+            </div>
+            <table id="serversTbl">
+                <thead>
+                    <tr><th>ID</th><th>Guild ID</th><th>Server Name</th><th>Enabled</th><th>Added</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Channel Management Section -->
+        <div class="section">
+            <h2>🔧 Channel Management</h2>
+            <div id="channelsMsg"></div>
+
+            <!-- Channel Overview -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">📊 Channel Settings Overview</h3>
+                <div id="channelOverview" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px;">
+                    <!-- Overview stats will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <table id="channelsTbl">
+                <thead>
+                    <tr>
+                        <th>Guild ID</th>
+                        <th>Server Name</th>
+                        <th>Mode</th>
+                        <th>Allowed</th>
+                        <th>Blocked</th>
+                        <th>Tips</th>
+                        <th>Games</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Channel Details Modal -->
+        <div id="channelDetailsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
+            <div style="position: relative; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; border: 1px solid #444; border-radius: 8px; padding: 20px; max-width: 800px; max-height: 80vh; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0;">Channel Details</h3>
+                    <button onclick="closeChannelDetailsModal()" style="background: #ef4444;">❌ Close</button>
+                </div>
+                <div id="channelDetailsContent"></div>
+            </div>
+        </div>
+
+        <!-- Channel Edit Modal -->
+        <div id="channelEditModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
+            <div style="position: relative; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; border: 1px solid #444; border-radius: 8px; padding: 20px; max-width: 600px; max-height: 80vh; overflow-y: auto;">
+                <div id="channelEditContent"></div>
+            </div>
+        </div>
+
+        <!-- Channel Activity Modal -->
+        <div id="channelActivityModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
+            <div style="position: relative; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; border: 1px solid #444; border-radius: 8px; padding: 20px; max-width: 900px; max-height: 80vh; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0;">Channel Activity</h3>
+                    <button onclick="closeChannelActivityModal()" style="background: #ef4444;">❌ Close</button>
+                </div>
+                <div id="channelActivityContent"></div>
+            </div>
+        </div>
+
+        <!-- Server Applications Section -->
+        <div class="section">
+            <h2>📝 Server Applications</h2>
+            <div id="serverApplicationsMsg"></div>
+
+            <!-- Application Statistics -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">📊 Application Statistics</h3>
+                <div id="applicationStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                    <div style="background: #333; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="color: #60a5fa; font-size: 12px;">Total</div>
+                        <div id="totalApplications" style="font-size: 20px; font-weight: bold;">-</div>
+                    </div>
+                    <div style="background: #333; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="color: #fbbf24; font-size: 12px;">Pending</div>
+                        <div id="pendingApplications" style="font-size: 20px; font-weight: bold;">-</div>
+                    </div>
+                    <div style="background: #333; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="color: #10b981; font-size: 12px;">Approved</div>
+                        <div id="approvedApplications" style="font-size: 20px; font-weight: bold;">-</div>
+                    </div>
+                    <div style="background: #333; padding: 10px; border-radius: 4px; text-align: center;">
+                        <div style="color: #ef4444; font-size: 12px;">Rejected</div>
+                        <div id="rejectedApplications" style="font-size: 20px; font-weight: bold;">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Controls -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">🔍 Filter Applications</h3>
+                <label for="applicationStatusFilter">Status:</label>
+                <select id="applicationStatusFilter" style="width: 150px;">
+                    <option value="">All Status</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                </select>
+                <button id="filterApplications">Filter</button>
+                <button id="refreshApplications">🔄 Refresh</button>
+            </div>
+
+            <table id="serverApplicationsTbl">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Server</th>
+                        <th>Applicant</th>
+                        <th>Status</th>
+                        <th>Submitted</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Prediction Markets Section -->
+        <div class="section">
+            <h2>🎯 Prediction Markets</h2>
+            <div id="marketsMsg"></div>
+
+            <!-- Market Stats Dashboard -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">📊 Market Statistics</h3>
+                <div class="overview-stats" id="marketStats">
+                    <!-- Stats will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Market Controls -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">🔧 Market Controls</h3>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="refreshMarkets">🔄 Refresh Markets</button>
+                    <button id="resolveExpiredMarkets">⏰ Resolve Expired Markets</button>
+                    <button id="restartAutomation">🔄 Restart Automation</button>
+                    <button id="exportMarketData">📊 Export Data</button>
+                </div>
+                <div id="automationStatus" style="margin-top: 10px; padding: 8px; background: #0f1419; border-radius: 4px;">
+                    <span style="color: #9ca3af;">Automation Status: </span>
+                    <span id="automationIndicator">Loading...</span>
+                </div>
+            </div>
+
+            <!-- Market Filters -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">🔍 Filters</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                    <select id="marketStatusFilter">
+                        <option value="all">All Status</option>
+                        <option value="ACTIVE">Active</option>
+                        <option value="RESOLVED">Resolved</option>
+                        <option value="CANCELLED">Cancelled</option>
+                    </select>
+                    <input type="text" id="marketGuildFilter" placeholder="Guild ID (optional)">
+                    <button id="applyMarketFilters">Apply Filters</button>
+                    <button id="clearMarketFilters">Clear</button>
+                </div>
+            </div>
+
+            <!-- Markets Table -->
+            <table id="marketsTbl">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Token</th>
+                        <th>Status</th>
+                        <th>Pool Size</th>
+                        <th>Bets</th>
+                        <th>Odds (Y/N)</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                    </tr>
                 </thead>
                 <tbody></tbody>
             </table>

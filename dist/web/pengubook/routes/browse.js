@@ -46,9 +46,44 @@ export async function browseHandler(req, res) {
             where: { id: user.id, bio: { not: null } },
             select: { bio: true }
         });
+        // Get top 3 users for leaderboard podium
+        const topUsers = users
+            .filter(u => (u.wins + u.losses) > 0)
+            .sort((a, b) => {
+            const winRateA = a.wins / (a.wins + a.losses);
+            const winRateB = b.wins / (b.wins + b.losses);
+            if (winRateA !== winRateB)
+                return winRateB - winRateA;
+            return (b.wins + b.losses) - (a.wins + a.losses); // Tie-breaker: total games
+        })
+            .slice(0, 3);
         const content = `
     <div class="pg-container">
         <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">👥 Browse PenguBook Users</h1>
+
+        ${topUsers.length >= 3 ? `
+        <!-- Leaderboard Podium -->
+        <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
+            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">🏆 Top Players</h2>
+            <div class="pg-leaderboard-podium">
+                ${topUsers.map((user, index) => {
+            const winRate = ((user.wins / (user.wins + user.losses)) * 100).toFixed(1);
+            const podiumClass = index === 0 ? 'first' : index === 1 ? 'second' : 'third';
+            const crown = index === 0 ? '👑' : index === 1 ? '🥈' : '🥉';
+            const rank = index + 1;
+            return `
+                    <div class="pg-podium-place pg-podium-place--${podiumClass}">
+                        <div class="pg-podium-crown">${crown}</div>
+                        <div class="pg-podium-rank">#${rank}</div>
+                        <div class="pg-podium-user" id="podium-username-${user.discordId}">User#${user.discordId.slice(-4)}</div>
+                        <div class="pg-podium-score">${winRate}% Win Rate</div>
+                        <div style="font-size: var(--pg-text-sm); margin-top: var(--pg-space-1);">${user.wins}W ${user.losses}L</div>
+                    </div>
+                  `;
+        }).join('')}
+            </div>
+        </div>
+        ` : ''}
 
         ${users.length === 0 ? `
         <div class="pg-empty-state">
@@ -139,14 +174,63 @@ export async function browseHandler(req, res) {
                 if (data.success) {
                     const usernameEl = document.getElementById('username-${user.discordId}');
                     const avatarEl = document.getElementById('avatar-${user.discordId}');
+                    const podiumUsernameEl = document.getElementById('podium-username-${user.discordId}');
+
                     if (usernameEl) usernameEl.textContent = data.username;
                     if (avatarEl) avatarEl.src = data.avatarURL;
+                    if (podiumUsernameEl) podiumUsernameEl.textContent = data.username;
                 }
             })
             .catch(() => {
                 // Silently fail with fallback already in place
             });
         `).join('')}
+
+        // Add sparkle effects to podium on load
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const podiumPlaces = document.querySelectorAll('.pg-podium-place');
+                podiumPlaces.forEach((place, index) => {
+                    setTimeout(() => {
+                        place.style.transform = 'translateY(0px)';
+                        place.style.opacity = '1';
+
+                        // Add celebration effect for first place
+                        if (index === 0) {
+                            createCelebrationEffect(place);
+                        }
+                    }, index * 200);
+                });
+            }, 500);
+        });
+
+        function createCelebrationEffect(element) {
+            const emojis = ['🎉', '✨', '🏆', '👑', '⭐'];
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    const celebration = document.createElement('div');
+                    celebration.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
+                    celebration.style.position = 'absolute';
+                    celebration.style.fontSize = '20px';
+                    celebration.style.zIndex = '9999';
+                    celebration.style.pointerEvents = 'none';
+
+                    const rect = element.getBoundingClientRect();
+                    celebration.style.left = rect.left + Math.random() * rect.width + 'px';
+                    celebration.style.top = rect.top + Math.random() * rect.height + 'px';
+
+                    document.body.appendChild(celebration);
+
+                    celebration.animate([
+                        { transform: 'translateY(0px) scale(0)', opacity: 1 },
+                        { transform: 'translateY(-50px) scale(1)', opacity: 0 }
+                    ], {
+                        duration: 2000,
+                        easing: 'ease-out'
+                    }).onfinish = () => celebration.remove();
+                }, i * 300);
+            }
+        }
     </script>`;
         res.send(generateBaseHTML(content, '👥 Browse Users - PenguBook', 'browse', {
             user: currentUser,

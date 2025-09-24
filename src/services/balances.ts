@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { incrementNegativeBalanceAttempts } from "./metrics.js";
 import { BalanceConservationService } from "./balance_conservation.js";
 import { cache, CacheKeys, CacheTTL } from "./cache.js";
+import { priceAPI } from "./price_api.js";
 
 // Legacy compatibility function for existing commands
 export async function debit(discordId: string, amountAtomic: bigint, type = "MATCH_WAGER") {
@@ -81,6 +82,7 @@ export async function logTxAtomicTx(
     feeAtomic?: bigint;
     txHash?: string | null;
     note?: string | null; // stored as TEXT in SQLite
+    tokenSymbol?: string; // Optional: if provided, will capture USD value
   }
 ) {
   const {
@@ -94,7 +96,33 @@ export async function logTxAtomicTx(
     feeAtomic = 0n,
     txHash = null,
     note = null,
+    tokenSymbol = null,
   } = params;
+
+  // Capture USD values for tax reporting and historical context
+  let usdValue: string | null = null;
+  let usdFeeValue: string | null = null;
+  let usdPrice: string | null = null;
+  let priceSource: string | null = null;
+
+  if (tokenSymbol) {
+    try {
+      const priceResult = await priceAPI.getTokenPrices([tokenSymbol]);
+      if (priceResult.success && priceResult.prices[tokenSymbol]) {
+        const tokenPrice = priceResult.prices[tokenSymbol];
+        const amountInTokens = parseFloat(toDecStr(amountAtomic, decimals));
+        const feeInTokens = parseFloat(toDecStr(feeAtomic, decimals));
+
+        usdPrice = tokenPrice.toString();
+        usdValue = (amountInTokens * tokenPrice).toString();
+        usdFeeValue = (feeInTokens * tokenPrice).toString();
+        priceSource = priceResult.source;
+      }
+    } catch (error) {
+      // Silently continue without USD values if price fetch fails
+      console.warn(`Failed to get USD values for transaction: ${error}`);
+    }
+  }
 
   await db.transaction.create({
     data: {
@@ -107,6 +135,11 @@ export async function logTxAtomicTx(
       fee: toDecStr(feeAtomic, decimals),
       txHash: txHash ?? undefined,
       metadata: note ?? null,
+      // USD value tracking for tax reporting
+      usdValue: usdValue ? parseFloat(usdValue) : null,
+      usdFeeValue: usdFeeValue ? parseFloat(usdFeeValue) : null,
+      usdPrice: usdPrice ? parseFloat(usdPrice) : null,
+      priceSource: priceSource,
     },
   });
 }
@@ -196,6 +229,7 @@ export async function debitToken(
       feeAtomic: opts.feeAtomic ?? 0n,
       txHash: opts.txHash ?? null,
       note: opts.note ?? null,
+      tokenSymbol: token.symbol, // Include symbol for USD tracking
     });
   }, { timeout: 15000, maxWait: 15000 });
 
@@ -244,6 +278,7 @@ export async function creditToken(
       feeAtomic: opts.feeAtomic ?? 0n,
       txHash: opts.txHash ?? null,
       note: opts.note ?? null,
+      tokenSymbol: token.symbol, // Include symbol for USD tracking
     });
   }, { timeout: 15000, maxWait: 15000 });
 

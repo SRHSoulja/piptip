@@ -62,6 +62,38 @@ export function parseCustomId(customId) {
                 case 'link_wallet_submit':
                     // This is for modal submissions where wallet address is in the modal fields
                     return { kind: 'PIP_LINK_WALLET_SUBMIT', walletAddress: '' }; // Address comes from modal fields
+                case 'server_application':
+                    // Format: pip:server_application:guildId
+                    if (parts.length >= 3) {
+                        const guildId = parts[2];
+                        return { kind: 'PIP_SERVER_APPLICATION_SUBMIT', guildId };
+                    }
+                    break;
+                // Settings interactions
+                case 'settings_mode':
+                    return { kind: 'PIP_SETTINGS_MODE' };
+                case 'settings_channels':
+                    return { kind: 'PIP_SETTINGS_CHANNELS' };
+                case 'feature_channels':
+                    return { kind: 'PIP_FEATURE_CHANNELS' };
+                case 'select_mode':
+                    return { kind: 'PIP_SELECT_MODE' };
+                case 'add_allowed':
+                    return { kind: 'PIP_ADD_ALLOWED' };
+                case 'add_blocked':
+                    return { kind: 'PIP_ADD_BLOCKED' };
+                case 'select_allowed':
+                    return { kind: 'PIP_SELECT_ALLOWED' };
+                case 'select_blocked':
+                    return { kind: 'PIP_SELECT_BLOCKED' };
+                case 'setup_everywhere':
+                    return { kind: 'PIP_SETUP_EVERYWHERE' };
+                case 'setup_gaming':
+                    return { kind: 'PIP_SETUP_GAMING' };
+                case 'setup_strict':
+                    return { kind: 'PIP_SETUP_STRICT' };
+                case 'open_settings':
+                    return { kind: 'PIP_OPEN_SETTINGS' };
             }
         }
         // Fallback for unknown patterns

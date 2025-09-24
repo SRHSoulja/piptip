@@ -13,11 +13,17 @@ export class PIPTipCache {
   private async initializeRedis() {
     if (this.connecting || this.connected) return;
 
+    // Skip Redis initialization if disabled for testing or not configured
+    if (!process.env.REDIS_URL || process.env.REDIS_URL === '') {
+      console.log('Redis disabled - cache will operate without persistence');
+      return;
+    }
+
     try {
       this.connecting = true;
 
-      // Use Railway's REDIS_URL or fallback for local development
-      const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+      // Use Railway's REDIS_URL
+      const redisUrl = process.env.REDIS_URL;
 
       this.redis = createClient({
         url: redisUrl,

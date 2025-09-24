@@ -9,6 +9,8 @@ import { dirname } from "path";
 import { adsRouter } from "./admin/ads.js";
 import { tiersRouter } from "./admin/tiers.js";
 import { serversRouter } from "./admin/servers.js";
+import { serverApplicationsRouter } from "./admin/server_applications.js";
+import { channelsRouter } from "./admin/channels.js";
 import { tokensRouter } from "./admin/tokens.js";
 import { configRouter } from "./admin/config.js";
 import { usersRouter } from "./admin/users.js";
@@ -24,8 +26,12 @@ import roleRakeRouter from "./admin/role_rake_management.js";
 import { resourcesRouter } from "./admin/resources.js";
 import { goodKnightWebhooksRouter } from "./admin/good_knight_webhooks.js";
 import tierRolesRouter from "./admin/tier_roles.js";
+import { treasurySafetyRouter } from "./admin/treasury_safety.js";
+import { predictionMarketsRouter } from "./admin/prediction_markets.js";
+import { automationAdminRouter } from "./admin/automation.js";
 import { prisma } from "../services/db.js";
 import { getTreasurySnapshot } from "../services/treasury.js";
+import { priceAPI } from "../services/price_api.js";
 export const adminRouter = Router();
 // Get current directory for file paths
 const __filename = fileURLToPath(import.meta.url);
@@ -315,7 +321,7 @@ adminRouter.get("/ui", (_req, res) => {
     </div>
     <table id="treasuryTbl">
       <thead>
-        <tr><th>Asset</th><th>Balance</th></tr>
+        <tr><th>Asset</th><th>Balance</th><th>USD Value</th><th>Price (USD)</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -874,6 +880,8 @@ adminRouter.use((req, res, next) => {
 adminRouter.use(configRouter);
 adminRouter.use(tokensRouter);
 adminRouter.use(serversRouter);
+adminRouter.use(serverApplicationsRouter);
+adminRouter.use(channelsRouter);
 adminRouter.use(adsRouter);
 adminRouter.use(tiersRouter);
 adminRouter.use(usersRouter);
@@ -889,17 +897,46 @@ adminRouter.use("/role-rake", roleRakeRouter);
 adminRouter.use("/resources", resourcesRouter);
 adminRouter.use("/good-knight", goodKnightWebhooksRouter);
 adminRouter.use("/tier-roles", tierRolesRouter);
+adminRouter.use("/treasury-safety", treasurySafetyRouter);
+adminRouter.use(predictionMarketsRouter);
+adminRouter.use("/automation", automationAdminRouter);
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */
 /* ------------------------------------------------------------------------ */
-// Treasury endpoint
+// Treasury endpoint with USD values
 adminRouter.get("/treasury", async (req, res) => {
     try {
         const force = req.query.force === "1";
         const snapshot = await getTreasurySnapshot(force);
-        res.json({ ok: true, ...snapshot });
+        // Get real-time USD prices from DexTools/CoinGecko/CMC
+        const tokenSymbols = snapshot.tokens.map(token => token.symbol);
+        const priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+        // Add USD value estimates to each token
+        const tokensWithUSD = snapshot.tokens.map(token => {
+            const price = priceResult.prices[token.symbol] || 0.001; // fallback
+            const balanceHuman = parseFloat(token.human);
+            const estimatedUSD = balanceHuman * price;
+            return {
+                ...token,
+                priceUSD: price,
+                estimatedUSD: estimatedUSD,
+                formattedUSD: `$${estimatedUSD.toFixed(2)}`,
+                priceSource: priceResult.source
+            };
+        });
+        // Calculate total treasury USD value
+        const totalTreasuryUSD = tokensWithUSD.reduce((sum, token) => sum + token.estimatedUSD, 0);
+        res.json({
+            ok: true,
+            ...snapshot,
+            tokens: tokensWithUSD,
+            totalTreasuryUSD,
+            formattedTotalUSD: `$${totalTreasuryUSD.toFixed(2)}`,
+            priceDisclaimer: `USD values from ${priceResult.source.toUpperCase()}${priceResult.source === 'fallback' ? ' (estimates only)' : ' (live prices)'}`
+        });
     }
-    catch {
+    catch (error) {
+        console.error("Failed to load treasury:", error);
         res.status(500).json({ ok: false, error: "Failed to load treasury" });
     }
 });

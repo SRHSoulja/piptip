@@ -4,6 +4,7 @@ import { formatUnits, parseUnits } from "ethers";
 import { incrementNegativeBalanceAttempts } from "./metrics.js";
 import { BalanceConservationService } from "./balance_conservation.js";
 import { cache, CacheKeys, CacheTTL } from "./cache.js";
+import { priceAPI } from "./price_api.js";
 // Legacy compatibility function for existing commands
 export async function debit(discordId, amountAtomic, type = "MATCH_WAGER") {
     // For legacy compatibility, use the first active token (likely PENGU)
@@ -61,7 +62,30 @@ export async function ensureUserBalanceTx(tx, userId, tokenId) {
 }
 // ---- tx-aware transaction logger (replaces the old global logTxAtomic) ----
 export async function logTxAtomicTx(db, params) {
-    const { userId, otherUserId = null, guildId = null, type, tokenId, decimals, amountAtomic, feeAtomic = 0n, txHash = null, note = null, } = params;
+    const { userId, otherUserId = null, guildId = null, type, tokenId, decimals, amountAtomic, feeAtomic = 0n, txHash = null, note = null, tokenSymbol = null, } = params;
+    // Capture USD values for tax reporting and historical context
+    let usdValue = null;
+    let usdFeeValue = null;
+    let usdPrice = null;
+    let priceSource = null;
+    if (tokenSymbol) {
+        try {
+            const priceResult = await priceAPI.getTokenPrices([tokenSymbol]);
+            if (priceResult.success && priceResult.prices[tokenSymbol]) {
+                const tokenPrice = priceResult.prices[tokenSymbol];
+                const amountInTokens = parseFloat(toDecStr(amountAtomic, decimals));
+                const feeInTokens = parseFloat(toDecStr(feeAtomic, decimals));
+                usdPrice = tokenPrice.toString();
+                usdValue = (amountInTokens * tokenPrice).toString();
+                usdFeeValue = (feeInTokens * tokenPrice).toString();
+                priceSource = priceResult.source;
+            }
+        }
+        catch (error) {
+            // Silently continue without USD values if price fetch fails
+            console.warn(`Failed to get USD values for transaction: ${error}`);
+        }
+    }
     await db.transaction.create({
         data: {
             type,
@@ -73,6 +97,11 @@ export async function logTxAtomicTx(db, params) {
             fee: toDecStr(feeAtomic, decimals),
             txHash: txHash ?? undefined,
             metadata: note ?? null,
+            // USD value tracking for tax reporting
+            usdValue: usdValue ? parseFloat(usdValue) : null,
+            usdFeeValue: usdFeeValue ? parseFloat(usdFeeValue) : null,
+            usdPrice: usdPrice ? parseFloat(usdPrice) : null,
+            priceSource: priceSource,
         },
     });
 }
@@ -135,6 +164,7 @@ opts = {}) {
             feeAtomic: opts.feeAtomic ?? 0n,
             txHash: opts.txHash ?? null,
             note: opts.note ?? null,
+            tokenSymbol: token.symbol, // Include symbol for USD tracking
         });
     }, { timeout: 15000, maxWait: 15000 });
     return user.id;
@@ -167,6 +197,7 @@ export async function creditToken(discordId, tokenId, amountAtomic, type, opts =
             feeAtomic: opts.feeAtomic ?? 0n,
             txHash: opts.txHash ?? null,
             note: opts.note ?? null,
+            tokenSymbol: token.symbol, // Include symbol for USD tracking
         });
     }, { timeout: 15000, maxWait: 15000 });
     return user.id;

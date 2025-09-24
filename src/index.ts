@@ -28,6 +28,13 @@ import pipBio from "./commands/pip_bio.js";
 import pipPenguBook from "./commands/pip_pengubook.js";
 import pipAchievements from "./commands/pip_achievements.js";
 import pipLeaderboard from "./commands/pip_leaderboard.js";
+import pipApply from "./commands/pip_apply.js";
+import pipSettings from "./commands/pip_settings.js";
+import pipSafety from "./commands/pip_safety.js";
+import pipMarkets from "./commands/pip_markets.js";
+import pipBet from "./commands/pip_bet.js";
+import pipCreateMarket from "./commands/pip_create_market.js";
+import { withAutoChannelCheck } from "./middleware/channel_check.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
 import { handleGroupTipModal } from "./interactions/group_tip_modal.js";
@@ -35,6 +42,8 @@ import { isButtonInteraction, isModalSubmitInteraction } from "./discord/guards.
 import { restoreGroupTipExpiryTimers } from "./features/group_tip_expiry.js";
 import { TierRoleSyncService } from "./services/tier_role_manager.js";
 import { MembershipExpiryService } from "./services/membership_expiry_service.js";
+import { marketAutomation } from "./services/market_automation.js";
+import { marketAutomationScheduler } from "./services/market_automation_scheduler.js";
 
 // shared command defs + registrar
 import { getCommandsJson } from "./services/commands_def.js";
@@ -358,18 +367,24 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
     }
 
     switch ((i as any).commandName) {
-      case "pip_withdraw": return pipWithdraw(i as any);
-      case "pip_profile":  return pipProfile(i as any);
-      case "pip_deposit":  return pipDeposit(i as any);
-      case "pip_game":     return pipGame(i as any);
-      case "pip_link":     return pipLink(i as any);
-      case "pip_tip":      return pipTip(i as any);
-      case "pip_help":     return pipHelp(i as any);
-      case "pip_stats":    return pipStats(i as any);
-      case "pip_bio":      return pipBio(i as any);
-      case "pip_pengubook": return pipPenguBook(i as any);
-      case "pip_achievements": return pipAchievements(i as any);
-      case "pip_leaderboard": return pipLeaderboard(i as any);
+      case "pip_withdraw": return withAutoChannelCheck(i as any, pipWithdraw);
+      case "pip_profile":  return withAutoChannelCheck(i as any, pipProfile);
+      case "pip_deposit":  return withAutoChannelCheck(i as any, pipDeposit);
+      case "pip_game":     return withAutoChannelCheck(i as any, pipGame);
+      case "pip_link":     return withAutoChannelCheck(i as any, pipLink);
+      case "pip_tip":      return withAutoChannelCheck(i as any, pipTip);
+      case "pip_help":     return withAutoChannelCheck(i as any, pipHelp);
+      case "pip_stats":    return withAutoChannelCheck(i as any, pipStats);
+      case "pip_bio":      return withAutoChannelCheck(i as any, pipBio);
+      case "pip_pengubook": return withAutoChannelCheck(i as any, pipPenguBook);
+      case "pip_achievements": return withAutoChannelCheck(i as any, pipAchievements);
+      case "pip_leaderboard": return withAutoChannelCheck(i as any, pipLeaderboard);
+      case "pip_apply": return withAutoChannelCheck(i as any, pipApply);
+      case "pip_settings": return withAutoChannelCheck(i as any, pipSettings);
+      case "pip_safety": return withAutoChannelCheck(i as any, pipSafety);
+      case "pip_markets": return withAutoChannelCheck(i as any, pipMarkets);
+      case "pip_bet": return withAutoChannelCheck(i as any, pipBet);
+      case "pip_create_market": return withAutoChannelCheck(i as any, pipCreateMarket);
       default:
         console.warn("Unknown command:", (i as any).commandName);
     }
@@ -425,6 +440,14 @@ bot.once(Events.ClientReady, async () => {
     console.error("Failed to initialize resilient Discord update service:", error);
   }
 
+  // Initialize prediction market automation
+  try {
+    marketAutomation.start();
+    console.log("Prediction market automation started");
+  } catch (error) {
+    console.error("Failed to start prediction market automation:", error);
+  }
+
   // Initialize Redis timers for second-precise expiration
   // DISABLED - conflicts with native timer system causing duplicate payouts
   // try {
@@ -452,6 +475,14 @@ bot.once(Events.ClientReady, async () => {
     console.log("Tier management services started");
   } catch (error) {
     console.error("Failed to start tier management services:", error);
+  }
+
+  // Start market automation scheduler
+  try {
+    marketAutomationScheduler.start();
+    console.log("Market automation scheduler started");
+  } catch (error) {
+    console.error("Failed to start market automation scheduler:", error);
   }
 
   // Start group tip cleanup service to prevent stuck tips
@@ -510,11 +541,15 @@ async function main() {
     // Add session-dependent routes after session middleware is configured
     const { adminRouter } = await import("./web/admin.js");
     const { authRouter } = await import("./web/auth.js");
+    const { serverRouter } = await import("./web/server.js");
     const { pengubookModularRouter } = await import("./web/pengubook/router.js");
+    const { marketsApiRouter } = await import("./web/api/markets.js");
 
     app.use("/admin", adminRouter);
     app.use("/auth", authRouter);
+    app.use("/server", serverRouter);
     app.use("/pengubook", pengubookModularRouter);
+    app.use("/api", marketsApiRouter);
     console.log("✅ Session-dependent routes configured");
 
     // Backup service disabled - using external cron job with backup-script.js
@@ -589,6 +624,14 @@ async function main() {
         console.log("🛑 Tier management services stopped");
       } catch (error) {
         console.error("Error stopping tier management services:", error);
+      }
+
+      // Stop market automation scheduler
+      try {
+        marketAutomationScheduler.stop();
+        console.log("🛑 Market automation scheduler stopped");
+      } catch (error) {
+        console.error("Error stopping market automation scheduler:", error);
       }
 
       server.close(() => {

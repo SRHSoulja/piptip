@@ -1,7 +1,8 @@
 import { EmbedBuilder, MessageFlags } from "discord.js";
 import { prisma } from "../services/db.js";
 import { getStreakLeaderboard } from "../services/streaks.js";
-import { formatDecimal } from "../services/token.js";
+import { formatDecimalWithUSD } from "../services/token.js";
+import { priceAPI } from "../services/price_api.js";
 import { cacheWithMetrics, CacheKeys, CacheTTL } from "../services/cache.js";
 import { withTiming } from "../services/performance.js";
 export default async function pipLeaderboard(i) {
@@ -335,28 +336,35 @@ async function buildWealthLeaderboard(limit) {
             Token: true
         }
     });
-    // Group by user and calculate total USD value (simplified - assumes 1:1 for demo)
+    // Group by user and calculate real USD value
     const userWealth = new Map();
+    // Get all unique token symbols for price lookup
+    const tokenSymbols = [...new Set(usersWithBalances.map(b => b.Token.symbol))];
+    const priceResult = await priceAPI.getTokenPrices(tokenSymbols);
     for (const balance of usersWithBalances) {
         const userId = balance.User.discordId;
         const current = userWealth.get(userId) || {
             discordId: userId,
-            totalValue: 0,
+            totalUSDValue: 0,
             breakdown: []
         };
-        const value = Number(balance.amount);
-        current.totalValue += value;
-        current.breakdown.push(`${formatDecimal(balance.amount, balance.Token.symbol)}`);
+        const tokenAmount = Number(balance.amount);
+        const tokenPrice = priceResult.prices[balance.Token.symbol] || 0;
+        const usdValue = tokenAmount * tokenPrice;
+        current.totalUSDValue += usdValue;
+        // Format with USD value
+        const formattedAmount = await formatDecimalWithUSD(balance.amount, balance.Token.symbol, { compact: true });
+        current.breakdown.push(formattedAmount);
         userWealth.set(userId, current);
     }
-    // Sort by total value
+    // Sort by total USD value
     const sorted = Array.from(userWealth.values())
-        .sort((a, b) => b.totalValue - a.totalValue)
+        .sort((a, b) => b.totalUSDValue - a.totalUSDValue)
         .slice(0, limit);
     const embed = new EmbedBuilder()
         .setTitle("💰 Wealth Leaderboard")
         .setColor(0xF1C40F)
-        .setDescription("Top players by total balance")
+        .setDescription(`Top players by total USD value • Powered by ${priceResult.source}`)
         .setTimestamp();
     if (sorted.length === 0) {
         embed.addFields({
@@ -369,7 +377,11 @@ async function buildWealthLeaderboard(limit) {
         const entries = sorted.map((user, index) => {
             const rank = index + 1;
             const medal = getMedal(rank);
-            return `${medal} **#${rank}** <@${user.discordId}>\n` +
+            // Format total USD value
+            const totalUSDFormatted = user.totalUSDValue < 1
+                ? `$${user.totalUSDValue.toFixed(4).replace(/\.?0+$/, "")}`
+                : `$${user.totalUSDValue.toFixed(2).replace(/\.?0+$/, "")}`;
+            return `${medal} **#${rank}** <@${user.discordId}> • **${totalUSDFormatted}**\n` +
                 `💰 ${user.breakdown.join(" + ")}\n`;
         });
         embed.addFields({

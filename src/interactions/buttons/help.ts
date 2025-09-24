@@ -38,7 +38,21 @@ export async function handleShowHelp(i: ButtonInteraction) {
           value:
             "**Challenge Players**: `/pip_game token:PENGUIN amount:5` - Start a Penguin Ice Pebble match\n" +
             "**View Profile**: `/pip_profile` - See your balance, stats, and recent activity\n" +
+            "**Detailed Statistics**: Web dashboard with comprehensive gaming and financial stats\n" +
+            "**Transaction History**: Complete history of all your tips, deposits, and withdrawals\n" +
             "**Withdraw Funds**: `/pip_withdraw token:PENGUIN amount:10` - Send tokens to your wallet",
+          inline: false
+        },
+        {
+          name: "🛡️ Server Administration",
+          value:
+            "**For Server Owners & Admins:**\n" +
+            "📝 **Apply for PIPTip**: `/pip_apply` or visit `/pengubook/apply` to get your server approved\n" +
+            "🌐 **Web Dashboard**: Visit `/server` on PenguBook to manage your Discord server settings\n" +
+            "⚙️ **Channel Controls**: Configure which channels allow tipping and gaming\n" +
+            "📊 **Activity Monitoring**: View server-wide PIPTip usage statistics\n" +
+            "🔧 **Permission Management**: Fine-tune bot permissions and restrictions\n\n" +
+            "*Server approval required first, then Administrator or Manage Server permissions*",
           inline: false
         },
         {

@@ -1,7 +1,7 @@
 // src/discord/customId.ts - Centralized customId parsing with discriminated unions
 
 // Discriminated union for all possible custom ID types
-export type CustomIdPayload = 
+export type CustomIdPayload =
   // Pip-related interactions
   | { kind: 'PIP_PICK', matchId: number, move: string }
   | { kind: 'PIP_JOIN', matchId: number, move: string }
@@ -15,10 +15,26 @@ export type CustomIdPayload =
   | { kind: 'PIP_EXPORT_CSV' }
   | { kind: 'PIP_LINK_WALLET_MODAL' }
   | { kind: 'PIP_LINK_WALLET_SUBMIT', walletAddress: string }
-  
+  | { kind: 'PIP_SERVER_APPLICATION_SUBMIT', guildId: string }
+
+  // Settings interactions
+  | { kind: 'PIP_SETTINGS_MODE' }
+  | { kind: 'PIP_SETTINGS_CHANNELS' }
+  | { kind: 'PIP_SETTINGS_FEATURES' }
+  | { kind: 'PIP_SELECT_MODE' }
+  | { kind: 'PIP_ADD_ALLOWED' }
+  | { kind: 'PIP_ADD_BLOCKED' }
+  | { kind: 'PIP_SELECT_ALLOWED' }
+  | { kind: 'PIP_SELECT_BLOCKED' }
+  | { kind: 'PIP_FEATURE_CHANNELS' }
+  | { kind: 'PIP_SETUP_EVERYWHERE' }
+  | { kind: 'PIP_SETUP_GAMING' }
+  | { kind: 'PIP_SETUP_STRICT' }
+  | { kind: 'PIP_OPEN_SETTINGS' }
+
   // Group tip interactions
   | { kind: 'GROUP_TIP_CLAIM', groupTipId: number }
-  
+
   // Unknown/unparseable
   | { kind: 'UNKNOWN', rawId: string };
 
@@ -98,6 +114,40 @@ export function parseCustomId(customId: string): CustomIdPayload {
         case 'link_wallet_submit':
           // This is for modal submissions where wallet address is in the modal fields
           return { kind: 'PIP_LINK_WALLET_SUBMIT', walletAddress: '' }; // Address comes from modal fields
+
+        case 'server_application':
+          // Format: pip:server_application:guildId
+          if (parts.length >= 3) {
+            const guildId = parts[2];
+            return { kind: 'PIP_SERVER_APPLICATION_SUBMIT', guildId };
+          }
+          break;
+
+        // Settings interactions
+        case 'settings_mode':
+          return { kind: 'PIP_SETTINGS_MODE' };
+        case 'settings_channels':
+          return { kind: 'PIP_SETTINGS_CHANNELS' };
+        case 'feature_channels':
+          return { kind: 'PIP_FEATURE_CHANNELS' };
+        case 'select_mode':
+          return { kind: 'PIP_SELECT_MODE' };
+        case 'add_allowed':
+          return { kind: 'PIP_ADD_ALLOWED' };
+        case 'add_blocked':
+          return { kind: 'PIP_ADD_BLOCKED' };
+        case 'select_allowed':
+          return { kind: 'PIP_SELECT_ALLOWED' };
+        case 'select_blocked':
+          return { kind: 'PIP_SELECT_BLOCKED' };
+        case 'setup_everywhere':
+          return { kind: 'PIP_SETUP_EVERYWHERE' };
+        case 'setup_gaming':
+          return { kind: 'PIP_SETUP_GAMING' };
+        case 'setup_strict':
+          return { kind: 'PIP_SETUP_STRICT' };
+        case 'open_settings':
+          return { kind: 'PIP_OPEN_SETTINGS' };
       }
     }
 

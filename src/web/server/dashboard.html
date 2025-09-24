@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{GUILD_NAME}} - PIPTip Server Management</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #e5e5e5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .breadcrumb {
+            margin-top: 15px;
+            opacity: 0.8;
+        }
+        .breadcrumb a {
+            color: #e5e5e5;
+            text-decoration: none;
+        }
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #60a5fa;
+            display: block;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .settings-section {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+            align-items: start;
+        }
+        .settings-main {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 25px;
+        }
+        .settings-sidebar {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .form-group select,
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: #e5e5e5;
+            font-size: 1rem;
+        }
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: rgba(229, 229, 229, 0.5);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e5e5e5;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .mode-badge {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+        .mode-allow-all {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        .mode-whitelist {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+        }
+        .mode-blacklist {
+            background: rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+        }
+
+        .channel-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .channel-tag {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-family: monospace;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            opacity: 0.7;
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fecaca;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #d1fae5;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 4px;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: #e5e5e5;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+        .tab.active {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+        .tab:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .settings-section {
+                grid-template-columns: 1fr;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ {{GUILD_NAME}}</h1>
+            <p>Server Management Dashboard</p>
+            <div class="breadcrumb">
+                <a href="/server">← All Servers</a> / <a href="/pengubook">PenguBook</a> / {{USER_NAME}}
+            </div>
+        </div>
+
+        <!-- Server Stats -->
+        <div class="card">
+            <h2>📊 Server Overview</h2>
+            <div class="stats-grid" id="serverStats">
+                <div class="stat-card">
+                    <span class="stat-value" id="memberCount">-</span>
+                    <div class="stat-label">Members</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="currentMode">-</span>
+                    <div class="stat-label">Channel Mode</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="restrictedChannels">-</span>
+                    <div class="stat-label">Restricted Channels</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="recentActivity">-</span>
+                    <div class="stat-label">Commands (24h)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Channel Management -->
+        <div class="card">
+            <h2>🔧 Channel Management</h2>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('settings')">Settings</button>
+                <button class="tab" onclick="switchTab('activity')">Activity</button>
+                <button class="tab" onclick="switchTab('channels')">Channels</button>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settings-tab" class="tab-content active">
+                <div class="settings-section">
+                    <div class="settings-main">
+                        <form id="settingsForm">
+                            <div class="form-group">
+                                <label for="channelMode">Channel Mode</label>
+                                <select id="channelMode" name="channelMode">
+                                    <option value="ALLOW_ALL">🌐 Allow All - Works everywhere (default)</option>
+                                    <option value="WHITELIST">✅ Whitelist - Only allowed channels</option>
+                                    <option value="BLACKLIST">🚫 Blacklist - Everywhere except blocked</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="allowedChannels">Allowed Channels (for whitelist mode)</label>
+                                <textarea id="allowedChannels" name="allowedChannels" placeholder="Enter channel IDs separated by commas or spaces"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="blockedChannels">Blocked Channels</label>
+                                <textarea id="blockedChannels" name="blockedChannels" placeholder="Enter channel IDs separated by commas or spaces"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="tipChannels">Tip-only Channels (optional)</label>
+                                <textarea id="tipChannels" name="tipChannels" placeholder="Restrict /pip_tip to specific channels (leave empty for all allowed)"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="gameChannels">Game-only Channels (optional)</label>
+                                <textarea id="gameChannels" name="gameChannels" placeholder="Restrict /pip_game to specific channels (leave empty for all allowed)"></textarea>
+                            </div>
+
+                            <div style="display: flex; gap: 10px; margin-top: 30px;">
+                                <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+                                <button type="button" class="btn btn-secondary" onclick="loadSettings()">🔄 Refresh</button>
+                                <button type="button" class="btn btn-danger" onclick="resetSettings()">🗑️ Reset to Defaults</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="settings-sidebar">
+                        <h3>🎯 Quick Tips</h3>
+                        <ul style="line-height: 1.6; padding-left: 20px;">
+                            <li><strong>Allow All:</strong> PIPTip works everywhere, you can block specific channels</li>
+                            <li><strong>Whitelist:</strong> Only works in channels you specify</li>
+                            <li><strong>Blacklist:</strong> Works everywhere except blocked channels</li>
+                            <li><strong>Feature Channels:</strong> Restrict specific commands to certain channels</li>
+                        </ul>
+
+                        <h3>🔍 Channel IDs</h3>
+                        <p style="font-size: 0.9rem; opacity: 0.8;">
+                            Right-click a channel in Discord and select "Copy ID" to get its channel ID. Enable Developer Mode in Discord settings if you don't see this option.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Activity Tab -->
+            <div id="activity-tab" class="tab-content">
+                <div id="activityContent">
+                    <div class="loading">Loading activity data...</div>
+                </div>
+            </div>
+
+            <!-- Channels Tab -->
+            <div id="channels-tab" class="tab-content">
+                <div id="channelsContent">
+                    <div class="loading">Loading channel list...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        const GUILD_ID = '{{GUILD_ID}}';
+        let currentSettings = null;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadServerInfo();
+            await loadSettings();
+            await loadActivity();
+        });
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+
+            if (tabName === 'activity') {
+                loadActivity();
+            } else if (tabName === 'channels') {
+                loadChannels();
+            }
+        }
+
+        // Load server info
+        async function loadServerInfo() {
+            try {
+                const response = await fetch(`/server/${GUILD_ID}/api/info`);
+                const data = await response.json();
+
+                if (data.ok) {
+                    document.getElementById('memberCount').textContent = data.info.memberCount || '-';
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                console.error('Failed to load server info:', error);
+            }
+        }
+
+        // Load settings
+        async function loadSettings() {
+            try {
+                const response = await fetch(`/server/${GUILD_ID}/api/settings`);
+                const data = await response.json();
+
+                if (data.ok) {
+                    currentSettings = data.settings;
+                    populateSettingsForm(data.settings);
+                    updateStatsFromSettings(data.settings);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                showMessage('Failed to load settings: ' + error.message, 'error');
+            }
+        }
+
+        // Populate settings form
+        function populateSettingsForm(settings) {
+            document.getElementById('channelMode').value = settings.channelMode;
+            document.getElementById('allowedChannels').value = settings.allowedChannels.join(', ');
+            document.getElementById('blockedChannels').value = settings.blockedChannels.join(', ');
+            document.getElementById('tipChannels').value = settings.tipChannels.join(', ');
+            document.getElementById('gameChannels').value = settings.gameChannels.join(', ');
+        }
+
+        // Update stats from settings
+        function updateStatsFromSettings(settings) {
+            const modeDisplay = {
+                'ALLOW_ALL': '🌐 Allow All',
+                'WHITELIST': '✅ Whitelist',
+                'BLACKLIST': '🚫 Blacklist'
+            };
+
+            document.getElementById('currentMode').textContent = modeDisplay[settings.channelMode] || settings.channelMode;
+
+            const restrictedCount = settings.allowedChannels.length + settings.blockedChannels.length;
+            document.getElementById('restrictedChannels').textContent = restrictedCount;
+        }
+
+        // Save settings
+        document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            try {
+                const formData = new FormData(e.target);
+                const settings = {
+                    channelMode: formData.get('channelMode'),
+                    allowedChannels: parseChannelIds(formData.get('allowedChannels')),
+                    blockedChannels: parseChannelIds(formData.get('blockedChannels')),
+                    tipChannels: parseChannelIds(formData.get('tipChannels')),
+                    gameChannels: parseChannelIds(formData.get('gameChannels'))
+                };
+
+                const response = await fetch(`/server/${GUILD_ID}/api/settings`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                const data = await response.json();
+
+                if (data.ok) {
+                    showMessage('✅ Settings saved successfully!', 'success');
+                    currentSettings = data.settings;
+                    updateStatsFromSettings(data.settings);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                showMessage('Failed to save settings: ' + error.message, 'error');
+            }
+        });
+
+        // Reset settings
+        async function resetSettings() {
+            if (!confirm('Are you sure you want to reset all settings to defaults? This will remove all channel restrictions.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/server/${GUILD_ID}/api/settings/reset`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.ok) {
+                    showMessage('✅ Settings reset to defaults!', 'success');
+                    populateSettingsForm(data.settings);
+                    updateStatsFromSettings(data.settings);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                showMessage('Failed to reset settings: ' + error.message, 'error');
+            }
+        }
+
+        // Load activity
+        async function loadActivity() {
+            try {
+                document.getElementById('activityContent').innerHTML = '<div class="loading">Loading activity data...</div>';
+
+                const response = await fetch(`/server/${GUILD_ID}/api/activity?hours=24`);
+                const data = await response.json();
+
+                if (data.ok) {
+                    renderActivity(data.activity);
+
+                    // Update activity stat
+                    document.getElementById('recentActivity').textContent = data.activity.totalCommands || 0;
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                document.getElementById('activityContent').innerHTML = `<div class="error">Failed to load activity: ${error.message}</div>`;
+            }
+        }
+
+        // Render activity
+        function renderActivity(activity) {
+            const channelStats = Object.entries(activity.channelStats || {})
+                .sort(([,a], [,b]) => b.count - a.count)
+                .slice(0, 10);
+
+            const html = `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-value">${activity.totalCommands}</span>
+                        <div class="stat-label">Total Commands</div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value">${Object.keys(activity.channelStats || {}).length}</span>
+                        <div class="stat-label">Active Channels</div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value">${activity.popularCommands[0]?.command || 'None'}</span>
+                        <div class="stat-label">Most Popular Command</div>
+                    </div>
+                </div>
+
+                ${channelStats.length > 0 ? `
+                    <h3>🔥 Most Active Channels</h3>
+                    <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 20px;">
+                        ${channelStats.map(([channelId, stats]) => `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <span style="font-family: monospace;">#${channelId}</span>
+                                <span>${stats.count} commands (${Math.round((stats.success / stats.count) * 100)}% success)</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : '<p>No activity in the last 24 hours.</p>'}
+
+                ${activity.popularCommands.length > 0 ? `
+                    <h3>⭐ Popular Commands</h3>
+                    <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 20px;">
+                        ${activity.popularCommands.slice(0, 5).map(cmd => `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <span><strong>${cmd.command}</strong></span>
+                                <span>${cmd.count} uses</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+
+            document.getElementById('activityContent').innerHTML = html;
+        }
+
+        // Load channels
+        async function loadChannels() {
+            try {
+                document.getElementById('channelsContent').innerHTML = '<div class="loading">Loading channels...</div>';
+
+                const response = await fetch(`/server/${GUILD_ID}/api/channels`);
+                const data = await response.json();
+
+                if (data.ok) {
+                    renderChannels(data.channels);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                document.getElementById('channelsContent').innerHTML = `<div class="error">Failed to load channels: ${error.message}</div>`;
+            }
+        }
+
+        // Render channels
+        function renderChannels(channels) {
+            const channelsByType = channels.reduce((acc, channel) => {
+                const type = channel.type === 0 ? 'Text' : channel.type === 2 ? 'Voice' : 'Other';
+                if (!acc[type]) acc[type] = [];
+                acc[type].push(channel);
+                return acc;
+            }, {});
+
+            const html = Object.entries(channelsByType).map(([type, typeChannels]) => `
+                <h3>${type} Channels</h3>
+                <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                    ${typeChannels.map(channel => `
+                        <div style="display: flex; justify-content: between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <div>
+                                <strong>#${channel.name}</strong>
+                                <span style="font-family: monospace; opacity: 0.7; margin-left: 10px;">${channel.id}</span>
+                            </div>
+                            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;" onclick="copyChannelId('${channel.id}')">📋 Copy ID</button>
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+
+            document.getElementById('channelsContent').innerHTML = html;
+        }
+
+        // Copy channel ID
+        function copyChannelId(channelId) {
+            navigator.clipboard.writeText(channelId).then(() => {
+                showMessage('📋 Channel ID copied to clipboard!', 'success');
+            });
+        }
+
+        // Utility functions
+        function parseChannelIds(input) {
+            if (!input) return [];
+            return input.split(/[,\s]+/).filter(id => id && /^[0-9]+$/.test(id));
+        }
+
+        function showMessage(message, type = 'success') {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = type;
+            messageDiv.textContent = message;
+            messagesDiv.appendChild(messageDiv);
+
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

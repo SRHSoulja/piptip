@@ -213,6 +213,19 @@ export async function profileHandler(req, res) {
             </div>
         </div>
 
+        <!-- Wallet Balance Card -->
+        <div class="pg-card" style="margin-top: var(--pg-space-6);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
+                <h2 style="margin: 0; color: var(--pg-dark-800);">💰 Wallet Balance</h2>
+                <button onclick="refreshProfileBalances()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshProfileBalanceBtn">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div id="profileBalanceContainer" style="min-height: 60px;">
+                <div class="pg-loading-skeleton">Loading wallet balances...</div>
+            </div>
+        </div>
+
         <div class="pg-card" style="margin-top: var(--pg-space-6);">
             <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">Profile Stats</h2>
 
@@ -276,6 +289,65 @@ export async function profileHandler(req, res) {
                 }, 2000);
             }
         });
+
+        // ===== Wallet Balance System =====
+        async function loadProfileBalances() {
+            const container = document.getElementById('profileBalanceContainer');
+            const refreshBtn = document.getElementById('refreshProfileBalanceBtn');
+
+            try {
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = '🔄 Loading...';
+
+                const response = await fetch('/pengubook/api/balance');
+                const data = await response.json();
+
+                if (data.success && data.balances && data.balances.length > 0) {
+                    const balanceHTML = \`
+                        <div class="pg-balance-grid">
+                            \${data.balances.map(balance => \`
+                                <div class="pg-balance-item">
+                                    <div class="pg-balance-amount">\${balance.amount}</div>
+                                    <div class="pg-balance-token">\${balance.Token.symbol}</div>
+                                </div>
+                            \`).join('')}
+                        </div>
+                    \`;
+                    container.innerHTML = balanceHTML;
+                } else {
+                    container.innerHTML = \`
+                        <div class="pg-empty-state" style="padding: var(--pg-space-4); text-align: center;">
+                            <div style="color: var(--pg-dark-600); margin-bottom: var(--pg-space-2);">
+                                💳 No wallet balances found
+                            </div>
+                            <div style="font-size: var(--pg-text-sm); color: var(--pg-dark-500);">
+                                Make a deposit or receive tips to see your balances here
+                            </div>
+                        </div>
+                    \`;
+                }
+            } catch (error) {
+                console.error('Failed to load balances:', error);
+                container.innerHTML = \`
+                    <div class="pg-error" style="padding: var(--pg-space-4); text-align: center;">
+                        ❌ Failed to load wallet balances
+                    </div>
+                \`;
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh';
+            }
+        }
+
+        function refreshProfileBalances() {
+            loadProfileBalances();
+        }
+
+        // Load balances when page loads
+        document.addEventListener('DOMContentLoaded', loadProfileBalances);
+
+        // Make functions global
+        window.refreshProfileBalances = refreshProfileBalances;
 
         // ===== Aesthetic Customization System =====
         class PenguBookAesthetics {

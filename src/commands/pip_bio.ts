@@ -48,7 +48,10 @@ async function handleSetBio(i: ChatInputCommandInteraction) {
   try {
     // Find or create user
     const user = await findOrCreateUser(i.user.id);
-    
+
+    // Check if this is their first time joining PenguBook
+    const wasInPenguBook = user.showInPenguBook;
+
     // Update bio and X username
     await prisma.user.update({
       where: { id: user.id },
@@ -59,6 +62,26 @@ async function handleSetBio(i: ChatInputCommandInteraction) {
         showInPenguBook: true // Auto-enable when setting bio
       }
     });
+
+    // Create activity feed item if this is their first time joining PenguBook
+    if (!wasInPenguBook) {
+      try {
+        await prisma.activityFeedItem.create({
+          data: {
+            userId: user.id,
+            type: 'join',
+            data: {
+              userHandle: `User#${i.user.id.slice(-4)}`,
+              firstBio: bio.substring(0, 50) + (bio.length > 50 ? '...' : '')
+            },
+            visibility: 'public'
+          }
+        });
+      } catch (error) {
+        console.error("Failed to create activity feed item for new user join:", error);
+        // Don't fail the bio update if activity feed creation fails
+      }
+    }
     
     const embed = new EmbedBuilder()
       .setColor(0x00ff88)

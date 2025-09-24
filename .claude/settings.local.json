@@ -41,7 +41,9 @@
       "Bash(xargs kill:*)",
       "Bash(kill:*)",
       "Bash(npm install:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "WebFetch(domain:docs.dexscreener.com)",
+      "Bash(NODE_ENV=test npx tsx test/run_all_tests.ts)"
     ],
     "deny": [],
     "ask": []

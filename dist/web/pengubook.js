@@ -509,6 +509,7 @@ function generatePenguBookHTML(data) {
         <a href="/pengubook/inbox">📨 Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ''}</a>
         <a href="/pengubook/browse">👥 Browse Users</a>
         <a href="/pengubook/profile">⚙️ Profile</a>
+        <a href="/server">🛡️ Server Admin</a>
     </nav>
     
     <div class="container">
@@ -522,16 +523,23 @@ function generatePenguBookHTML(data) {
                 <div class="feature-icon">💸</div>
                 <h3>Send Tips</h3>
                 <p>Tip users across your servers with our multi-token support</p>
-                <a href="/pengubook/tip" class="btn">Start Tipping</a>
+                <a href="/pengubook/browse" class="btn">Start Tipping</a>
             </div>
-            
+
             <div class="feature-card">
                 <div class="feature-icon">📨</div>
                 <h3>Message Center</h3>
                 <p>View your tip notifications and messages in one place</p>
                 <a href="/pengubook/inbox" class="btn">View Messages</a>
             </div>
-            
+
+            <div class="feature-card">
+                <div class="feature-icon">🛡️</div>
+                <h3>Server Admin</h3>
+                <p>Manage PIPTip settings for your Discord servers</p>
+                <a href="/server" class="btn">Manage Servers</a>
+            </div>
+
             <div class="feature-card">
                 <div class="feature-icon">⚙️</div>
                 <h3>Profile Settings</h3>
@@ -603,6 +611,7 @@ function generateInboxHTML(data) {
         <a href="/pengubook/inbox" class="active">📨 Inbox</a>
         <a href="/pengubook/browse">👥 Browse Users</a>
         <a href="/pengubook/profile">⚙️ Profile</a>
+        <a href="/server">🛡️ Server Admin</a>
     </nav>
     
     <div class="container">
@@ -685,6 +694,7 @@ function generateBrowseHTML(data) {
         <a href="/pengubook/inbox">📨 Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ''}</a>
         <a href="/pengubook/browse" class="active">👥 Browse Users</a>
         <a href="/pengubook/profile">⚙️ Profile</a>
+        <a href="/server">🛡️ Server Admin</a>
     </nav>
     
     <div class="container">
@@ -834,6 +844,7 @@ function generateUserProfileHTML(data) {
         <a href="/pengubook/inbox">📨 Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ''}</a>
         <a href="/pengubook/browse">👥 Browse Users</a>
         <a href="/pengubook/profile">⚙️ Profile</a>
+        <a href="/server">🛡️ Server Admin</a>
     </nav>
     
     <div class="container">
@@ -1206,6 +1217,7 @@ function generateProfileHTML(data) {
         <a href="/pengubook/inbox">📨 Inbox</a>
         <a href="/pengubook/browse">👥 Browse Users</a>
         <a href="/pengubook/profile" class="active">⚙️ Profile</a>
+        <a href="/server">🛡️ Server Admin</a>
     </nav>
     
     <div class="container">

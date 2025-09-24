@@ -106,7 +106,9 @@ const createServerTableRow = (server) => {
 
 const createTreasuryRow = (token) => createTableRow([
   { innerHTML: `<strong>${escapeHtml(token.symbol)}</strong>`, trusted: true },
-  { textContent: token.human }
+  { textContent: token.human },
+  { textContent: token.formattedUSD || 'N/A' },
+  { textContent: token.priceUSD ? `$${token.priceUSD.toFixed(6)}` : 'N/A' }
 ]);
 
 const createAdTableRow = (ad) => {
@@ -807,17 +809,41 @@ async function loadTreasury(force=false) {
     const r = await API(`/admin/treasury${force?'?force=1':''}`); const j = await r.json();
     const tbody = $("treasuryTbl").querySelector("tbody"); setSecureContent(tbody, '');
     if (!j.ok) return showMessage("treasuryMsg","Failed to load treasury",true);
+    // ETH row (gas) - add empty cells for USD columns
     const ethCells = [
       { innerHTML: '<strong>ETH (gas)</strong>', trusted: true },
-      { textContent: escapeHtml(j.ethHuman) }
+      { textContent: escapeHtml(j.ethHuman) },
+      { textContent: 'N/A' },
+      { textContent: 'N/A' }
     ];
     const ethRow = createTableRow(ethCells);
     tbody.appendChild(ethRow);
+
+    // Token rows with USD values
     (j.tokens || []).forEach(t => {
       const tokenRow = createTreasuryRow(t);
       tbody.appendChild(tokenRow);
     });
-    showMessage("treasuryMsg", `Updated at ${new Date(j.ts).toLocaleTimeString()}`, false);
+
+    // Add total USD row if available
+    if (j.totalTreasuryUSD !== undefined) {
+      const totalCells = [
+        { innerHTML: '<strong>TOTAL USD VALUE</strong>', trusted: true },
+        { textContent: '—' },
+        { innerHTML: `<strong>${j.formattedTotalUSD || `$${j.totalTreasuryUSD.toFixed(2)}`}</strong>`, trusted: true },
+        { textContent: '—' }
+      ];
+      const totalRow = createTableRow(totalCells);
+      totalRow.style.borderTop = '2px solid #60a5fa';
+      totalRow.style.backgroundColor = '#1f2937';
+      tbody.appendChild(totalRow);
+    }
+
+    let statusMsg = `Updated at ${new Date(j.ts).toLocaleTimeString()}`;
+    if (j.priceDisclaimer) {
+      statusMsg += ` • ${j.priceDisclaimer}`;
+    }
+    showMessage("treasuryMsg", statusMsg, false);
 
     // Switch to refresh mode after first load
     $("loadTreasury").style.display = "none";

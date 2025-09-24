@@ -119,12 +119,47 @@ export async function userHandler(req, res) {
             </div>
         </div>
 
+        <!-- Social Reactions -->
+        <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
+            <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">⚡ Quick Reactions</h3>
+            <div class="pg-reaction-bar">
+                <button onclick="sendReaction('👍', 'like')" class="pg-reaction-btn" data-reaction="like">
+                    <span class="pg-reaction-emoji">👍</span>
+                    <span class="pg-reaction-label">Like</span>
+                    <span class="pg-reaction-count" id="like-count">0</span>
+                </button>
+                <button onclick="sendReaction('🔥', 'fire')" class="pg-reaction-btn" data-reaction="fire">
+                    <span class="pg-reaction-emoji">🔥</span>
+                    <span class="pg-reaction-label">Fire</span>
+                    <span class="pg-reaction-count" id="fire-count">0</span>
+                </button>
+                <button onclick="sendReaction('💎', 'diamond')" class="pg-reaction-btn" data-reaction="diamond">
+                    <span class="pg-reaction-emoji">💎</span>
+                    <span class="pg-reaction-label">Diamond</span>
+                    <span class="pg-reaction-count" id="diamond-count">0</span>
+                </button>
+                <button onclick="sendReaction('🚀', 'rocket')" class="pg-reaction-btn" data-reaction="rocket">
+                    <span class="pg-reaction-emoji">🚀</span>
+                    <span class="pg-reaction-label">Rocket</span>
+                    <span class="pg-reaction-count" id="rocket-count">0</span>
+                </button>
+                <button onclick="sendReaction('⭐', 'star')" class="pg-reaction-btn" data-reaction="star">
+                    <span class="pg-reaction-emoji">⭐</span>
+                    <span class="pg-reaction-label">Star</span>
+                    <span class="pg-reaction-count" id="star-count">0</span>
+                </button>
+            </div>
+        </div>
+
         <div style="display: flex; gap: var(--pg-space-3); flex-wrap: wrap;">
             <a href="/pengubook/browse" class="pg-btn pg-btn--secondary">
                 ← Back to Browse
             </a>
             <button onclick="showTipModal()" class="pg-btn pg-btn--primary">
                 💸 Send Tip
+            </button>
+            <button onclick="followUser('${targetUser.discordId}')" class="pg-btn pg-btn--outline" id="followBtn">
+                ➕ Follow
             </button>
         </div>
     </div>
@@ -339,9 +374,157 @@ export async function userHandler(req, res) {
             }
         }
 
+        // Social interaction functions
+        async function sendReaction(emoji, type) {
+            try {
+                const response = await fetch('/pengubook/api/react', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        targetDiscordId: '${targetUser.discordId}',
+                        reactionType: type
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Update reaction count and animate
+                    const countEl = document.getElementById(type + '-count');
+                    const btnEl = document.querySelector(\`[data-reaction="\${type}"]\`);
+
+                    if (result.added) {
+                        countEl.textContent = parseInt(countEl.textContent) + 1;
+                        btnEl.classList.add('pg-reaction-btn--active');
+                        // Add sparkle effect
+                        createSparkleEffect(btnEl);
+                    } else {
+                        countEl.textContent = Math.max(0, parseInt(countEl.textContent) - 1);
+                        btnEl.classList.remove('pg-reaction-btn--active');
+                    }
+                } else {
+                    showReactionError(result.error || 'Failed to send reaction');
+                }
+            } catch (error) {
+                console.error('Reaction error:', error);
+                showReactionError('Failed to send reaction');
+            }
+        }
+
+        async function followUser(discordId) {
+            const followBtn = document.getElementById('followBtn');
+            const originalText = followBtn.textContent;
+
+            try {
+                followBtn.disabled = true;
+                followBtn.textContent = '⏳ Loading...';
+
+                const response = await fetch('/pengubook/api/follow', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetDiscordId: discordId })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    if (result.following) {
+                        followBtn.textContent = '✅ Following';
+                        followBtn.classList.add('pg-btn--success');
+                        showSuccessMessage('Now following this user!');
+                    } else {
+                        followBtn.textContent = '➕ Follow';
+                        followBtn.classList.remove('pg-btn--success');
+                        showSuccessMessage('Unfollowed user');
+                    }
+                } else {
+                    followBtn.textContent = originalText;
+                    showReactionError(result.error || 'Failed to follow user');
+                }
+            } catch (error) {
+                followBtn.textContent = originalText;
+                console.error('Follow error:', error);
+                showReactionError('Failed to follow user');
+            } finally {
+                followBtn.disabled = false;
+            }
+        }
+
+        function createSparkleEffect(element) {
+            const sparkle = document.createElement('div');
+            sparkle.className = 'pg-sparkle-effect';
+            sparkle.innerHTML = '✨';
+
+            const rect = element.getBoundingClientRect();
+            sparkle.style.position = 'fixed';
+            sparkle.style.left = rect.left + rect.width / 2 + 'px';
+            sparkle.style.top = rect.top + rect.height / 2 + 'px';
+            sparkle.style.pointerEvents = 'none';
+            sparkle.style.fontSize = '20px';
+            sparkle.style.zIndex = '9999';
+
+            document.body.appendChild(sparkle);
+
+            sparkle.animate([
+                { transform: 'translate(-50%, -50%) scale(0)', opacity: 1 },
+                { transform: 'translate(-50%, -150%) scale(1)', opacity: 0 }
+            ], {
+                duration: 1000,
+                easing: 'ease-out'
+            }).onfinish = () => sparkle.remove();
+        }
+
+        function showReactionError(message) {
+            const toast = document.createElement('div');
+            toast.className = 'pg-toast pg-toast--error';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.classList.add('pg-toast--show'), 100);
+            setTimeout(() => {
+                toast.classList.remove('pg-toast--show');
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 3000);
+        }
+
+        // Load initial reaction counts and follow status
+        async function loadSocialData() {
+            try {
+                const response = await fetch(\`/pengubook/api/social-data/\${targetUser.discordId}\`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        // Update reaction counts
+                        Object.entries(data.reactions).forEach(([type, count]) => {
+                            const countEl = document.getElementById(type + '-count');
+                            if (countEl) countEl.textContent = count;
+                        });
+
+                        // Update user's reactions
+                        data.userReactions.forEach(type => {
+                            const btnEl = document.querySelector(\`[data-reaction="\${type}"]\`);
+                            if (btnEl) btnEl.classList.add('pg-reaction-btn--active');
+                        });
+
+                        // Update follow status
+                        const followBtn = document.getElementById('followBtn');
+                        if (data.isFollowing) {
+                            followBtn.textContent = '✅ Following';
+                            followBtn.classList.add('pg-btn--success');
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load social data:', error);
+            }
+        }
+
+        // Load social data on page load
+        document.addEventListener('DOMContentLoaded', loadSocialData);
+
         // Make functions global
         window.showTipModal = showTipModal;
         window.closeTipModal = closeTipModal;
+        window.sendReaction = sendReaction;
+        window.followUser = followUser;
     </script>`;
         res.send(generateBaseHTML(content, `👤 ${targetUser.discordId.slice(-4)} - PenguBook`, 'browse', {
             user: currentUser,

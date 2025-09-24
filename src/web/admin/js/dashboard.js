@@ -19,6 +19,8 @@ export async function loadAllData() {
     // Then load data-heavy sections
     await Promise.all([
       loadServers(),
+      loadServerApplications(),
+      loadChannelSettings(),
       loadTreasury(),
       loadAds(),
       loadFees(),
@@ -44,6 +46,19 @@ async function loadTiers() {
 async function loadServers() {
   const { loadServers: loadServersImpl } = await import('/admin/servers.js');
   return loadServersImpl();
+}
+
+async function loadServerApplications() {
+  const { loadServerApplications: loadServerApplicationsImpl, loadApplicationStats } = await import('/admin/server-applications.js');
+  await Promise.all([
+    loadServerApplicationsImpl(),
+    loadApplicationStats()
+  ]);
+}
+
+async function loadChannelSettings() {
+  const { loadChannelSettings: loadChannelSettingsImpl } = await import('/admin/channels.js');
+  return loadChannelSettingsImpl();
 }
 
 async function loadTreasury() {
@@ -84,6 +99,9 @@ export async function initDashboard() {
 
     const { initServersSection } = await import('/admin/servers.js');
     initServersSection();
+
+    const { initServerApplicationsSection } = await import('/admin/server-applications.js');
+    initServerApplicationsSection();
 
     const { initTreasurySection } = await import('/admin/treasury.js');
     initTreasurySection();

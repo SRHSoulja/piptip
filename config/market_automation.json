@@ -1,0 +1,50 @@
+{
+  "enabled": true,
+  "schedule": ["09:00", "15:00", "21:00"],
+  "timezone": "UTC",
+  "maxDailyMarkets": 5,
+  "hotReloadConfig": true,
+  "defaultGuildId": null,
+  "crypto": {
+    "enabled": true,
+    "tokens": ["PENGU", "PEPE", "WOJAK", "BTC", "ETH"],
+    "types": ["price_increase_24h", "price_above_target"],
+    "maxPerDay": 3,
+    "priceTargetMultipliers": [1.1, 1.2, 1.5, 2.0],
+    "durationHours": [24, 48, 72],
+    "minVolumeUSD": 100000,
+    "excludeStablecoins": true
+  },
+  "sports": {
+    "enabled": true,
+    "preferredTeams": {
+      "NFL": ["Chiefs", "Bills", "Cowboys", "Packers", "49ers"],
+      "NBA": ["Lakers", "Warriors", "Celtics", "Heat", "Nuggets"],
+      "Premier League": ["Man City", "Liverpool", "Arsenal", "Chelsea", "Man United"],
+      "MLB": ["Yankees", "Dodgers", "Red Sox", "Giants", "Cubs"]
+    },
+    "maxPerDay": 2,
+    "hoursBeforeGame": 24,
+    "maxHoursBeforeGame": 168,
+    "marketTypes": ["winner", "over_under", "spread"],
+    "excludeWeakTeams": true,
+    "minOddsThreshold": 1.3
+  },
+  "riskLimits": {
+    "maxConcurrentMarkets": 15,
+    "cooldownBetweenSimilar": 6,
+    "maxFailuresBeforeStop": 3,
+    "requireApiHealthCheck": true
+  },
+  "notifications": {
+    "adminNotifyOnFailure": true,
+    "adminNotifyOnSuccess": false,
+    "discordChannelId": null,
+    "webhookUrl": null
+  },
+  "analytics": {
+    "trackPerformance": true,
+    "minBetsForSuccess": 3,
+    "trackEngagementMetrics": true
+  }
+}

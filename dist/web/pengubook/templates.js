@@ -64,8 +64,20 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
         <a href="/pengubook/browse" class="pg-nav__link ${currentPage === 'browse' ? 'pg-nav__link--active' : ''}">
             👥 Browse Users
         </a>
+        <a href="/pengubook/stats" class="pg-nav__link ${currentPage === 'stats' ? 'pg-nav__link--active' : ''}">
+            📊 Stats
+        </a>
+        <a href="/pengubook/transactions" class="pg-nav__link ${currentPage === 'transactions' ? 'pg-nav__link--active' : ''}">
+            📋 Transactions
+        </a>
+        <a href="/pengubook/apply" class="pg-nav__link ${currentPage === 'apply' ? 'pg-nav__link--active' : ''}">
+            📝 Apply
+        </a>
         <a href="/pengubook/profile" class="pg-nav__link ${currentPage === 'profile' ? 'pg-nav__link--active' : ''}">
             ⚙️ Profile
+        </a>
+        <a href="/server" class="pg-nav__link">
+            🛡️ Server Admin
         </a>
     </nav>
 
@@ -361,6 +373,32 @@ export function generateHomeContent(user, currentUser) {
             </div>
         </div>
 
+        <!-- Wallet Balance Card -->
+        <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
+                <h2 style="margin: 0; color: var(--pg-dark-800);">💰 Wallet Balance</h2>
+                <button onclick="refreshBalances()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshBalanceBtn">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div id="balanceContainer" style="min-height: 60px;">
+                <div class="pg-loading-skeleton">Loading wallet balances...</div>
+            </div>
+        </div>
+
+        <!-- Recent Activity Feed -->
+        <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
+                <h2 style="margin: 0; color: var(--pg-dark-800);">🔥 Recent Activity</h2>
+                <button onclick="refreshActivity()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshActivityBtn">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div id="activityContainer" style="min-height: 200px;">
+                <div class="pg-loading-skeleton">Loading recent activity...</div>
+            </div>
+        </div>
+
         <!-- Feature Cards Grid -->
         <div class="pg-grid pg-grid--3">
             <div class="pg-feature-card">
@@ -379,6 +417,33 @@ export function generateHomeContent(user, currentUser) {
                     View your tip notifications and messages in one organized place.
                 </p>
                 <a href="/pengubook/inbox" class="pg-btn pg-btn--primary">View Messages</a>
+            </div>
+
+            <div class="pg-feature-card">
+                <span class="pg-feature-icon">📊</span>
+                <h3 class="pg-feature-title">Statistics</h3>
+                <p class="pg-feature-description">
+                    Comprehensive gaming stats, win rates, and financial analytics.
+                </p>
+                <a href="/pengubook/stats" class="pg-btn pg-btn--primary">View Stats</a>
+            </div>
+
+            <div class="pg-feature-card">
+                <span class="pg-feature-icon">📋</span>
+                <h3 class="pg-feature-title">Transactions</h3>
+                <p class="pg-feature-description">
+                    Complete history of all your tips, deposits, and withdrawals.
+                </p>
+                <a href="/pengubook/transactions" class="pg-btn pg-btn--primary">View History</a>
+            </div>
+
+            <div class="pg-feature-card">
+                <span class="pg-feature-icon">🛡️</span>
+                <h3 class="pg-feature-title">Server Admin</h3>
+                <p class="pg-feature-description">
+                    Manage PIPTip settings for your Discord servers.
+                </p>
+                <a href="/server" class="pg-btn pg-btn--primary">Manage Servers</a>
             </div>
 
             <div class="pg-feature-card">
@@ -431,5 +496,128 @@ export function generateEmptyState(icon, title, description, buttonText, buttonL
             <a href="${buttonLink}" class="pg-btn pg-btn--primary">${buttonText}</a>
         </div>
         ` : ''}
-    </div>`;
+    </div>
+
+    <script>
+        // Wallet balance functionality
+        async function loadBalances() {
+            const container = document.getElementById('balanceContainer');
+            const refreshBtn = document.getElementById('refreshBalanceBtn');
+
+            try {
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = '🔄 Loading...';
+
+                const response = await fetch('/pengubook/api/balance');
+                const data = await response.json();
+
+                if (data.success && data.balances && data.balances.length > 0) {
+                    const balanceHTML = \`
+                        <div class="pg-balance-grid">
+                            \${data.balances.map(balance => \`
+                                <div class="pg-balance-item">
+                                    <div class="pg-balance-amount">\${balance.amount}</div>
+                                    <div class="pg-balance-token">\${balance.Token.symbol}</div>
+                                </div>
+                            \`).join('')}
+                        </div>
+                    \`;
+                    container.innerHTML = balanceHTML;
+                } else {
+                    container.innerHTML = \`
+                        <div class="pg-empty-state" style="padding: var(--pg-space-4); text-align: center;">
+                            <div style="color: var(--pg-dark-600); margin-bottom: var(--pg-space-2);">
+                                💳 No wallet balances found
+                            </div>
+                            <div style="font-size: var(--pg-text-sm); color: var(--pg-dark-500);">
+                                Make a deposit or receive tips to see your balances here
+                            </div>
+                        </div>
+                    \`;
+                }
+            } catch (error) {
+                console.error('Failed to load balances:', error);
+                container.innerHTML = \`
+                    <div class="pg-error" style="padding: var(--pg-space-4); text-align: center;">
+                        ❌ Failed to load wallet balances
+                    </div>
+                \`;
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh';
+            }
+        }
+
+        function refreshBalances() {
+            loadBalances();
+        }
+
+        // Activity feed functionality
+        async function loadActivity() {
+            const container = document.getElementById('activityContainer');
+            const refreshBtn = document.getElementById('refreshActivityBtn');
+
+            try {
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = '🔄 Loading...';
+
+                // Fetch real activity feed
+                const response = await fetch('/pengubook/api/activity-feed');
+                const data = await response.json();
+
+                if (data.success && data.activities && data.activities.length > 0) {
+                    const activityHTML = \`
+                        <div class="pg-activity-feed">
+                            \${data.activities.map(activity => \`
+                                <div class="pg-activity-item">
+                                    <div class="pg-activity-icon">\${activity.icon}</div>
+                                    <div class="pg-activity-content">
+                                        <div class="pg-activity-text">\${activity.text}</div>
+                                        <div class="pg-activity-time">\${activity.time}</div>
+                                    </div>
+                                </div>
+                            \`).join('')}
+                        </div>
+                    \`;
+                    container.innerHTML = activityHTML;
+                } else {
+                    container.innerHTML = \`
+                        <div class="pg-empty-state" style="padding: var(--pg-space-4); text-align: center;">
+                            <div style="color: var(--pg-dark-600); margin-bottom: var(--pg-space-2);">
+                                🌟 No recent activity
+                            </div>
+                            <div style="font-size: var(--pg-text-sm); color: var(--pg-dark-500);">
+                                Be the first to react, follow, or tip someone to start the activity feed!
+                            </div>
+                        </div>
+                    \`;
+                }
+
+            } catch (error) {
+                console.error('Failed to load activity:', error);
+                container.innerHTML = \`
+                    <div class="pg-error" style="padding: var(--pg-space-4); text-align: center;">
+                        ❌ Failed to load activity feed
+                    </div>
+                \`;
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh';
+            }
+        }
+
+        function refreshActivity() {
+            loadActivity();
+        }
+
+        // Load balances and activity when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBalances();
+            loadActivity();
+        });
+
+        // Make functions global
+        window.refreshBalances = refreshBalances;
+        window.refreshActivity = refreshActivity;
+    </script>`;
 }

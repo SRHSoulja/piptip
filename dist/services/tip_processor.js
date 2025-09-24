@@ -1,5 +1,5 @@
 import { prisma } from "./db.js";
-import { getActiveTokens, toAtomicDirect, formatAmount, bigToDecDirect, decToBigDirect } from "./token.js";
+import { getActiveTokens, toAtomicDirect, formatAmount, formatAmountWithUSD, bigToDecDirect, decToBigDirect } from "./token.js";
 import { transferToken, ensureUser } from "./balances.js";
 import { getConfig } from "../config.js";
 import { getActiveAd } from "./ads.js";
@@ -254,10 +254,33 @@ export async function processTip(data, client) {
             })();
             // Create tier purchase button for FOMO conversion if tier benefits were shown
             const tierButton = await createTierPurchaseButton(bestTaxBenefit, data.userId);
+            // Create activity feed item for social gaming
+            try {
+                await prisma.activityFeedItem.create({
+                    data: {
+                        userId: fromUser.id,
+                        type: 'tip',
+                        data: {
+                            amount: formatAmount(atomic, token),
+                            token: token.symbol,
+                            targetUserId: targetUser.id,
+                            targetUserHandle: targetUser.displayName || targetUser.username,
+                            fromPenguBook: data.fromPenguBook || false
+                        },
+                        visibility: 'public'
+                    }
+                });
+            }
+            catch (error) {
+                console.error("Failed to create activity feed item for tip:", error);
+                // Don't fail the tip if activity feed creation fails
+            }
+            // Format amount with USD for confirmation
+            const formattedAmountWithUSD = await formatAmountWithUSD(atomic, token, { compact: true });
             return {
                 success: true,
                 message: "Direct tip sent successfully!",
-                details: `Sent ${formatAmount(atomic, token)} to ${targetUser.displayName || targetUser.username}`,
+                details: `Sent ${formattedAmountWithUSD} to ${targetUser.displayName || targetUser.username}`,
                 publicMessage: {
                     content: publicLine,
                     components: tierButton ? [tierButton] : undefined,
@@ -412,10 +435,14 @@ export async function processTip(data, client) {
                     console.error(`❌ REDIS TIMER FAILED for group tip ${result.id}:`, redisError.message);
                     // Don't fail the entire tip creation for Redis errors
                 }
-                const totalLine = `${formatAmount(atomic, token)} + fee ${formatAmount(feeAtomic, token)} = ${formatAmount(atomic + feeAtomic, token)}`;
+                // Format amounts with USD values for confirmation
+                const formattedAmountWithUSD = await formatAmountWithUSD(atomic, token, { compact: true });
+                const formattedFeeWithUSD = await formatAmountWithUSD(feeAtomic, token, { compact: true });
+                const formattedTotalWithUSD = await formatAmountWithUSD(atomic + feeAtomic, token, { compact: true });
+                const totalLine = `${formattedAmountWithUSD} + fee ${formattedFeeWithUSD} = ${formattedTotalWithUSD}`;
                 // Add role benefit notification for group tip creator
                 let successMessage = "Group tip created successfully!";
-                let detailsMessage = `Created ${data.duration}-minute group tip for ${formatAmount(atomic, token)}\nYou were charged ${totalLine}`;
+                let detailsMessage = `Created ${data.duration}-minute group tip for ${formattedAmountWithUSD}\nYou were charged ${totalLine}`;
                 if (bestTaxBenefit && bestTaxBenefit.exemptionRate > 0) {
                     const originalFee = (atomic * BigInt(token.tipFeeBps ?? cfg?.tipFeeBps ?? 100)) / 10000n;
                     const savedAmount = originalFee - feeAtomic;

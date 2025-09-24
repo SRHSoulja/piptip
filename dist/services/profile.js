@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { prisma } from "./db.js";
 import { profileEmbed } from "../ui/embeds.js";
-import { formatDecimal, bigToDecDirect } from "./token.js";
+import { formatDecimal, bigToDecDirect, formatDecimalWithUSD } from "./token.js";
 import { getStreakStats, formatStreakText, getUserAchievements } from "./streaks.js";
 import { calculateSocialScore, getUserRank } from "./social_leaderboards.js";
 import { getDailyProgress } from "./daily_engagement.js";
@@ -220,13 +220,20 @@ export async function generateProfileData(userId, discordUser) {
             }
         })
     ]);
-    // Format balance display
+    // Format balance display with USD values
     let balanceText = "0 tokens";
     if (balances.length > 0) {
-        balanceText = balances
-            .filter(b => Number(b.amount) > 0)
-            .map(b => formatDecimal(b.amount, b.Token.symbol))
-            .join(", ") || "0 tokens";
+        const nonZeroBalances = balances.filter(b => Number(b.amount) > 0);
+        if (nonZeroBalances.length > 0) {
+            // Get formatted balances with USD values in parallel
+            const formattedBalances = await Promise.all(nonZeroBalances.map(async (b) => {
+                return await formatDecimalWithUSD(b.amount, b.Token.symbol, { compact: true });
+            }));
+            balanceText = formattedBalances.join(", ");
+        }
+        else {
+            balanceText = "0 tokens";
+        }
     }
     // Format tier membership display
     const membershipText = activeMemberships.length > 0
@@ -299,13 +306,23 @@ export async function generateProfileData(userId, discordUser) {
             });
         }
     }
-    // Format tip statistics for display
-    const tipsSentText = Array.from(tipsSentByToken.entries())
-        .map(([symbol, data]) => `${data.count} tips (${formatDecimal(Number(data.amount), symbol)})`)
-        .join('\n') || 'No tips sent';
-    const tipsReceivedText = Array.from(tipsReceivedByToken.entries())
-        .map(([symbol, data]) => `${data.count} tips (${formatDecimal(Number(data.amount), symbol)})`)
-        .join('\n') || 'No tips received';
+    // Format tip statistics for display with USD values
+    const tipsSentTextPromises = Array.from(tipsSentByToken.entries())
+        .map(async ([symbol, data]) => {
+        const formattedAmount = await formatDecimalWithUSD(Number(data.amount), symbol, { compact: true });
+        return `${data.count} tips (${formattedAmount})`;
+    });
+    const tipsReceivedTextPromises = Array.from(tipsReceivedByToken.entries())
+        .map(async ([symbol, data]) => {
+        const formattedAmount = await formatDecimalWithUSD(Number(data.amount), symbol, { compact: true });
+        return `${data.count} tips (${formattedAmount})`;
+    });
+    const [tipsSentTextArray, tipsReceivedTextArray] = await Promise.all([
+        Promise.all(tipsSentTextPromises),
+        Promise.all(tipsReceivedTextPromises)
+    ]);
+    const tipsSentText = tipsSentTextArray.join('\n') || 'No tips sent';
+    const tipsReceivedText = tipsReceivedTextArray.join('\n') || 'No tips received';
     // Calculate group tip totals from aggregated stats first
     const groupTipsCreatedTotal = groupTipStats.reduce((sum, stat) => sum + (stat.groupTipsCreated || 0), 0);
     const groupTipsClaimedTotal = groupTipStats.reduce((sum, stat) => sum + (stat.groupTipsClaimed || 0), 0);
@@ -339,9 +356,18 @@ export async function generateProfileData(userId, discordUser) {
             }
             // Get token symbol from transaction data
             const tokenSymbol = tx.Token?.symbol || "tokens";
-            const amount = formatDecimal(Number(tx.amount), tokenSymbol);
+            // Format amount with historical USD value if available
+            let amountDisplay = formatDecimal(Number(tx.amount), tokenSymbol);
+            // Show historical USD value if it was captured
+            if (tx.usdValue && tx.usdValue > 0) {
+                const historicalUSD = parseFloat(tx.usdValue);
+                const usdFormatted = historicalUSD < 1
+                    ? `$${historicalUSD.toFixed(4).replace(/\.?0+$/, "")}`
+                    : `$${historicalUSD.toFixed(2).replace(/\.?0+$/, "")}`;
+                amountDisplay += ` (${usdFormatted} historical)`;
+            }
             const timeAgo = `<t:${Math.floor(tx.createdAt.getTime() / 1000)}:R>`;
-            return `${tx.type}${direction}: ${amount} ${timeAgo}`;
+            return `${tx.type}${direction}: ${amountDisplay} ${timeAgo}`;
         })
             .join("\n")
         : "No recent activity";

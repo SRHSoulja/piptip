@@ -32,10 +32,21 @@ export default async function pipHelp(i) {
         name: "📖 PenguBook Social Features",
         value: "**Create Bio**: `/pip_bio set text:\"Your bio here\"` - Create your PenguBook profile\n" +
             "**Browse Profiles**: `/pip_pengubook` - Discover other users and their bios\n" +
+            "**View Statistics**: Web dashboard shows detailed gaming, tipping, and financial stats\n" +
+            "**Transaction History**: Complete history of all tips, deposits, and withdrawals\n" +
             "**🔍 Search Users**: Use the search feature to find specific Discord usernames safely\n" +
-            "**Send Messages**: Tip with notes through PenguBook - messages go to their inbox\n" +
-            "**View Inbox**: Check your PenguBook messages from profile tips\n\n" +
+            "**Send Messages**: Tip with notes through PenguBook - messages go to their inbox\n\n" +
             "🛡️ *Safety: Always verify exact usernames to avoid impersonators!*",
+        inline: false
+    }, {
+        name: "🛡️ Server Administration",
+        value: "**For Server Owners & Admins:**\n" +
+            "📝 **Apply for PIPTip**: `/pip_apply` or visit `/pengubook/apply` to get your server approved\n" +
+            "🌐 **Web Dashboard**: Visit `/server` on PenguBook to manage your Discord server settings\n" +
+            "⚙️ **Channel Controls**: Configure which channels allow tipping and gaming\n" +
+            "📊 **Activity Monitoring**: View server-wide PIPTip usage statistics\n" +
+            "🔧 **Permission Management**: Fine-tune bot permissions and restrictions\n\n" +
+            "*Server approval required first, then Administrator or Manage Server permissions*",
         inline: false
     }, {
         name: "⭐ Premium Features",
@@ -67,15 +78,19 @@ export default async function pipHelp(i) {
         text: "💡 Pro tip: Most commands support autocomplete - just start typing!"
     })
         .setTimestamp();
-    // Add web access button
+    // Add web access buttons
     const webAccessRow = new ActionRowBuilder()
         .addComponents(new ButtonBuilder()
         .setURL(`${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/pengubook`)
-        .setLabel("🌐 Open PenguBook in Browser")
+        .setLabel("🌐 Open PenguBook")
         .setStyle(ButtonStyle.Link)
         .setEmoji("💻"), new ButtonBuilder()
+        .setURL(`${process.env.PUBLIC_BASE_URL || 'http://localhost:3000'}/server`)
+        .setLabel("🛡️ Server Admin")
+        .setStyle(ButtonStyle.Link)
+        .setEmoji("⚙️"), new ButtonBuilder()
         .setCustomId("pip:view_profile")
-        .setLabel("👤 View My Profile")
+        .setLabel("👤 Profile")
         .setStyle(ButtonStyle.Primary)
         .setEmoji("📊"));
     await i.reply({

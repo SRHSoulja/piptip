@@ -39,7 +39,12 @@ export async function inboxHandler(req, res) {
         });
         const content = `
     <div class="pg-container">
-        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">📨 Your Messages</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-6);">
+            <h1 style="margin: 0; color: var(--pg-dark-800);">📨 Your Messages</h1>
+            <button onclick="showComposeModal()" class="pg-btn pg-btn--primary">
+                ✍️ Compose Message
+            </button>
+        </div>
 
         ${messages.length === 0 ? `
         <div class="pg-empty-state">
@@ -70,9 +75,232 @@ export async function inboxHandler(req, res) {
                 ` : ''}
                 ${escapeHtml(msg.message || '')}
             </div>
+            ${msg.from && msg.from.discordId && msg.from.discordId !== msg.from.id ? `
+            <div class="pg-message-actions">
+                <button onclick="replyToMessage('${msg.from.discordId}', '${msg.from.discordId.slice(-4)}')" class="pg-btn pg-btn--sm pg-btn--outline">
+                    ↩️ Reply
+                </button>
+            </div>
+            ` : ''}
         </div>
         `).join('')}
-    </div>`;
+    </div>
+
+    <script>
+        // Message composition functionality
+        function showComposeModal() {
+            const modal = document.createElement('div');
+            modal.className = 'pg-modal-overlay';
+            modal.innerHTML = \`
+                <div class="pg-modal">
+                    <div class="pg-modal-header">
+                        <h2>✍️ Compose Message</h2>
+                        <button onclick="closeComposeModal()" class="pg-modal-close">&times;</button>
+                    </div>
+                    <form id="composeForm" class="pg-modal-body">
+                        <div class="pg-form-group">
+                            <label for="recipientDiscordId">Recipient (Discord ID)</label>
+                            <input type="text" id="recipientDiscordId" placeholder="Enter Discord ID or User#1234" required>
+                            <small class="pg-form-hint">Enter the full Discord ID or User#1234 format</small>
+                        </div>
+
+                        <div class="pg-form-group">
+                            <label for="messageContent">Message</label>
+                            <textarea id="messageContent" maxlength="500" placeholder="Type your message here..." required></textarea>
+                            <small class="pg-form-hint"><span id="messageCharCount">0</span>/500 characters</small>
+                        </div>
+
+                        <div id="composeError" class="pg-error" style="display: none;"></div>
+
+                        <div class="pg-modal-actions">
+                            <button type="button" onclick="closeComposeModal()" class="pg-btn pg-btn--secondary">Cancel</button>
+                            <button type="submit" class="pg-btn pg-btn--primary">Send Message</button>
+                        </div>
+                    </form>
+                </div>
+            \`;
+
+            document.body.appendChild(modal);
+
+            // Add event listeners
+            const messageInput = document.getElementById('messageContent');
+            const charCount = document.getElementById('messageCharCount');
+            messageInput.addEventListener('input', function() {
+                charCount.textContent = this.value.length;
+            });
+
+            const form = document.getElementById('composeForm');
+            form.addEventListener('submit', handleMessageSubmit);
+
+            // Close on outside click
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) closeComposeModal();
+            });
+
+            // Focus on recipient input
+            document.getElementById('recipientDiscordId').focus();
+        }
+
+        async function handleMessageSubmit(e) {
+            e.preventDefault();
+
+            const errorDiv = document.getElementById('composeError');
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+
+            // Clear previous errors
+            errorDiv.style.display = 'none';
+            errorDiv.textContent = '';
+
+            // Get form data
+            let recipientId = document.getElementById('recipientDiscordId').value.trim();
+            const message = document.getElementById('messageContent').value.trim();
+
+            // Validate
+            if (!recipientId) {
+                showComposeError('Please enter a recipient Discord ID');
+                return;
+            }
+
+            if (!message) {
+                showComposeError('Please enter a message');
+                return;
+            }
+
+            // Parse recipient ID if in User#1234 format
+            if (recipientId.startsWith('User#')) {
+                showComposeError('Please enter the full Discord ID, not the User#1234 format');
+                return;
+            }
+
+            // Validate Discord ID format (should be a long number)
+            if (!/^\\d{17,20}$/.test(recipientId)) {
+                showComposeError('Please enter a valid Discord ID (17-20 digit number)');
+                return;
+            }
+
+            // Disable submit button
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('/pengubook/api/send-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        targetDiscordId: recipientId,
+                        message: message
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    closeComposeModal();
+                    showSuccessToast('Message sent successfully!');
+                    // Reload the page to show the sent message (if it's to current user)
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showComposeError(result.error || 'Failed to send message');
+                }
+            } catch (error) {
+                showComposeError('Failed to send message. Please try again.');
+                console.error('Message send error:', error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Send Message';
+            }
+        }
+
+        function showComposeError(message) {
+            const errorDiv = document.getElementById('composeError');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function showSuccessToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'pg-toast pg-toast--success';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('pg-toast--show');
+            }, 100);
+
+            setTimeout(() => {
+                toast.classList.remove('pg-toast--show');
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 3000);
+        }
+
+        function closeComposeModal() {
+            const modal = document.querySelector('.pg-modal-overlay');
+            if (modal) {
+                document.body.removeChild(modal);
+            }
+        }
+
+        // Reply to a specific message
+        function replyToMessage(recipientDiscordId, userHandle) {
+            const modal = document.createElement('div');
+            modal.className = 'pg-modal-overlay';
+            modal.innerHTML = \`
+                <div class="pg-modal">
+                    <div class="pg-modal-header">
+                        <h2>↩️ Reply to User#\${userHandle}</h2>
+                        <button onclick="closeComposeModal()" class="pg-modal-close">&times;</button>
+                    </div>
+                    <form id="composeForm" class="pg-modal-body">
+                        <div class="pg-form-group">
+                            <label for="recipientDiscordId">Recipient</label>
+                            <input type="text" id="recipientDiscordId" value="\${recipientDiscordId}" readonly style="background: var(--pg-dark-200); cursor: not-allowed;">
+                            <small class="pg-form-hint">Replying to User#\${userHandle}</small>
+                        </div>
+
+                        <div class="pg-form-group">
+                            <label for="messageContent">Reply Message</label>
+                            <textarea id="messageContent" maxlength="500" placeholder="Type your reply here..." required></textarea>
+                            <small class="pg-form-hint"><span id="messageCharCount">0</span>/500 characters</small>
+                        </div>
+
+                        <div id="composeError" class="pg-error" style="display: none;"></div>
+
+                        <div class="pg-modal-actions">
+                            <button type="button" onclick="closeComposeModal()" class="pg-btn pg-btn--secondary">Cancel</button>
+                            <button type="submit" class="pg-btn pg-btn--primary">Send Reply</button>
+                        </div>
+                    </form>
+                </div>
+            \`;
+
+            document.body.appendChild(modal);
+
+            // Add event listeners
+            const messageInput = document.getElementById('messageContent');
+            const charCount = document.getElementById('messageCharCount');
+            messageInput.addEventListener('input', function() {
+                charCount.textContent = this.value.length;
+            });
+
+            const form = document.getElementById('composeForm');
+            form.addEventListener('submit', handleMessageSubmit);
+
+            // Close on outside click
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) closeComposeModal();
+            });
+
+            // Focus on message input for replies
+            messageInput.focus();
+        }
+
+        // Make functions global
+        window.showComposeModal = showComposeModal;
+        window.closeComposeModal = closeComposeModal;
+        window.replyToMessage = replyToMessage;
+    </script>`;
         res.send(generateBaseHTML(content, '📨 Inbox - PenguBook', 'inbox', {
             user: currentUser,
             unreadCount: currentUnreadCount

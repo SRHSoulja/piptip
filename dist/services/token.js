@@ -4,6 +4,7 @@ import { formatUnits, parseUnits } from "ethers";
 import { prisma } from "./db.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
 import { cache, CacheKeys, CacheTTL } from "./cache.js";
+import { priceAPI } from "./price_api.js";
 /** For legacy callers that still read a single TOKEN_ADDRESS */
 export const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
 export function tipBps(token, cfg) {
@@ -90,6 +91,41 @@ export function formatDecimal(dec, symbol) {
     // Format to 2 decimal places and remove trailing zeros
     let formatted = num.toFixed(2).replace(/\.?0+$/, "");
     return `${formatted} ${symbol}`;
+}
+/** Format decimal amount with symbol and USD value */
+export async function formatDecimalWithUSD(dec, symbol, options) {
+    const num = Number(dec ?? 0);
+    const { showSymbol = true, compact = false, skipUSDBelow = 0.01 } = options || {};
+    // Format to 2 decimal places and remove trailing zeros
+    let formatted = num.toFixed(2).replace(/\.?0+$/, "");
+    let result = showSymbol ? `${formatted} ${symbol}` : formatted;
+    try {
+        // Get USD price for this token
+        const usdPrice = await priceAPI.getTokenPrice(symbol);
+        const usdValue = num * usdPrice;
+        // Only show USD if above threshold and price is available
+        if (usdValue >= skipUSDBelow && usdPrice > 0) {
+            const usdFormatted = usdValue < 1
+                ? `$${usdValue.toFixed(4).replace(/\.?0+$/, "")}`
+                : `$${usdValue.toFixed(2).replace(/\.?0+$/, "")}`;
+            if (compact) {
+                result += ` (${usdFormatted})`;
+            }
+            else {
+                result += ` • ${usdFormatted} USD`;
+            }
+        }
+    }
+    catch (error) {
+        // Silently continue without USD if price fetch fails
+        console.warn(`Failed to get USD price for ${symbol}:`, error);
+    }
+    return result;
+}
+/** Format atomic amount with symbol and USD value */
+export async function formatAmountWithUSD(atomic, token, options) {
+    const human = fromAtomicDirect(atomic, token.decimals);
+    return await formatDecimalWithUSD(human, token.symbol, options);
 }
 /** Get default token (for legacy compatibility) */
 async function getDefaultToken() {
