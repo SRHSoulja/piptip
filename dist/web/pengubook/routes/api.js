@@ -130,8 +130,8 @@ export const apiHandlers = {
                     console.warn("Failed to fetch USD prices for balances:", error);
                 }
             }
-            const priceMap = priceResult && priceResult.prices ? priceResult.prices : {};
-            const priceSource = priceResult && priceResult.source ? priceResult.source : "fallback";
+            const priceMap = priceResult?.prices ?? {};
+            const priceSource = priceResult?.source ?? "fallback";
             // Format balances with max 2 decimal places, remove trailing zeros, and attach USD estimates
             const formattedBalances = balances.map(balance => {
                 const amountNumber = Number(balance.amount.toString());

@@ -23,6 +23,7 @@ import pipAchievements from "./commands/pip_achievements.js";
 import pipLeaderboard from "./commands/pip_leaderboard.js";
 import pipApply from "./commands/pip_apply.js";
 import pipSettings from "./commands/pip_settings.js";
+import pipSafety from "./commands/pip_safety.js";
 import pipMarkets from "./commands/pip_markets.js";
 import pipBet from "./commands/pip_bet.js";
 import pipCreateMarket from "./commands/pip_create_market.js";
@@ -350,6 +351,7 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
             case "pip_leaderboard": return withAutoChannelCheck(i, pipLeaderboard);
             case "pip_apply": return withAutoChannelCheck(i, pipApply);
             case "pip_settings": return withAutoChannelCheck(i, pipSettings);
+            case "pip_safety": return withAutoChannelCheck(i, pipSafety);
             case "pip_markets": return withAutoChannelCheck(i, pipMarkets);
             case "pip_bet": return withAutoChannelCheck(i, pipBet);
             case "pip_create_market": return withAutoChannelCheck(i, pipCreateMarket);

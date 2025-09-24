@@ -6,6 +6,7 @@ import { getUnreadMessageCount } from "../../../interactions/buttons/pengubook.j
 import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
 import { formatDecimal } from "../../../services/token.js";
+import { priceAPI } from "../../../services/price_api.js";
 
 export async function statsHandler(req: Request, res: Response) {
   try {
@@ -91,6 +92,20 @@ export async function statsHandler(req: Request, res: Response) {
     const accountAge = Math.floor((Date.now() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24));
     const winRate = user.wins + user.losses > 0 ?
       ((user.wins / (user.wins + user.losses)) * 100).toFixed(1) : '0.0';
+
+    // Get USD prices for tokens
+    let priceMap: Record<string, number> = {};
+    let priceSource = 'fallback';
+    if (balances.length > 0) {
+      const tokenSymbols = [...new Set(balances.map(b => b.Token.symbol))];
+      try {
+        const priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+        priceMap = priceResult.prices || {};
+        priceSource = priceResult.source;
+      } catch (error) {
+        console.warn('Failed to fetch USD prices for stats page:', error);
+      }
+    }
 
     const content = `
     <div class="pg-container">
@@ -223,13 +238,34 @@ export async function statsHandler(req: Request, res: Response) {
             <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">💳 Current Balances</h2>
 
             <div class="pg-balance-display">
-                ${balances.map((balance: any) => `
+                ${balances.map((balance: any) => {
+                    const amount = Number(balance.amount.toString());
+                    const priceUSD = priceMap[balance.Token.symbol] || 0;
+                    const usdValue = priceUSD > 0 ? amount * priceUSD : 0;
+                    let formattedUSD = '';
+                    if (priceUSD > 0) {
+                        if (usdValue === 0) {
+                            formattedUSD = '$0.00';
+                        } else if (usdValue < 0.01) {
+                            formattedUSD = '< $0.01';
+                        } else {
+                            formattedUSD = `$${usdValue.toFixed(2)}`;
+                        }
+                    }
+                    return `
                     <div class="pg-balance-row">
                         <div class="pg-balance-token">${balance.Token.symbol}</div>
                         <div class="pg-balance-amount">${formatDecimal(balance.amount, balance.Token.decimals)}</div>
+                        ${formattedUSD ? `<div class="pg-balance-usd" style="color: var(--pg-dark-600); font-size: var(--pg-text-sm);">${formattedUSD} USD</div>` : ''}
                     </div>
-                `).join('')}
+                    `;
+                }).join('')}
             </div>
+            ${Object.keys(priceMap).length > 0 ? `
+            <div style="margin-top: var(--pg-space-3); padding-top: var(--pg-space-3); border-top: 1px solid var(--pg-dark-200); font-size: var(--pg-text-xs); color: var(--pg-dark-500);">
+                USD prices via ${priceSource.toUpperCase()}${priceSource === 'fallback' ? ' (estimates only)' : ''}
+            </div>
+            ` : ''}
         </div>
         ` : ''}
 

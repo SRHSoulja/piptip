@@ -64,6 +64,9 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
         <a href="/pengubook/browse" class="pg-nav__link ${currentPage === 'browse' ? 'pg-nav__link--active' : ''}">
             👥 Browse Users
         </a>
+        <a href="/pengubook/markets" class="pg-nav__link ${currentPage === 'markets' ? 'pg-nav__link--active' : ''}">
+            🔮 Prediction Markets
+        </a>
         <a href="/pengubook/stats" class="pg-nav__link ${currentPage === 'stats' ? 'pg-nav__link--active' : ''}">
             📊 Stats
         </a>
@@ -643,4 +646,3 @@ export function generateEmptyState(icon, title, description, buttonText, buttonL
         ` : ''}
     </div>`;
 }
-

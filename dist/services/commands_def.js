@@ -1,4 +1,3 @@
-// src/services/commands_def.ts
 import { SlashCommandBuilder } from "discord.js";
 export function getCommandsJson() {
     const defs = [
@@ -105,16 +104,15 @@ export function getCommandsJson() {
             .setDescription("Amount to bet")
             .setRequired(true)
             .setMinValue(1)),
+        // FIXED: Move all required options FIRST for pip_create_market
         new SlashCommandBuilder()
             .setName("pip_create_market")
             .setDescription("📊 Create a new prediction market")
+            // Required options first!
             .addStringOption(option => option.setName("type")
             .setDescription("Type of market to create")
             .setRequired(true)
             .addChoices({ name: "Price Up/Down", value: "PRICE_UP_DOWN" }, { name: "Price Above/Below", value: "PRICE_ABOVE_BELOW" }, { name: "Volume Ranking", value: "VOLUME_RANKING" }, { name: "Sports: Winner Prediction", value: "SPORTS_WINNER" }, { name: "Sports: Score Prediction", value: "SPORTS_OVER_UNDER" }, { name: "Sports: Spread Prediction", value: "SPORTS_SPREAD" }))
-            .addStringOption(option => option.setName("symbol")
-            .setDescription("Token symbol (e.g., BTC, ETH, PEPE) - not needed for sports markets")
-            .setRequired(false))
             .addIntegerOption(option => option.setName("hours")
             .setDescription("Hours until market resolves")
             .setRequired(true)
@@ -124,6 +122,10 @@ export function getCommandsJson() {
             .setDescription("Token to use for betting")
             .setRequired(true)
             .setAutocomplete(true))
+            // Now all optional options after required
+            .addStringOption(option => option.setName("symbol")
+            .setDescription("Token symbol (e.g., BTC, ETH, PEPE) - not needed for sports markets")
+            .setRequired(false))
             .addNumberOption(option => option.setName("target_price")
             .setDescription("Target price (required for price target markets)")
             .setRequired(false))
@@ -172,6 +174,34 @@ export function getCommandsJson() {
             .addSubcommand(subcommand => subcommand
             .setName("reset")
             .setDescription("Reset all channel settings to defaults")),
+        new SlashCommandBuilder()
+            .setName("pip_safety")
+            .setDescription("🛡️ Responsible gaming and prediction safety controls")
+            .addSubcommand(subcommand => subcommand
+            .setName("limits")
+            .setDescription("View or set your daily prediction limits")
+            .addIntegerOption(option => option.setName("max_daily_loss")
+            .setDescription("Maximum tokens you can lose per day (0 to disable)")
+            .setRequired(false)
+            .setMinValue(0))
+            .addIntegerOption(option => option.setName("max_daily_predictions")
+            .setDescription("Maximum predictions you can make per day (0 to disable)")
+            .setRequired(false)
+            .setMinValue(0)))
+            .addSubcommand(subcommand => subcommand
+            .setName("exclude")
+            .setDescription("Self-exclude from predictions for a specified time period")
+            .addIntegerOption(option => option.setName("duration_hours")
+            .setDescription("Hours to exclude yourself (24 hours default, 0 for permanent)")
+            .setRequired(false)
+            .setMinValue(0)
+            .setMaxValue(8760)))
+            .addSubcommand(subcommand => subcommand
+            .setName("status")
+            .setDescription("View your current responsible gaming status and settings"))
+            .addSubcommand(subcommand => subcommand
+            .setName("reminder")
+            .setDescription("View responsible gaming guidelines and resources")),
     ];
     return defs.map(d => d.toJSON());
 }

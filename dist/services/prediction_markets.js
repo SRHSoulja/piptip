@@ -1,5 +1,6 @@
 // src/services/prediction_markets.ts - Core parimutuel betting logic
 import { prisma } from "./db.js";
+import { responsibleGaming } from "./responsible_gaming.js";
 /**
  * Core prediction market service handling parimutuel betting
  * The house NEVER bets - only facilitates and collects rake
@@ -52,7 +53,15 @@ export class PredictionMarketService {
                 return { success: false, error: "Market has expired" };
             }
             if (amount < market.minBet || amount > market.maxBet) {
-                return { success: false, error: `Bet must be between ${market.minBet} and ${market.maxBet} ${market.tokenSymbol}` };
+                return { success: false, error: `Prediction must be between ${market.minBet} and ${market.maxBet} ${market.tokenSymbol}` };
+            }
+            // Check responsible gaming limits
+            const gamingCheck = await responsibleGaming.canUserPredict(userId, amount, market.tokenSymbol);
+            if (!gamingCheck.allowed) {
+                return {
+                    success: false,
+                    error: gamingCheck.reason || "Prediction not allowed",
+                };
             }
             // Check user has sufficient balance
             const user = await prisma.user.findFirst({

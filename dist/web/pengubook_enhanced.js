@@ -1163,8 +1163,8 @@ pengubookEnhancedRouter.get("/api/balance", async (req, res) => {
                 console.warn("Failed to fetch USD prices for balances:", error);
             }
         }
-        const priceMap = priceResult && priceResult.prices ? priceResult.prices : {};
-        const priceSource = priceResult && priceResult.source ? priceResult.source : "fallback";
+        const priceMap = priceResult?.prices ?? {};
+        const priceSource = priceResult?.source ?? "fallback";
         const formattedBalances = balances.map(balance => {
             const amountNumber = Number(balance.amount.toString());
             const amount = amountNumber.toFixed(2).replace(/\.?0+$/, "");

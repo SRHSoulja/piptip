@@ -21,12 +21,22 @@ export default async function pipHelp(i) {
         inline: false
     }, {
         name: "🎮 Gaming & Features",
-        value: "**Challenge Players**: `/pip_game token:PENGUIN amount:5` - Start a Penguin Ice Pebble match\n" +
+        value: "**Challenge Players**: `/pip_game token:ABSTER amount:5` - Start a Penguin Ice Pebble match\n" +
             "**View Profile**: `/pip_profile` - See your balance, stats, and recent activity\n" +
             "**Detailed Stats**: `/pip_stats` - Comprehensive transaction history and analytics\n" +
             "**Achievements**: `/pip_achievements` - View your unlocked achievements and progress\n" +
             "**Leaderboards**: `/pip_leaderboard category:streaks` - See top players (streaks, wins, tips, etc.)\n" +
             "**Withdraw Funds**: `/pip_withdraw` - Interactive withdrawal interface with your holdings and limits",
+        inline: false
+    }, {
+        name: "🔮 Prediction Markets",
+        value: "**Trade Predictions**: Visit **PenguBook → Prediction Markets** to predict crypto prices, sports, and events\n" +
+            "**Live Trading**: Real-time odds, parimutuel pools, and instant payouts\n" +
+            "**Market Types**: Crypto price movements, sports outcomes, and community events\n" +
+            "**Web Interface**: Full prediction experience available at `/pengubook/markets`\n" +
+            "**Discord Integration**: Markets created and resolved through Discord, predict anywhere\n" +
+            "**Multiple Tokens**: Support for Abstract Chain tokens like ABSTER and others\n\n" +
+            "💡 *Visit PenguBook to browse active markets and start trading your predictions!*",
         inline: false
     }, {
         name: "📖 PenguBook Social Features",

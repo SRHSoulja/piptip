@@ -11,6 +11,7 @@ import { userHandler, userTipHandler } from "./routes/user.js";
 import { statsHandler } from "./routes/stats.js";
 import { transactionsHandler } from "./routes/transactions.js";
 import { applyHandler, applyPostHandler } from "./routes/apply.js";
+import { marketsHandler, marketDetailHandler, placeBetHandler } from "./routes/markets.js";
 import { apiHandlers } from "./routes/api.js";
 export const pengubookModularRouter = Router();
 // Middleware to require authentication for all PenguBook routes
@@ -27,6 +28,10 @@ pengubookModularRouter.get("/apply", applyHandler);
 pengubookModularRouter.post("/apply", applyPostHandler);
 pengubookModularRouter.get("/user/:discordId", userHandler);
 pengubookModularRouter.post("/user/:discordId/tip", userTipHandler);
+// Prediction Markets routes
+pengubookModularRouter.get("/markets", marketsHandler);
+pengubookModularRouter.get("/markets/:marketId", marketDetailHandler);
+pengubookModularRouter.post("/markets/bet", placeBetHandler);
 // API routes
 pengubookModularRouter.get("/api/unread-count", apiHandlers.unreadCount);
 pengubookModularRouter.get("/api/discord-user/:discordId", apiHandlers.discordUser);

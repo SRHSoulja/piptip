@@ -3304,3 +3304,644 @@ p {
     transform: translateY(0);
   }
 }
+
+/* ===== PREDICTION MARKETS STYLES ===== */
+
+/* Market Variables */
+:root {
+  --pg-yes-color: #22c55e;
+  --pg-yes-light: #dcfce7;
+  --pg-yes-dark: #166534;
+  --pg-no-color: #ef4444;
+  --pg-no-light: #fee2e2;
+  --pg-no-dark: #991b1b;
+  --pg-market-bg: var(--pg-dark-300);
+  --pg-market-border: var(--pg-dark-400);
+}
+
+/* Market Filters */
+.pg-markets-filters {
+  margin-bottom: var(--pg-space-8);
+}
+
+.pg-filters-row {
+  display: flex;
+  gap: var(--pg-space-4);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pg-filters-row select {
+  min-width: 160px;
+  background: var(--pg-market-bg);
+  border: 2px solid var(--pg-market-border);
+  border-radius: var(--pg-radius-md);
+  padding: var(--pg-space-2) var(--pg-space-3);
+  color: var(--pg-dark-800);
+  font-size: var(--pg-text-sm);
+}
+
+/* Markets Grid */
+.pg-markets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: var(--pg-space-6);
+  margin-bottom: var(--pg-space-8);
+}
+
+.pg-market-card {
+  background: var(--pg-market-bg);
+  border: 2px solid var(--pg-market-border);
+  border-radius: var(--pg-radius-lg);
+  padding: var(--pg-space-6);
+  transition: all var(--pg-duration-normal) var(--pg-ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+.pg-market-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border-color: var(--pg-primary-500);
+}
+
+.pg-market-card--active {
+  border-left: 4px solid var(--pg-success-500);
+}
+
+.pg-market-card--resolved {
+  border-left: 4px solid var(--pg-neutral-500);
+  opacity: 0.8;
+}
+
+/* Market Header */
+.pg-market-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--pg-space-4);
+}
+
+.pg-market-title a {
+  color: var(--pg-dark-800);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: var(--pg-text-lg);
+  line-height: 1.3;
+  display: block;
+}
+
+.pg-market-title a:hover {
+  color: var(--pg-primary-500);
+}
+
+.pg-market-meta {
+  display: flex;
+  gap: var(--pg-space-2);
+  align-items: center;
+}
+
+.pg-market-token {
+  background: var(--pg-primary-100);
+  color: var(--pg-primary-800);
+  padding: var(--pg-space-1) var(--pg-space-2);
+  border-radius: var(--pg-radius-sm);
+  font-size: var(--pg-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.pg-market-status {
+  padding: var(--pg-space-1) var(--pg-space-2);
+  border-radius: var(--pg-radius-sm);
+  font-size: var(--pg-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.pg-market-status.active {
+  background: var(--pg-success-100);
+  color: var(--pg-success-800);
+}
+
+.pg-market-status.resolved {
+  background: var(--pg-neutral-200);
+  color: var(--pg-neutral-700);
+}
+
+.pg-market-description {
+  color: var(--pg-dark-600);
+  font-size: var(--pg-text-sm);
+  line-height: 1.5;
+  margin-bottom: var(--pg-space-4);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Market Stats */
+.pg-market-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--pg-space-4);
+  margin-bottom: var(--pg-space-6);
+}
+
+.pg-stat {
+  text-align: center;
+}
+
+.pg-stat-label {
+  display: block;
+  color: var(--pg-dark-500);
+  font-size: var(--pg-text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--pg-space-1);
+}
+
+.pg-stat-value {
+  display: block;
+  color: var(--pg-dark-800);
+  font-size: var(--pg-text-lg);
+  font-weight: 700;
+}
+
+/* Odds Display */
+.pg-odds-display {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--pg-space-3);
+  margin-bottom: var(--pg-space-6);
+  background: var(--pg-dark-200);
+  padding: var(--pg-space-4);
+  border-radius: var(--pg-radius-md);
+}
+
+.pg-odds-side {
+  text-align: center;
+  padding: var(--pg-space-3);
+  border-radius: var(--pg-radius-sm);
+  position: relative;
+}
+
+.pg-odds-side--yes {
+  background: linear-gradient(135deg, var(--pg-yes-light), rgba(34, 197, 94, 0.1));
+  border: 1px solid var(--pg-yes-color);
+}
+
+.pg-odds-side--no {
+  background: linear-gradient(135deg, var(--pg-no-light), rgba(239, 68, 68, 0.1));
+  border: 1px solid var(--pg-no-color);
+}
+
+.pg-odds-label {
+  font-weight: 700;
+  font-size: var(--pg-text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--pg-space-1);
+}
+
+.pg-odds-side--yes .pg-odds-label {
+  color: var(--pg-yes-dark);
+}
+
+.pg-odds-side--no .pg-odds-label {
+  color: var(--pg-no-dark);
+}
+
+.pg-odds-value {
+  font-weight: 900;
+  font-size: var(--pg-text-xl);
+  margin-bottom: var(--pg-space-1);
+}
+
+.pg-odds-implied {
+  font-size: var(--pg-text-xs);
+  color: var(--pg-dark-600);
+  margin-bottom: var(--pg-space-2);
+}
+
+.pg-odds-pool {
+  font-size: var(--pg-text-xs);
+  font-weight: 600;
+  color: var(--pg-dark-700);
+}
+
+/* Market Actions */
+.pg-market-actions {
+  display: flex;
+  gap: var(--pg-space-3);
+  margin-bottom: var(--pg-space-4);
+}
+
+.pg-btn--yes {
+  background: linear-gradient(135deg, var(--pg-yes-color), #16a34a);
+  color: white;
+  border: none;
+  flex: 1;
+}
+
+.pg-btn--yes:hover {
+  background: linear-gradient(135deg, #16a34a, var(--pg-yes-dark));
+  transform: translateY(-1px);
+}
+
+.pg-btn--no {
+  background: linear-gradient(135deg, var(--pg-no-color), #dc2626);
+  color: white;
+  border: none;
+  flex: 1;
+}
+
+.pg-btn--no:hover {
+  background: linear-gradient(135deg, #dc2626, var(--pg-no-dark));
+  transform: translateY(-1px);
+}
+
+.pg-market-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--pg-space-4);
+  border-top: 1px solid var(--pg-market-border);
+  font-size: var(--pg-text-sm);
+  color: var(--pg-dark-600);
+}
+
+.pg-market-time {
+  display: flex;
+  align-items: center;
+  gap: var(--pg-space-2);
+  color: var(--pg-warning-600);
+  font-weight: 600;
+}
+
+.pg-market-outcome {
+  color: var(--pg-success-600);
+  font-weight: 600;
+}
+
+/* Large Odds Display for Detail Page */
+.pg-odds-display-large {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--pg-space-6);
+  margin: var(--pg-space-8) 0;
+}
+
+.pg-odds-side-large {
+  background: var(--pg-market-bg);
+  border: 3px solid transparent;
+  border-radius: var(--pg-radius-lg);
+  padding: var(--pg-space-6);
+  text-align: center;
+  position: relative;
+  transition: all var(--pg-duration-normal) var(--pg-ease-out);
+}
+
+.pg-odds-side-large--yes {
+  border-color: var(--pg-yes-color);
+  background: linear-gradient(135deg, var(--pg-yes-light), rgba(34, 197, 94, 0.05));
+}
+
+.pg-odds-side-large--no {
+  border-color: var(--pg-no-color);
+  background: linear-gradient(135deg, var(--pg-no-light), rgba(239, 68, 68, 0.05));
+}
+
+.pg-odds-side-large.pg-odds-winner {
+  border-width: 4px;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+  transform: scale(1.02);
+}
+
+.pg-odds-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--pg-space-4);
+}
+
+.pg-odds-label-large {
+  font-weight: 900;
+  font-size: var(--pg-text-2xl);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.pg-winner-badge {
+  background: var(--pg-success-500);
+  color: white;
+  padding: var(--pg-space-1) var(--pg-space-2);
+  border-radius: var(--pg-radius-sm);
+  font-size: var(--pg-text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pg-odds-value-large {
+  font-weight: 900;
+  font-size: var(--pg-text-4xl);
+  margin-bottom: var(--pg-space-2);
+  color: var(--pg-dark-900);
+}
+
+.pg-odds-implied-large {
+  color: var(--pg-dark-600);
+  font-size: var(--pg-text-sm);
+  margin-bottom: var(--pg-space-3);
+}
+
+.pg-odds-pool-large {
+  color: var(--pg-dark-700);
+  font-size: var(--pg-text-base);
+  font-weight: 600;
+  margin-bottom: var(--pg-space-4);
+}
+
+.pg-btn--large {
+  padding: var(--pg-space-4) var(--pg-space-6);
+  font-size: var(--pg-text-lg);
+  font-weight: 700;
+  width: 100%;
+}
+
+/* Market Detail */
+.pg-market-detail {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.pg-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--pg-space-2);
+  margin-bottom: var(--pg-space-6);
+  font-size: var(--pg-text-sm);
+  color: var(--pg-dark-600);
+}
+
+.pg-breadcrumb a {
+  color: var(--pg-primary-600);
+  text-decoration: none;
+}
+
+.pg-market-detail__header {
+  margin-bottom: var(--pg-space-6);
+}
+
+.pg-market-detail__header h1 {
+  font-size: var(--pg-text-3xl);
+  font-weight: 900;
+  color: var(--pg-dark-900);
+  margin-bottom: var(--pg-space-3);
+  line-height: 1.2;
+}
+
+.pg-market-badges {
+  display: flex;
+  gap: var(--pg-space-2);
+  flex-wrap: wrap;
+}
+
+.pg-badge {
+  padding: var(--pg-space-1) var(--pg-space-3);
+  border-radius: var(--pg-radius-sm);
+  font-size: var(--pg-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pg-badge--active {
+  background: var(--pg-success-100);
+  color: var(--pg-success-800);
+}
+
+.pg-badge--resolved {
+  background: var(--pg-neutral-200);
+  color: var(--pg-neutral-700);
+}
+
+.pg-market-detail__description {
+  font-size: var(--pg-text-lg);
+  line-height: 1.6;
+  color: var(--pg-dark-700);
+  margin-bottom: var(--pg-space-8);
+}
+
+.pg-market-detail__stats {
+  margin-bottom: var(--pg-space-8);
+}
+
+.pg-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--pg-space-4);
+}
+
+.pg-stat-card {
+  background: var(--pg-market-bg);
+  border: 2px solid var(--pg-market-border);
+  border-radius: var(--pg-radius-md);
+  padding: var(--pg-space-4);
+  text-align: center;
+}
+
+.pg-market-timer,
+.pg-market-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pg-space-3);
+  background: var(--pg-warning-50);
+  border: 2px solid var(--pg-warning-200);
+  border-radius: var(--pg-radius-md);
+  padding: var(--pg-space-4);
+  margin-bottom: var(--pg-space-6);
+  font-size: var(--pg-text-lg);
+  color: var(--pg-warning-800);
+}
+
+.pg-market-result {
+  background: var(--pg-success-50);
+  border-color: var(--pg-success-200);
+  color: var(--pg-success-800);
+}
+
+/* User Betting */
+.pg-user-bet {
+  background: var(--pg-primary-50);
+  border: 2px solid var(--pg-primary-200);
+  border-radius: var(--pg-radius-lg);
+  padding: var(--pg-space-6);
+  margin-bottom: var(--pg-space-8);
+}
+
+.pg-user-bet h3 {
+  color: var(--pg-primary-800);
+  margin-bottom: var(--pg-space-4);
+}
+
+.pg-user-bet-card {
+  display: flex;
+  align-items: center;
+  gap: var(--pg-space-4);
+  background: white;
+  padding: var(--pg-space-4);
+  border-radius: var(--pg-radius-md);
+  border: 1px solid var(--pg-primary-200);
+}
+
+.pg-bet-side {
+  padding: var(--pg-space-2) var(--pg-space-3);
+  border-radius: var(--pg-radius-sm);
+  font-weight: 700;
+  font-size: var(--pg-text-sm);
+  text-transform: uppercase;
+}
+
+.pg-bet-side--yes {
+  background: var(--pg-yes-color);
+  color: white;
+}
+
+.pg-bet-side--no {
+  background: var(--pg-no-color);
+  color: white;
+}
+
+.pg-bet-amount {
+  font-weight: 700;
+  font-size: var(--pg-text-lg);
+  color: var(--pg-dark-900);
+}
+
+.pg-bet-date {
+  color: var(--pg-dark-600);
+  font-size: var(--pg-text-sm);
+}
+
+.pg-bet-result {
+  padding: var(--pg-space-1) var(--pg-space-2);
+  border-radius: var(--pg-radius-sm);
+  font-weight: 700;
+  font-size: var(--pg-text-sm);
+}
+
+.pg-bet-won {
+  background: var(--pg-success-100);
+  color: var(--pg-success-800);
+}
+
+.pg-bet-lost {
+  background: var(--pg-error-100);
+  color: var(--pg-error-800);
+}
+
+/* Betting History */
+.pg-betting-history {
+  margin-top: var(--pg-space-8);
+}
+
+.pg-bet-list {
+  background: var(--pg-market-bg);
+  border: 2px solid var(--pg-market-border);
+  border-radius: var(--pg-radius-md);
+  overflow: hidden;
+}
+
+.pg-bet-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: var(--pg-space-4);
+  padding: var(--pg-space-4);
+  border-bottom: 1px solid var(--pg-market-border);
+  align-items: center;
+}
+
+.pg-bet-item:last-child {
+  border-bottom: none;
+}
+
+.pg-bet-user {
+  font-weight: 600;
+  color: var(--pg-dark-800);
+}
+
+.pg-bet-time {
+  color: var(--pg-dark-600);
+  font-size: var(--pg-text-sm);
+}
+
+/* Empty State */
+.pg-empty-state {
+  text-align: center;
+  padding: var(--pg-space-12);
+  color: var(--pg-dark-600);
+}
+
+.pg-empty-state__icon {
+  font-size: var(--pg-text-4xl);
+  margin-bottom: var(--pg-space-4);
+}
+
+.pg-empty-state h2 {
+  color: var(--pg-dark-800);
+  margin-bottom: var(--pg-space-4);
+}
+
+/* Pagination */
+.pg-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--pg-space-8);
+  padding: var(--pg-space-4);
+}
+
+.pg-pagination-info {
+  color: var(--pg-dark-600);
+  font-size: var(--pg-text-sm);
+}
+
+/* Responsive Design for Markets */
+@media (max-width: 768px) {
+  .pg-markets-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pg-odds-display-large {
+    grid-template-columns: 1fr;
+    gap: var(--pg-space-4);
+  }
+
+  .pg-filters-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pg-filters-row select,
+  .pg-filters-row button {
+    width: 100%;
+  }
+
+  .pg-market-actions {
+    flex-direction: column;
+  }
+
+  .pg-market-header {
+    flex-direction: column;
+    gap: var(--pg-space-2);
+  }
+
+  .pg-bet-item {
+    grid-template-columns: 1fr;
+    gap: var(--pg-space-2);
+    text-align: center;
+  }
+}
