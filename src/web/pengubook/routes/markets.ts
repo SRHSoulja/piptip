@@ -687,7 +687,8 @@ function generateMarketsPageContent(markets: any[], options: any): string {
       <!-- Market Filters -->
       <div class="pg-markets-filters">
         <div class="pg-filters-row">
-          <select id="tokenFilter" onchange="filterMarkets()">
+          <label for="tokenFilter" class="sr-only">Filter by token</label>
+          <select id="tokenFilter" onchange="filterMarkets()" aria-label="Filter markets by token">
             <option value="all" ${!currentFilter.token || currentFilter.token === 'all' ? 'selected' : ''}>All Tokens</option>
             ${activeTokens.map((token: any) => `
               <option value="${token.symbol}" ${currentFilter.token === token.symbol ? 'selected' : ''}>
@@ -696,7 +697,8 @@ function generateMarketsPageContent(markets: any[], options: any): string {
             `).join('')}
           </select>
 
-          <select id="statusFilter" onchange="filterMarkets()">
+          <label for="statusFilter" class="sr-only">Filter by status</label>
+          <select id="statusFilter" onchange="filterMarkets()" aria-label="Filter markets by status">
             <option value="active" ${currentFilter.status === 'active' ? 'selected' : ''}>🟢 Active Markets</option>
             <option value="resolved" ${currentFilter.status === 'resolved' ? 'selected' : ''}>✅ Resolved Markets</option>
             <option value="all" ${currentFilter.status === 'all' ? 'selected' : ''}>📊 All Markets</option>
@@ -1158,7 +1160,7 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
 
           <!-- Template Selection -->
           <div>
-            <label style="display: block; margin-bottom: var(--pg-space-3); font-weight: 700; font-size: 1.1rem; color: var(--pg-dark-700);">
+            <label for="templateType" style="display: block; margin-bottom: var(--pg-space-3); font-weight: 700; font-size: 1.1rem; color: var(--pg-dark-700);">
               📋 Market Template
             </label>
             <select id="templateType" name="templateType" required style="width: 100%; padding: var(--pg-space-4); border: 2px solid var(--pg-dark-300); border-radius: 8px; font-size: 1rem; background: white; color: #333;">
@@ -1174,12 +1176,12 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
             </div>
           </div>
 
-          <!-- Betting Token -->
+          <!-- Prediction Token -->
           <div>
-            <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">
-              💰 Betting Token
+            <label for="bettingToken" style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">
+              💰 Prediction Token
             </label>
-            <select name="tokenSymbol" required style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: 8px;">
+            <select id="bettingToken" name="tokenSymbol" required style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: 8px;">
               <option value="">Select token...</option>
               ${activeTokens.map(token => `
                 <option value="${token.symbol}">${token.symbol}</option>
@@ -1194,7 +1196,7 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
 
           <!-- Timeframe -->
           <div>
-            <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">
+            <label for="timeframe" style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600;">
               ⏰ Resolution Timeframe
             </label>
             <select id="timeframe" name="timeframe" required style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: 8px;">
@@ -1204,7 +1206,8 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
               <option value="7d">7 Days</option>
               <option value="custom">Custom Date/Time</option>
             </select>
-            <input type="datetime-local" id="customTime" name="customTime" style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: 8px; margin-top: var(--pg-space-2); display: none;">
+            <label for="customTime" style="display: none; margin-bottom: var(--pg-space-1); font-weight: 600;">Custom Resolution Date/Time</label>
+            <input type="datetime-local" id="customTime" name="customTime" style="width: 100%; padding: var(--pg-space-3); border: 1px solid var(--pg-dark-300); border-radius: 8px; margin-top: var(--pg-space-2); display: none;" aria-label="Custom resolution date and time">
           </div>
 
           <!-- API Data Preview -->
@@ -1348,13 +1351,13 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol or Contract Address</label>
                 <input type="text" id="tokenSymbolInput" name="tokenSymbol" required placeholder="BTC, ETH, PENGU or 0x123..."
-                       onchange="fetchTokenPrice(this.value)"
+                       onchange="fetchTokenPrice(this.value)" aria-label="Token Symbol or Contract Address"
                        style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
                 <div style="font-size: 0.8rem; color: var(--pg-dark-500); margin-top: var(--pg-space-1);">💡 Use contract address for exact match</div>
               </div>
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Chain</label>
-                <select id="chainSelect" name="preferredChain" onchange="updateChainSelection()" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px; background: white; color: #333;">
+                <select id="chainSelect" name="preferredChain" onchange="updateChainSelection()" aria-label="Blockchain chain selection" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px; background: white; color: #333;">
                   <option value="abstract">⭐ Abstract (Priority)</option>
                   <option value="all" selected>All Chains</option>
                   <option value="ethereum">Ethereum</option>
@@ -1368,11 +1371,11 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Percentage Change</label>
                 <input type="number" name="percentage" required step="0.1" placeholder="15" min="-90" max="1000"
-                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
+                       aria-label="Percentage change value" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
               </div>
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Direction</label>
-                <select name="direction" required style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
+                <select name="direction" required aria-label="Price direction (up or down)" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
                   <option value="up">📈 Up (Higher)</option>
                   <option value="down">📉 Down (Lower)</option>
                 </select>
@@ -1402,13 +1405,13 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol or Contract Address</label>
                 <input type="text" id="tokenSymbolInput" name="tokenSymbol" required placeholder="BTC, ETH, PENGU or 0x123..."
-                       onchange="fetchTokenPrice(this.value)"
+                       onchange="fetchTokenPrice(this.value)" aria-label="Token Symbol or Contract Address"
                        style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
                 <div style="font-size: 0.8rem; color: var(--pg-dark-500); margin-top: var(--pg-space-1);">💡 Use contract address for exact match</div>
               </div>
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Chain</label>
-                <select id="chainSelect" name="preferredChain" onchange="updateChainSelection()" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px; background: white; color: #333;">
+                <select id="chainSelect" name="preferredChain" onchange="updateChainSelection()" aria-label="Blockchain chain selection" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px; background: white; color: #333;">
                   <option value="abstract">⭐ Abstract (Priority)</option>
                   <option value="all" selected>All Chains</option>
                   <option value="ethereum">Ethereum</option>
@@ -1422,7 +1425,7 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Change Threshold (%)</label>
                 <input type="number" name="changeThreshold" required step="0.1" placeholder="5" min="0.1" max="50"
-                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
+                       aria-label="Change threshold percentage" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
               </div>
             </div>
           \`;
@@ -1436,12 +1439,12 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">ESPN Game ID</label>
                 <input type="text" name="gameId" required placeholder="401547504"
-                       onchange="fetchGameInfo(this.value)"
+                       onchange="fetchGameInfo(this.value)" aria-label="ESPN Game ID"
                        style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
               </div>
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Team to Win</label>
-                <select name="teamSelection" required style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
+                <select name="teamSelection" required aria-label="Team to win selection" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
                   <option value="">Select after entering Game ID...</option>
                 </select>
               </div>
