@@ -767,7 +767,28 @@ function generateCreateMarketContent(data: { templates: any; tokens: any[] }): s
 
   return `
     <div class="pg-container">
-      <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">🔮 Create Prediction Market</h1>
+      <h1 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">🔮 Create Prediction Market</h1>
+
+      <!-- API Verification Guarantee -->
+      <div style="margin-bottom: var(--pg-space-6); padding: var(--pg-space-4); background: linear-gradient(135deg, var(--pg-blue-50), var(--pg-green-50)); border: 1px solid var(--pg-blue-200); border-radius: var(--pg-border-radius);">
+        <div style="display: flex; align-items: center; margin-bottom: var(--pg-space-3);">
+          <span style="font-size: 1.5rem; margin-right: var(--pg-space-3);">🛡️</span>
+          <div>
+            <h2 style="margin: 0; color: var(--pg-blue-800); font-size: 1.2rem;">100% API-Verified Resolution</h2>
+            <p style="margin: 0; color: var(--pg-blue-700); font-size: var(--pg-text-sm);">
+              All markets are automatically resolved using external APIs - no disputes, no manual intervention
+            </p>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--pg-space-4); font-size: var(--pg-text-sm);">
+          <div style="color: var(--pg-green-700);">
+            <strong>🪙 Crypto Markets:</strong> DexScreener & CoinGecko APIs for real-time price data
+          </div>
+          <div style="color: var(--pg-green-700);">
+            <strong>🏈 Sports Markets:</strong> ESPN Sports API for official game results
+          </div>
+        </div>
+      </div>
 
       <div class="pg-card">
         <form id="createMarketForm" style="display: grid; gap: var(--pg-space-4);">
@@ -843,10 +864,10 @@ function generateCreateMarketContent(data: { templates: any; tokens: any[] }): s
 
         if (template.marketType === 'CRYPTO_PRICE_TARGET') {
           html += \`
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--pg-space-3); margin-bottom: var(--pg-space-3);">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--pg-space-3); margin-bottom: var(--pg-space-3);">
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol</label>
-                <input type="text" name="cryptoToken" required placeholder="BTC, ETH, SOL..."
+                <input type="text" name="tokenSymbol" required placeholder="BTC, ETH, SOL..."
                        style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
               </div>
               <div>
@@ -854,9 +875,147 @@ function generateCreateMarketContent(data: { templates: any; tokens: any[] }): s
                 <input type="number" name="targetPrice" required step="0.01" placeholder="100000"
                        style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
               </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Direction</label>
+                <select name="comparison" required style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+                  <option value="above">Above or Equal (≥)</option>
+                  <option value="below">Below (<)</option>
+                </select>
+              </div>
+            </div>
+          \`;
+        } else if (template.marketType === 'CRYPTO_PRICE_RANGE') {
+          html += \`
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--pg-space-3); margin-bottom: var(--pg-space-3);">
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol</label>
+                <input type="text" name="tokenSymbol" required placeholder="BTC, ETH, SOL..."
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Min Price ($)</label>
+                <input type="number" name="minPrice" required step="0.01" placeholder="90000"
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Max Price ($)</label>
+                <input type="number" name="maxPrice" required step="0.01" placeholder="110000"
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+            </div>
+          \`;
+        } else if (template.marketType === 'CRYPTO_RANK_TARGET') {
+          html += \`
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--pg-space-3); margin-bottom: var(--pg-space-3);">
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol</label>
+                <input type="text" name="tokenSymbol" required placeholder="SOL, ADA, DOT..."
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Target Rank</label>
+                <input type="number" name="targetRank" required min="1" max="100" placeholder="5"
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Direction</label>
+                <select name="comparison" required style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+                  <option value="top">Top X or better (≤)</option>
+                  <option value="below">Below rank X (>)</option>
+                </select>
+              </div>
+            </div>
+          \`;
+        } else if (template.marketType === 'SPORTS_WINNER') {
+          html += \`
+            <div style="margin-bottom: var(--pg-space-4); padding: var(--pg-space-4); background: var(--pg-yellow-50); border: 1px solid var(--pg-yellow-200); border-radius: var(--pg-border-radius);">
+              <h4 style="color: var(--pg-yellow-800); margin: 0 0 var(--pg-space-2) 0;">⚠️ Sports Markets Require API Event ID</h4>
+              <p style="color: var(--pg-yellow-700); margin: 0; font-size: var(--pg-text-sm);">
+                Sports markets need a valid ESPN/sports API event ID for automatic resolution.
+                Contact an admin to get the proper event ID for your game.
+              </p>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--pg-space-3); margin-bottom: var(--pg-space-3);">
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Event ID</label>
+                <input type="text" name="eventId" required placeholder="e.g., 401547504"
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Home Team</label>
+                <input type="text" name="homeTeam" required placeholder="Lakers"
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Away Team</label>
+                <input type="text" name="awayTeam" required placeholder="Celtics"
+                       style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+              </div>
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Betting On</label>
+              <select name="betTeam" required style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: var(--pg-border-radius);">
+                <option value="">Select which team to bet YES on...</option>
+                <option value="home">Home Team (will be populated from above)</option>
+                <option value="away">Away Team (will be populated from above)</option>
+              </select>
+            </div>
+          \`;
+        } else if (template.marketType === 'SPORTS_OVER_UNDER') {
+          html += \`
+            <div style="margin-bottom: var(--pg-space-4); padding: var(--pg-space-4); background: var(--pg-yellow-50); border: 1px solid var(--pg-yellow-200); border-radius: var(--pg-border-radius);">
+              <h4 style="color: var(--pg-yellow-800); margin: 0 0 var(--pg-space-2) 0;">⚠️ Sports Markets Require API Event ID</h4>
+              <p style="color: var(--pg-yellow-700); margin: 0; font-size: var(--pg-text-sm);">
+                Sports markets need a valid ESPN/sports API event ID for automatic resolution.
+              </p>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: var(--pg-space-3);">
+              <div>
+                <label>Event ID</label>
+                <input type="text" name="eventId" required placeholder="401547504">
+              </div>
+              <div>
+                <label>Home Team</label>
+                <input type="text" name="homeTeam" required placeholder="Lakers">
+              </div>
+              <div>
+                <label>Away Team</label>
+                <input type="text" name="awayTeam" required placeholder="Celtics">
+              </div>
+              <div>
+                <label>Total Points Line</label>
+                <input type="number" name="targetTotal" required step="0.5" placeholder="220.5">
+              </div>
+            </div>
+          \`;
+        } else if (template.marketType === 'SPORTS_SPREAD') {
+          html += \`
+            <div style="margin-bottom: var(--pg-space-4); padding: var(--pg-space-4); background: var(--pg-yellow-50); border: 1px solid var(--pg-yellow-200); border-radius: var(--pg-border-radius);">
+              <h4 style="color: var(--pg-yellow-800); margin: 0 0 var(--pg-space-2) 0;">⚠️ Sports Markets Require API Event ID</h4>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--pg-space-3);">
+              <div><label>Event ID</label><input type="text" name="eventId" required></div>
+              <div><label>Home Team</label><input type="text" name="homeTeam" required></div>
+              <div><label>Away Team</label><input type="text" name="awayTeam" required></div>
+              <div><label>Spread Team</label><select name="spreadTeam" required><option value="home">Home</option><option value="away">Away</option></select></div>
+              <div><label>Spread Points</label><input type="number" name="spreadPoints" required step="0.5" placeholder="-7"></div>
             </div>
           \`;
         }
+
+        // Add API verification notice
+        html += \`
+          <div style="margin-top: var(--pg-space-4); padding: var(--pg-space-3); background: var(--pg-green-50); border: 1px solid var(--pg-green-200); border-radius: var(--pg-border-radius);">
+            <div style="display: flex; align-items: center; color: var(--pg-green-800);">
+              <span style="margin-right: var(--pg-space-2);">✅</span>
+              <strong>API-Verified Resolution</strong>
+            </div>
+            <p style="margin: var(--pg-space-1) 0 0 0; color: var(--pg-green-700); font-size: var(--pg-text-sm);">
+              This market will be automatically resolved using \${template.marketType.startsWith('CRYPTO_') ? 'DexScreener/CoinGecko' : 'ESPN Sports'} API data.
+              No manual intervention required - results are transparent and dispute-free.
+            </p>
+          </div>
+        \`;
 
         return html;
       }
@@ -883,10 +1042,25 @@ function generateCreateMarketContent(data: { templates: any; tokens: any[] }): s
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
 
-        // Build market-specific data
+        // Build market-specific data based on market type
         const marketData = {};
-        if (data.cryptoToken) marketData.tokenSymbol = data.cryptoToken;
+        const template = templates[data.marketType];
+
+        if (template && template.requiredParams) {
+          template.requiredParams.forEach(param => {
+            if (data[param]) {
+              marketData[param] = data[param];
+            }
+          });
+        }
+
+        // Handle numeric conversions
         if (data.targetPrice) marketData.targetPrice = parseFloat(data.targetPrice);
+        if (data.minPrice) marketData.minPrice = parseFloat(data.minPrice);
+        if (data.maxPrice) marketData.maxPrice = parseFloat(data.maxPrice);
+        if (data.targetRank) marketData.targetRank = parseInt(data.targetRank);
+        if (data.targetTotal) marketData.targetTotal = parseFloat(data.targetTotal);
+        if (data.spreadPoints) marketData.spreadPoints = parseFloat(data.spreadPoints);
 
         data.marketData = JSON.stringify(marketData);
 
