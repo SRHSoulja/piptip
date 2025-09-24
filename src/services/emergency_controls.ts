@@ -2,6 +2,87 @@
 import { prisma } from "./db.js";
 import { predictionMarkets } from "./prediction_markets.js";
 
+interface AppConfigCache {
+  achievementsEnabled: boolean;
+  streakProtectionEnabled: boolean;
+  lastFetched: number;
+}
+
+let configCache: AppConfigCache | null = null;
+const CACHE_TTL_MS = 30_000;
+
+async function getAppConfig(): Promise<AppConfigCache> {
+  const now = Date.now();
+
+  if (configCache && now - configCache.lastFetched < CACHE_TTL_MS) {
+    return configCache;
+  }
+
+  try {
+    const config = await prisma.appConfig.findFirst({
+      select: {
+        achievementsEnabled: true,
+        streakProtectionEnabled: true
+      }
+    });
+
+    configCache = {
+      achievementsEnabled: config?.achievementsEnabled ?? true,
+      streakProtectionEnabled: config?.streakProtectionEnabled ?? true,
+      lastFetched: now
+    };
+
+    return configCache;
+  } catch (error) {
+    console.warn("Failed to fetch app config, using defaults:", error);
+
+    configCache = {
+      achievementsEnabled: true,
+      streakProtectionEnabled: true,
+      lastFetched: now
+    };
+
+    return configCache;
+  }
+}
+
+export async function areAchievementsEnabled(): Promise<boolean> {
+  const config = await getAppConfig();
+  return config.achievementsEnabled;
+}
+
+export async function isStreakProtectionEnabled(): Promise<boolean> {
+  const config = await getAppConfig();
+  return config.streakProtectionEnabled;
+}
+
+export async function disableAchievements(): Promise<void> {
+  await prisma.appConfig.updateMany({
+    data: { achievementsEnabled: false }
+  });
+
+  configCache = null;
+  console.log("🚨 EMERGENCY: Achievements system DISABLED");
+}
+
+export async function enableAchievements(): Promise<void> {
+  await prisma.appConfig.updateMany({
+    data: { achievementsEnabled: true }
+  });
+
+  configCache = null;
+  console.log("✅ Achievements system ENABLED");
+}
+
+export async function disableStreakProtection(): Promise<void> {
+  await prisma.appConfig.updateMany({
+    data: { streakProtectionEnabled: false }
+  });
+
+  configCache = null;
+  console.log("🚨 EMERGENCY: Streak protection DISABLED");
+}
+
 interface EmergencyState {
   predictionsDisabled: boolean;
   tippingDisabled: boolean;
