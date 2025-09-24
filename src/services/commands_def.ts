@@ -1,4 +1,3 @@
-// src/services/commands_def.ts
 import { SlashCommandBuilder } from "discord.js";
 
 export function getCommandsJson() {
@@ -168,9 +167,11 @@ export function getCommandsJson() {
           .setMinValue(1)
       ),
 
+    // FIXED: Move all required options FIRST for pip_create_market
     new SlashCommandBuilder()
       .setName("pip_create_market")
       .setDescription("📊 Create a new prediction market")
+      // Required options first!
       .addStringOption(option =>
         option.setName("type")
           .setDescription("Type of market to create")
@@ -184,11 +185,6 @@ export function getCommandsJson() {
             { name: "Sports: Spread Prediction", value: "SPORTS_SPREAD" }
           )
       )
-      .addStringOption(option =>
-        option.setName("symbol")
-          .setDescription("Token symbol (e.g., BTC, ETH, PEPE) - not needed for sports markets")
-          .setRequired(false)
-      )
       .addIntegerOption(option =>
         option.setName("hours")
           .setDescription("Hours until market resolves")
@@ -201,6 +197,12 @@ export function getCommandsJson() {
           .setDescription("Token to use for betting")
           .setRequired(true)
           .setAutocomplete(true)
+      )
+      // Now all optional options after required
+      .addStringOption(option =>
+        option.setName("symbol")
+          .setDescription("Token symbol (e.g., BTC, ETH, PEPE) - not needed for sports markets")
+          .setRequired(false)
       )
       .addNumberOption(option =>
         option.setName("target_price")
