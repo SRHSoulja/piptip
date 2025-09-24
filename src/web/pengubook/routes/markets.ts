@@ -8,6 +8,7 @@ import { predictionMarkets } from "../../../services/prediction_markets.js";
 import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { getActiveTokens } from "../../../services/token.js";
 import { marketConfig } from "../../../services/market_config.js";
+import { checkMarketCreationPermission } from "../../../services/tiers.js";
 
 export async function marketsHandler(req: Request, res: Response) {
   try {
@@ -278,6 +279,15 @@ export async function createMarketHandler(req: Request, res: Response) {
       const html = generateBaseHTML(content, "Create Prediction Market", "markets", { user: currentUser });
       return res.send(html);
     } else if (req.method === 'POST') {
+      // Check tier permissions first
+      const tierCheck = await checkMarketCreationPermission(currentUser.discordId);
+      if (!tierCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          error: tierCheck.error
+        });
+      }
+
       // Handle template-only market creation
       const { templateType, tokenSymbol: bettingToken, direction, percentage, changeThreshold, gameId, teamSelection, resolveAt } = req.body;
 
@@ -488,8 +498,8 @@ export async function createMarketHandler(req: Request, res: Response) {
       console.log(`Market resolution scheduled: ${resolveTime.toISOString()} UTC`);
       console.log(`Betting closes: ${bettingCutoffTime.toISOString()} UTC (20% before resolution)`);
 
-      // Create bulletproof market with API guarantee
-      const market = await predictionMarkets.createMarket({
+      // Create bulletproof market with API guarantee and tier-based rake
+      const marketParams: any = {
         title,
         description,
         resolveAt: resolveTime,
@@ -507,7 +517,15 @@ export async function createMarketHandler(req: Request, res: Response) {
           bettingCutoffTime: bettingCutoffTime.toISOString(),
           bettingWindowPercentage: 80 // 80% of time allows betting, 20% is cutoff
         }
-      });
+      };
+
+      // Apply custom rake percentage from tier if specified
+      if (tierCheck.permissions?.customRakePercent !== null && tierCheck.permissions?.customRakePercent !== undefined) {
+        marketParams.rakePercentage = tierCheck.permissions.customRakePercent;
+        console.log(`\u{1f3af} Applying custom tier rake: ${tierCheck.permissions.customRakePercent}% for ${tierCheck.tierName} tier`);
+      }
+
+      const market = await predictionMarkets.createMarket(marketParams);
 
       return res.json({
         success: true,
@@ -1143,7 +1161,7 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
             <label style="display: block; margin-bottom: var(--pg-space-3); font-weight: 700; font-size: 1.1rem; color: var(--pg-dark-700);">
               📋 Market Template
             </label>
-            <select id="templateType" name="templateType" required style="width: 100%; padding: var(--pg-space-4); border: 2px solid var(--pg-dark-300); border-radius: 8px; font-size: 1rem; background: white;">
+            <select id="templateType" name="templateType" required style="width: 100%; padding: var(--pg-space-4); border: 2px solid var(--pg-dark-300); border-radius: 8px; font-size: 1rem; background: white; color: #333;">
               <option value="">🎯 Choose a verified template...</option>
               <option value="CRYPTO_PRICE_DIRECTION">🪙 Token Price Direction (up/down by %)</option>
               <option value="CRYPTO_DAILY_CHANGE">📈 Token Daily Change (24h % move)</option>
@@ -1298,12 +1316,54 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
 
         if (templateKey === 'CRYPTO_PRICE_DIRECTION') {
           html += \`
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--pg-space-3);">
+            <!-- Abstract Chain Priority Notice -->
+            <div style="background: linear-gradient(135deg, #8B5CF6, #06B6D4); padding: var(--pg-space-3); border-radius: 8px; margin-bottom: var(--pg-space-4);">
+              <div style="color: white; font-weight: 600; margin-bottom: var(--pg-space-1);">⭐ Abstract Chain Priority</div>
+              <div style="color: white; opacity: 0.9; font-size: 0.9rem;">Abstract ecosystem tokens are prioritized. Use contract addresses for guaranteed accuracy.</div>
+            </div>
+
+            <!-- Quick Select Abstract Tokens -->
+            <div style="margin-bottom: var(--pg-space-4);">
+              <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600; color: var(--pg-dark-700);">⭐ Abstract Tokens</label>
+              <div style="display: flex; gap: var(--pg-space-2); flex-wrap: wrap;">
+                <button type="button" onclick="selectToken('ABSTER')" style="background: linear-gradient(135deg, #8B5CF6, #06B6D4); color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">ABSTER</button>
+                <!-- Add more Abstract tokens when available -->
+              </div>
+            </div>
+
+            <!-- Quick Select Popular Tokens -->
+            <div style="margin-bottom: var(--pg-space-4);">
+              <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600; color: var(--pg-dark-700);">🔥 Popular Tokens</label>
+              <div style="display: flex; gap: var(--pg-space-2); flex-wrap: wrap;">
+                <button type="button" onclick="selectToken('BTC')" style="background: #F97316; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">BTC</button>
+                <button type="button" onclick="selectToken('ETH')" style="background: #3B82F6; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">ETH</button>
+                <button type="button" onclick="selectToken('PENGU')" style="background: #EC4899; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">PENGU</button>
+                <button type="button" onclick="selectToken('PEPE')" style="background: #10B981; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">PEPE</button>
+                <button type="button" onclick="selectToken('SHIB')" style="background: #F59E0B; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">SHIB</button>
+                <button type="button" onclick="selectToken('ARB')" style="background: #6366F1; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">ARB</button>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--pg-space-3);">
               <div>
-                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol</label>
-                <input type="text" name="tokenSymbol" required placeholder="BTC, ETH, SOL..."
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol or Contract Address</label>
+                <input type="text" id="tokenSymbolInput" name="tokenSymbol" required placeholder="BTC, ETH, PENGU or 0x123..."
                        onchange="fetchTokenPrice(this.value)"
                        style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
+                <div style="font-size: 0.8rem; color: var(--pg-dark-500); margin-top: var(--pg-space-1);">💡 Use contract address for exact match</div>
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Chain</label>
+                <select id="chainSelect" name="preferredChain" onchange="updateChainSelection()" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px; background: white; color: #333;">
+                  <option value="abstract">⭐ Abstract (Priority)</option>
+                  <option value="all" selected>All Chains</option>
+                  <option value="ethereum">Ethereum</option>
+                  <option value="arbitrum">Arbitrum</option>
+                  <option value="base">Base</option>
+                  <option value="polygon">Polygon</option>
+                  <option value="optimism">Optimism</option>
+                  <option value="bsc">BSC</option>
+                </select>
               </div>
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Percentage Change</label>
@@ -1321,12 +1381,43 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
           \`;
         } else if (templateKey === 'CRYPTO_DAILY_CHANGE') {
           html += \`
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--pg-space-3);">
+            <!-- Abstract Chain Priority Notice -->
+            <div style="background: linear-gradient(135deg, #8B5CF6, #06B6D4); padding: var(--pg-space-3); border-radius: 8px; margin-bottom: var(--pg-space-4);">
+              <div style="color: white; font-weight: 600; margin-bottom: var(--pg-space-1);">⭐ Abstract Chain Priority</div>
+              <div style="color: white; opacity: 0.9; font-size: 0.9rem;">Abstract ecosystem tokens are prioritized. Use contract addresses for guaranteed accuracy.</div>
+            </div>
+
+            <!-- Quick Select Popular Tokens -->
+            <div style="margin-bottom: var(--pg-space-4);">
+              <label style="display: block; margin-bottom: var(--pg-space-2); font-weight: 600; color: var(--pg-dark-700);">🔥 Popular Tokens</label>
+              <div style="display: flex; gap: var(--pg-space-2); flex-wrap: wrap;">
+                <button type="button" onclick="selectToken('BTC')" style="background: #F97316; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">BTC</button>
+                <button type="button" onclick="selectToken('ETH')" style="background: #3B82F6; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">ETH</button>
+                <button type="button" onclick="selectToken('PENGU')" style="background: #EC4899; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">PENGU</button>
+                <button type="button" onclick="selectToken('PEPE')" style="background: #10B981; color: white; border: none; padding: var(--pg-space-2) var(--pg-space-3); border-radius: 6px; cursor: pointer; font-size: 0.9rem;">PEPE</button>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--pg-space-3);">
               <div>
-                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol</label>
-                <input type="text" name="tokenSymbol" required placeholder="BTC, ETH, SOL..."
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Token Symbol or Contract Address</label>
+                <input type="text" id="tokenSymbolInput" name="tokenSymbol" required placeholder="BTC, ETH, PENGU or 0x123..."
                        onchange="fetchTokenPrice(this.value)"
                        style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px;">
+                <div style="font-size: 0.8rem; color: var(--pg-dark-500); margin-top: var(--pg-space-1);">💡 Use contract address for exact match</div>
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Chain</label>
+                <select id="chainSelect" name="preferredChain" onchange="updateChainSelection()" style="width: 100%; padding: var(--pg-space-2); border: 1px solid var(--pg-dark-300); border-radius: 6px; background: white; color: #333;">
+                  <option value="abstract">⭐ Abstract (Priority)</option>
+                  <option value="all" selected>All Chains</option>
+                  <option value="ethereum">Ethereum</option>
+                  <option value="arbitrum">Arbitrum</option>
+                  <option value="base">Base</option>
+                  <option value="polygon">Polygon</option>
+                  <option value="optimism">Optimism</option>
+                  <option value="bsc">BSC</option>
+                </select>
               </div>
               <div>
                 <label style="display: block; margin-bottom: var(--pg-space-1); font-weight: 600;">Change Threshold (%)</label>
@@ -1367,38 +1458,95 @@ async function generateTemplateOnlyMarketContent(activeTokens: any[]): Promise<s
         return html;
       }
 
-      async function fetchTokenPrice(tokenSymbol) {
+      // Quick select token function
+      function selectToken(tokenSymbol) {
+        const tokenInput = document.getElementById('tokenSymbolInput');
+        if (tokenInput) {
+          tokenInput.value = tokenSymbol;
+          fetchTokenPrice(tokenSymbol);
+        }
+      }
+
+      // Chain selection handler
+      function updateChainSelection() {
+        const chainSelect = document.getElementById('chainSelect');
+        const selectedChain = chainSelect.value;
+
+        // Re-fetch token price with new chain preference if token is already entered
+        const tokenInput = document.getElementById('tokenSymbolInput');
+        if (tokenInput && tokenInput.value) {
+          fetchTokenPrice(tokenInput.value, selectedChain);
+        }
+      }
+
+      // Enhanced token price fetching with Abstract priority and chain support
+      async function fetchTokenPrice(tokenSymbol, preferredChain = null) {
         if (!tokenSymbol || tokenSymbol.length < 2) return;
 
         const apiPreview = document.getElementById('apiPreview');
         const apiData = document.getElementById('apiData');
 
         apiPreview.style.display = 'block';
-        apiData.innerHTML = 'Fetching live price data...';
+        apiData.innerHTML = '🔍 Searching with Abstract priority...';
 
         try {
-          const response = await fetch(\`/pengubook/api/token-price/\${tokenSymbol}\`);
+          // Get selected chain if not provided
+          if (!preferredChain) {
+            const chainSelect = document.getElementById('chainSelect');
+            preferredChain = chainSelect ? chainSelect.value : 'all';
+          }
+
+          // Check if it's a contract address
+          const isContractAddress = tokenSymbol.startsWith('0x') && tokenSymbol.length === 42;
+
+          const response = await fetch(\`/pengubook/api/token-price/\${tokenSymbol}?chain=\${preferredChain}\`);
           const data = await response.json();
 
           if (data.success && data.price) {
+            const chainIndicator = data.chain === 'abstract' ? '⭐ Abstract' : data.chain;
+            const contractAddressInfo = isContractAddress ? \`<div>📍 Contract Address Verified</div>\` : '';
+            const warningInfo = data.warning ? \`<div style="color: #F59E0B;">⚠️ \${data.warning}</div>\` : '';
+
+            // Enhanced token preview with chain emphasis
             apiData.innerHTML = \`
-              <div>Token: \${tokenSymbol.toUpperCase()}</div>
-              <div>Current Price: $\${data.price.toFixed(6)}</div>
-              <div>24h Change: \${data.change24h ? data.change24h.toFixed(2) + '%' : 'N/A'}</div>
-              <div>API Source: \${data.source}</div>
-              <div style="color: var(--pg-green-700); margin-top: var(--pg-space-1);">
-                ✅ Token verified - market will resolve automatically
+              <div style="border: 2px solid \${data.chain === 'abstract' ? '#8B5CF6' : '#10B981'}; border-radius: 8px; padding: var(--pg-space-3); background: \${data.chain === 'abstract' ? 'linear-gradient(135deg, #8B5CF6, #06B6D4)' : '#F0FDF4'}; color: \${data.chain === 'abstract' ? 'white' : 'inherit'};">
+                <h4 style="margin: 0 0 var(--pg-space-2) 0; color: \${data.chain === 'abstract' ? 'white' : 'var(--pg-green-800)'};">
+                  \${data.chain === 'abstract' ? '⭐' : '✅'} Token Details
+                </h4>
+                <div><strong>Symbol:</strong> \${tokenSymbol.toUpperCase()}</div>
+                <div><strong>Price:</strong> $\${data.price.toFixed(6)}</div>
+                <div><strong>Chain:</strong> \${chainIndicator} \${data.chain === 'abstract' ? '(PRIORITY)' : ''}</div>
+                <div><strong>24h Volume:</strong> $\${data.volume24h ? data.volume24h.toLocaleString() : 'N/A'}</div>
+                <div><strong>Liquidity:</strong> $\${data.liquidity ? data.liquidity.toLocaleString() : 'N/A'}</div>
+                <div><strong>24h Change:</strong> \${data.change24h ? data.change24h.toFixed(2) + '%' : 'N/A'}</div>
+                \${contractAddressInfo}
+                \${warningInfo}
+                <div style="margin-top: var(--pg-space-2); \${data.chain === 'abstract' ? 'color: white; opacity: 0.9;' : 'color: var(--pg-green-700);'}">
+                  \${data.chain === 'abstract' ? '⭐ Abstract ecosystem token - highest priority!' : '✅ Token verified - market will resolve automatically'}
+                </div>
+                \${data.isVerifiedToken ? '<div style="margin-top: var(--pg-space-1); font-size: 0.9rem; color: inherit;">🎯 Verified token with enhanced filtering</div>' : ''}
               </div>
             \`;
           } else {
             apiData.innerHTML = \`
-              <div style="color: var(--pg-red-600);">❌ Token not found in price APIs</div>
-              <div style="font-size: 0.8rem;">Market creation will fail - choose a different token</div>
+              <div style="border: 2px solid #EF4444; border-radius: 8px; padding: var(--pg-space-3); background: #FEF2F2;">
+                <div style="color: var(--pg-red-600);">❌ Token not found</div>
+                <div style="font-size: 0.9rem; margin-top: var(--pg-space-1);">
+                  <strong>Suggestions:</strong><br>
+                  • Try a different chain from the dropdown<br>
+                  • Use the contract address (0x123...) for exact match<br>
+                  • Check if the token symbol is correct<br>
+                  • Use quick-select buttons for verified tokens
+                </div>
+                \${data.error ? \`<div style="margin-top: var(--pg-space-2); font-size: 0.8rem; color: var(--pg-red-500);">Error: \${data.error}</div>\` : ''}
+              </div>
             \`;
           }
         } catch (error) {
           apiData.innerHTML = \`
-            <div style="color: var(--pg-red-600);">❌ API Error: \${error.message}</div>
+            <div style="border: 2px solid #EF4444; border-radius: 8px; padding: var(--pg-space-3); background: #FEF2F2;">
+              <div style="color: var(--pg-red-600);">❌ API Error: \${error.message}</div>
+            </div>
           \`;
         }
       }

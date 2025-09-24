@@ -24,7 +24,7 @@ export const apiHandlers = {
     }
   },
 
-  // GET /pengubook/api/token-price/:tokenSymbol
+  // GET /pengubook/api/token-price/:tokenSymbol?chain=...
   async tokenPrice(req: Request, res: Response) {
     try {
       const currentUser = getCurrentUser(req);
@@ -32,31 +32,40 @@ export const apiHandlers = {
         return res.status(401).json({ success: false, error: "Not authenticated" });
       }
 
-      const tokenSymbol = req.params.tokenSymbol.toUpperCase();
-      if (!tokenSymbol) {
-        return res.status(400).json({ success: false, error: "Token symbol required" });
+      const tokenSymbolOrAddress = req.params.tokenSymbol;
+      const preferredChain = req.query.chain as string;
+
+      if (!tokenSymbolOrAddress) {
+        return res.status(400).json({ success: false, error: "Token symbol or address required" });
       }
 
-      // Fetch real-time price data from APIs
-      const tokenData = await priceAPI.getTokenPrices([tokenSymbol]);
+      console.log(`🔍 API request for token: ${tokenSymbolOrAddress}, chain: ${preferredChain}`);
 
-      if (!tokenData.success || !tokenData.prices[tokenSymbol]) {
+      // Use the enhanced market resolver with Abstract priority and chain support
+      const { marketResolver } = await import('../../services/market_resolver.js');
+      const tokenData = await marketResolver.fetchDexScreenerPrice(tokenSymbolOrAddress, preferredChain);
+
+      if (!tokenData.success) {
         return res.json({
           success: false,
-          error: `Token ${tokenSymbol} not found in price APIs`,
-          tokenSymbol
+          error: tokenData.error || `Token ${tokenSymbolOrAddress} not found`,
+          tokenSymbol: tokenSymbolOrAddress
         });
       }
 
-      const price = tokenData.prices[tokenSymbol];
-      const change24h = tokenData.change24h?.[tokenSymbol] || null;
-
       return res.json({
         success: true,
-        tokenSymbol,
-        price,
-        change24h,
-        source: "DexScreener/CoinGecko",
+        tokenSymbol: tokenData.symbol,
+        price: tokenData.price,
+        change24h: tokenData.priceChange24h,
+        volume24h: tokenData.volume24h,
+        liquidity: tokenData.liquidity,
+        chain: tokenData.chain,
+        address: tokenData.address,
+        warning: tokenData.warning,
+        isAbstractChain: tokenData.isAbstractChain,
+        isVerifiedToken: tokenData.isVerifiedToken,
+        source: "Enhanced DexScreener with Abstract Priority",
         timestamp: new Date().toISOString()
       });
 

@@ -42,14 +42,30 @@ export function initTiersSection() {
         const description = document.getElementById('newTierDescription')?.value?.trim();
         const price = document.getElementById('newTierPrice')?.value || 0;
 
+        // Prediction market fields
+        const canCreateMarkets = document.getElementById('canCreateMarkets')?.checked || false;
+        const dailyMarketLimit = document.getElementById('dailyMarketLimit')?.value || 0;
+        const customRakePercent = document.getElementById('customRakePercent')?.value || null;
+        const marketCooldownMinutes = document.getElementById('marketCooldownMinutes')?.value || 0;
+
         if (!name) {
           throw new Error('Tier name is required');
         }
 
+        const requestBody = {
+          name,
+          description,
+          price: Number(price),
+          canCreateMarkets,
+          dailyMarketLimit: Number(dailyMarketLimit),
+          customRakePercent: customRakePercent ? Number(customRakePercent) : null,
+          marketCooldownMinutes: Number(marketCooldownMinutes)
+        };
+
         const data = await makeAuthenticatedRequest('/admin/tiers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, description, price: Number(price) })
+          body: JSON.stringify(requestBody)
         });
 
         if (!data.ok) {
@@ -60,6 +76,10 @@ export function initTiersSection() {
         document.getElementById('newTierName').value = '';
         document.getElementById('newTierDescription').value = '';
         document.getElementById('newTierPrice').value = '0';
+        document.getElementById('canCreateMarkets').checked = false;
+        document.getElementById('dailyMarketLimit').value = '0';
+        document.getElementById('customRakePercent').value = '';
+        document.getElementById('marketCooldownMinutes').value = '0';
 
         // Reload tiers
         await loadTiers();

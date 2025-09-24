@@ -37,7 +37,11 @@ tiersRouter.get("/tiers", async (_req: Request, res: Response) => {
 
 tiersRouter.post("/tiers", async (req: Request, res: Response) => {
   try {
-    const { name, description, tokenId, priceAmount, durationDays, tipTaxFree = false, active = true } = req.body;
+    const {
+      name, description, tokenId, priceAmount, durationDays,
+      tipTaxFree = false, active = true,
+      canCreateMarkets = false, dailyMarketLimit = 0, customRakePercent, marketCooldownMinutes = 0
+    } = req.body;
     
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return res.status(400).json({ ok: false, error: "Tier name is required" });
@@ -71,7 +75,11 @@ tiersRouter.post("/tiers", async (req: Request, res: Response) => {
           priceAmount: Number(priceAmount), // legacy field for compatibility
           durationDays: Number(durationDays),
           tipTaxFree: Boolean(tipTaxFree),
-          active: Boolean(active)
+          active: Boolean(active),
+          canCreateMarkets: Boolean(canCreateMarkets),
+          dailyMarketLimit: Number(dailyMarketLimit) || 0,
+          customRakePercent: customRakePercent ? Number(customRakePercent) : null,
+          marketCooldownMinutes: Number(marketCooldownMinutes) || 0
         }
       });
 
@@ -102,7 +110,10 @@ tiersRouter.put("/tiers/:id", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: "Invalid tier ID" });
 
-    const { name, description, priceAmount, durationDays, tipTaxFree, active } = req.body;
+    const {
+      name, description, priceAmount, durationDays, tipTaxFree, active,
+      canCreateMarkets, dailyMarketLimit, customRakePercent, marketCooldownMinutes
+    } = req.body;
     const data: any = {};
 
     if (name !== undefined) {
@@ -134,6 +145,25 @@ tiersRouter.put("/tiers/:id", async (req: Request, res: Response) => {
 
     if (typeof tipTaxFree === "boolean") data.tipTaxFree = tipTaxFree;
     if (typeof active === "boolean") data.active = active;
+
+    // Prediction market fields
+    if (typeof canCreateMarkets === "boolean") data.canCreateMarkets = canCreateMarkets;
+    if (dailyMarketLimit !== undefined) {
+      const limit = Number(dailyMarketLimit);
+      if (!isNaN(limit) && limit >= 0) data.dailyMarketLimit = limit;
+    }
+    if (customRakePercent !== undefined) {
+      if (customRakePercent === null || customRakePercent === "") {
+        data.customRakePercent = null;
+      } else {
+        const rake = Number(customRakePercent);
+        if (!isNaN(rake) && rake >= 0 && rake <= 100) data.customRakePercent = rake;
+      }
+    }
+    if (marketCooldownMinutes !== undefined) {
+      const cooldown = Number(marketCooldownMinutes);
+      if (!isNaN(cooldown) && cooldown >= 0) data.marketCooldownMinutes = cooldown;
+    }
 
     const tier = await prisma.tier.update({ where: { id }, data });
     

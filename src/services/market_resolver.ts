@@ -33,12 +33,154 @@ export interface MarketResolutionData {
 export class MarketResolverService {
 
   /**
-   * Fetch token price from DexScreener API
+   * Enhanced token verification with Abstract chain priority
    */
-  async fetchDexScreenerPrice(symbol: string): Promise<TokenPriceData> {
+  private getVerifiedTokenConfig(symbol: string): any {
+    const verifiedTokens: { [key: string]: any } = {
+      // Abstract ecosystem tokens get highest priority
+      'ABSTER': {
+        minLiquidity: 10000,
+        minVolume: 5000,
+        preferredChain: 'abstract',
+        expectedPriceRange: [0.001, 0.1]
+      },
+      // Major tokens with Abstract support when available
+      'PENGU': {
+        minLiquidity: 1000000,
+        minVolume: 100000,
+        expectedPriceRange: [0.02, 0.05],
+        preferredChain: 'ethereum', // Until listed on Abstract
+        coinGeckoId: 'pudgy-penguins'
+      },
+      'PEPE': {
+        minLiquidity: 5000000,
+        minVolume: 1000000,
+        expectedPriceRange: [0.000001, 0.00001],
+        preferredChain: 'ethereum'
+      },
+      'SHIB': {
+        minLiquidity: 10000000,
+        minVolume: 5000000,
+        expectedPriceRange: [0.000001, 0.00005],
+        preferredChain: 'ethereum'
+      },
+      'BTC': {
+        minLiquidity: 50000000,
+        minVolume: 10000000,
+        expectedPriceRange: [30000, 100000],
+        preferredChain: 'ethereum'
+      },
+      'ETH': {
+        minLiquidity: 20000000,
+        minVolume: 5000000,
+        expectedPriceRange: [1500, 5000],
+        preferredChain: 'ethereum'
+      }
+    };
+
+    return verifiedTokens[symbol.toUpperCase()];
+  }
+
+  /**
+   * Check if input is a contract address
+   */
+  private isContractAddress(input: string): boolean {
+    return input.startsWith('0x') && input.length === 42;
+  }
+
+  /**
+   * Fetch token data by contract address (guaranteed accuracy)
+   */
+  async fetchTokenByAddress(address: string): Promise<TokenPriceData> {
     try {
-      const url = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(symbol)}`;
-      console.log(`Fetching DexScreener data for ${symbol}...`);
+      const url = `https://api.dexscreener.com/latest/dex/tokens/${address}`;
+      console.log(`🎯 Fetching token by exact address: ${address}...`);
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        return {
+          symbol: address,
+          price: 0,
+          success: false,
+          error: `DexScreener API error: ${response.status}`
+        };
+      }
+
+      const data = await response.json();
+
+      if (!data.pairs || data.pairs.length === 0) {
+        return {
+          symbol: address,
+          price: 0,
+          success: false,
+          error: `No trading pairs found for contract address ${address}`
+        };
+      }
+
+      // Sort by volume to get most liquid pair
+      const bestPair = data.pairs
+        .sort((a: any, b: any) => {
+          const aVolume = parseFloat(a.volume?.h24 || '0');
+          const bVolume = parseFloat(b.volume?.h24 || '0');
+          return bVolume - aVolume;
+        })[0];
+
+      const price = parseFloat(bestPair.priceUsd || '0');
+      const volume24h = parseFloat(bestPair.volume?.h24 || '0');
+      const priceChange24h = parseFloat(bestPair.priceChange?.h24 || '0');
+      const symbol = bestPair.baseToken?.symbol || 'UNKNOWN';
+
+      console.log(`✅ Contract ${address}: ${symbol} = $${price} (24h vol: $${volume24h.toLocaleString()})`);
+
+      return {
+        symbol,
+        address,
+        price,
+        volume24h,
+        priceChange24h,
+        chain: bestPair.chainId,
+        success: true
+      };
+
+    } catch (error) {
+      console.error('Error fetching token by address:', error);
+      return {
+        symbol: address,
+        price: 0,
+        success: false,
+        error: (error as Error).message
+      };
+    }
+  }
+
+  /**
+   * Fetch token price with Abstract chain priority and enhanced filtering
+   */
+  async fetchDexScreenerPrice(symbolOrAddress: string, preferredChain?: string): Promise<TokenPriceData> {
+    try {
+      // Check if input is a contract address
+      if (this.isContractAddress(symbolOrAddress)) {
+        console.log(`📍 Detected contract address: ${symbolOrAddress}`);
+        return await this.fetchTokenByAddress(symbolOrAddress);
+      }
+
+      const symbol = symbolOrAddress.toUpperCase();
+      const verifiedConfig = this.getVerifiedTokenConfig(symbol);
+
+      // Use preferred chain or verified token's preferred chain or default to 'all'
+      const chainToSearch = preferredChain || verifiedConfig?.preferredChain || 'all';
+
+      console.log(`🔍 Searching for ${symbol} on chain: ${chainToSearch} (Abstract priority: ${chainToSearch === 'abstract'})`);
+
+      // Construct search URL with chain filtering if specified
+      let url = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(symbol)}`;
+      if (chainToSearch !== 'all') {
+        // Note: DexScreener search doesn't directly support chain filtering,
+        // so we'll filter results after fetching
+      }
+
+      console.log(`📡 Fetching DexScreener data for ${symbol}...`);
 
       const response = await fetch(url);
 
@@ -62,26 +204,126 @@ export class MarketResolverService {
         };
       }
 
-      // Get the pair with highest volume (most reliable price)
-      const bestPair = data.pairs.reduce((best: any, current: any) => {
-        const currentVolume = parseFloat(current.volume?.h24 || '0');
-        const bestVolume = parseFloat(best.volume?.h24 || '0');
-        return currentVolume > bestVolume ? current : best;
+      console.log(`📊 Found ${data.pairs.length} total pairs for ${symbol}`);
+
+      // Step 1: Filter by chain preference if specified
+      let chainFilteredPairs = data.pairs;
+      if (chainToSearch !== 'all') {
+        chainFilteredPairs = data.pairs.filter((pair: any) => pair.chainId === chainToSearch);
+        console.log(`⛓️  Filtered to ${chainFilteredPairs.length} pairs on ${chainToSearch}`);
+
+        // If no pairs on preferred chain but we have Abstract priority, try Abstract
+        if (chainFilteredPairs.length === 0 && chainToSearch !== 'abstract') {
+          const abstractPairs = data.pairs.filter((pair: any) => pair.chainId === 'abstract');
+          if (abstractPairs.length > 0) {
+            console.log(`⭐ No pairs on ${chainToSearch}, using ${abstractPairs.length} Abstract pairs`);
+            chainFilteredPairs = abstractPairs;
+          }
+        }
+
+        // If still no matches, fall back to all chains
+        if (chainFilteredPairs.length === 0) {
+          console.log(`⚠️ No pairs found on ${chainToSearch}, using all chains`);
+          chainFilteredPairs = data.pairs;
+        }
+      }
+
+      // Step 2: Apply minimum quality thresholds
+      const minVolume = verifiedConfig?.minVolume || 1000;
+      const minLiquidity = verifiedConfig?.minLiquidity || 5000;
+
+      let filteredPairs = chainFilteredPairs.filter((pair: any) => {
+        const volume24h = parseFloat(pair.volume?.h24 || '0');
+        const liquidity = parseFloat(pair.liquidity?.usd || '0');
+        return volume24h >= minVolume && liquidity >= minLiquidity;
       });
+
+      console.log(`✅ ${filteredPairs.length} pairs meet quality thresholds (vol>${minVolume}, liq>${minLiquidity})`);
+
+      // If no pairs meet minimum criteria, lower standards
+      if (filteredPairs.length === 0) {
+        console.log(`⚠️ No pairs meet strict criteria, using relaxed thresholds`);
+        filteredPairs = chainFilteredPairs.filter((pair: any) => {
+          const volume24h = parseFloat(pair.volume?.h24 || '0');
+          return volume24h > 100; // Very low bar
+        });
+      }
+
+      // Step 3: Sort and select best pair
+      if (verifiedConfig || symbol === 'PENGU') {
+        console.log(`🎯 Applying enhanced filtering for verified token: ${symbol}`);
+
+        // Log top candidates
+        filteredPairs.slice(0, 5).forEach((pair, index) => {
+          const liquidity = parseFloat(pair.liquidity?.usd || '0');
+          const volume = parseFloat(pair.volume?.h24 || '0');
+          const price = parseFloat(pair.priceUsd || '0');
+          console.log(`  ${index + 1}. ${symbol} $${price} | Liq: $${liquidity.toLocaleString()} | Vol: $${volume.toLocaleString()} | Chain: ${pair.chainId}`);
+        });
+
+        // Sort by combined score (prioritize liquidity for major tokens)
+        filteredPairs.sort((a: any, b: any) => {
+          const aLiquidity = parseFloat(a.liquidity?.usd || '0');
+          const bLiquidity = parseFloat(b.liquidity?.usd || '0');
+          const aVolume = parseFloat(a.volume?.h24 || '0');
+          const bVolume = parseFloat(b.volume?.h24 || '0');
+
+          // For verified tokens, weight liquidity higher
+          const aScore = (aLiquidity * 3) + aVolume;
+          const bScore = (bLiquidity * 3) + bVolume;
+
+          return bScore - aScore;
+        });
+      } else {
+        // For unverified tokens, sort by volume only
+        filteredPairs.sort((a: any, b: any) => {
+          const aVolume = parseFloat(a.volume?.h24 || '0');
+          const bVolume = parseFloat(b.volume?.h24 || '0');
+          return bVolume - aVolume;
+        });
+      }
+
+      const bestPair = filteredPairs[0];
+
+      if (!bestPair) {
+        return {
+          symbol,
+          price: 0,
+          success: false,
+          error: `No suitable trading pairs found for ${symbol} after filtering`
+        };
+      }
 
       const price = parseFloat(bestPair.priceUsd || '0');
       const volume24h = parseFloat(bestPair.volume?.h24 || '0');
       const priceChange24h = parseFloat(bestPair.priceChange?.h24 || '0');
+      const liquidity = parseFloat(bestPair.liquidity?.usd || '0');
 
-      console.log(`DexScreener: ${symbol} = $${price} (24h vol: $${volume24h}, change: ${priceChange24h}%)`);
+      // Validate price against expected range for verified tokens
+      let priceWarning = '';
+      if (verifiedConfig && verifiedConfig.expectedPriceRange) {
+        const [minPrice, maxPrice] = verifiedConfig.expectedPriceRange;
+        if (price < minPrice || price > maxPrice) {
+          priceWarning = `⚠️ Price $${price} outside expected range $${minPrice}-$${maxPrice}`;
+          console.log(priceWarning);
+        }
+      }
+
+      const selectedChain = bestPair.chainId;
+      console.log(`✅ Selected ${symbol}: $${price} | Chain: ${selectedChain} ${selectedChain === 'abstract' ? '⭐' : ''} | Vol: $${volume24h.toLocaleString()} | Liq: $${liquidity.toLocaleString()}`);
 
       return {
         symbol,
         price,
         volume24h,
         priceChange24h,
-        chain: bestPair.chainId,
-        success: true
+        liquidity,
+        chain: selectedChain,
+        address: bestPair.baseToken?.address,
+        success: true,
+        warning: priceWarning || undefined,
+        isAbstractChain: selectedChain === 'abstract',
+        isVerifiedToken: !!verifiedConfig
       };
 
     } catch (error) {

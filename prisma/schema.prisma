@@ -132,6 +132,12 @@ model Tier {
   taxReductionBps Int   @default(0)     // NEW: 0-10000 basis points (100% = 10000)
   rakeReductionBps Int  @default(0)     // NEW: 0-10000 basis points (100% = 10000)
 
+  // Prediction market permissions and settings
+  canCreateMarkets     Boolean  @default(false) // Whether users with this tier can create prediction markets
+  dailyMarketLimit     Int      @default(0)     // Maximum markets per day (0 = no limit)
+  customRakePercent    Decimal? // Override default rake percentage (null = use system default)
+  marketCooldownMinutes Int     @default(0)     // Minutes between market creations (0 = no cooldown)
+
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

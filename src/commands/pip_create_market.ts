@@ -5,6 +5,7 @@ import { predictionMarkets } from "../services/prediction_markets.js";
 import { marketConfig } from "../services/market_config.js";
 import { marketResolver } from "../services/market_resolver.js";
 import { sportsResolver } from "../services/sports_resolver.js";
+import { checkMarketCreationPermission } from "../services/tiers.js";
 
 export default async function pipCreateMarket(i: ChatInputCommandInteraction) {
   try {
@@ -31,6 +32,14 @@ export default async function pipCreateMarket(i: ChatInputCommandInteraction) {
     const spreadPoints = i.options.getNumber("spread_points");
 
     await i.deferReply({ ephemeral: true });
+
+    // Check tier permissions first
+    const tierCheck = await checkMarketCreationPermission(i.user.id);
+    if (!tierCheck.allowed) {
+      return i.editReply({
+        content: tierCheck.error || "❌ You don't have permission to create prediction markets"
+      });
+    }
 
     // Validate market type
     const template = marketConfig.getTemplate(marketType.toUpperCase());
@@ -300,8 +309,8 @@ export default async function pipCreateMarket(i: ChatInputCommandInteraction) {
         });
     }
 
-    // Create the market
-    const market = await predictionMarkets.createMarket({
+    // Create the market with tier-based settings
+    const marketParams: any = {
       title,
       description,
       resolveAt,
@@ -311,7 +320,15 @@ export default async function pipCreateMarket(i: ChatInputCommandInteraction) {
       tokenSymbol: token.toUpperCase(),
       marketType: marketType.toUpperCase(),
       marketData
-    });
+    };
+
+    // Apply custom rake percentage from tier if specified
+    if (tierCheck.permissions?.customRakePercent !== null && tierCheck.permissions?.customRakePercent !== undefined) {
+      marketParams.rakePercentage = tierCheck.permissions.customRakePercent;
+      console.log(`🎯 Discord: Applying custom tier rake: ${tierCheck.permissions.customRakePercent}% for ${tierCheck.tierName} tier`);
+    }
+
+    const market = await predictionMarkets.createMarket(marketParams);
 
     // Create success embed
     const embed = new EmbedBuilder()

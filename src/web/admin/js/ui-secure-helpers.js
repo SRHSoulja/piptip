@@ -185,13 +185,29 @@ export function createTierTableRow(tier) {
     dataset: { id: String(tier.id) }
   });
 
+  // Create prediction market summary
+  const marketSummary = [];
+  if (tier.canCreateMarkets) {
+    marketSummary.push('🎯 Can create markets');
+    if (tier.dailyMarketLimit > 0) {
+      marketSummary.push(`Max ${tier.dailyMarketLimit}/day`);
+    }
+    if (tier.customRakePercent) {
+      marketSummary.push(`${tier.customRakePercent}% rake`);
+    }
+    if (tier.marketCooldownMinutes > 0) {
+      marketSummary.push(`${tier.marketCooldownMinutes}min cooldown`);
+    }
+  } else {
+    marketSummary.push('❌ No markets');
+  }
+
   const cells = [
     { textContent: String(tier.id) },
     { type: 'html', content: `<input value="${escapeHtml(tier.name)}" data-field="name" style="width:160px" id="name-${tier.id}" name="name-${tier.id}"/>`, trusted: true },
-    { textContent: escapeHtml(tier.token?.symbol || tier.tokenId) },
-    { type: 'html', content: `<input value="${escapeHtml(String(tier.priceAmount))}" data-field="priceAmount" type="number" step="0.00000001" style="width:140px" id="priceAmount-${tier.id}" name="priceAmount-${tier.id}" aria-label="Tier ${tier.id} price amount"/>`, trusted: true },
-    { type: 'html', content: `<input value="${escapeHtml(String(tier.durationDays))}" data-field="durationDays" type="number" min="1" style="width:90px" id="durationDays-${tier.id}" name="durationDays-${tier.id}" aria-label="Tier ${tier.id} duration in days"/>`, trusted: true },
-    { type: 'html', content: `<input type="checkbox" ${tier.tipTaxFree ? "checked" : ""} data-field="tipTaxFree" id="tipTaxFree-${tier.id}" name="tipTaxFree-${tier.id}" aria-label="Tier ${tier.id} tip tax free status"/>`, trusted: true },
+    { type: 'html', content: `<textarea data-field="description" style="width:200px;height:40px;resize:vertical;" id="description-${tier.id}" name="description-${tier.id}">${escapeHtml(tier.description || '')}</textarea>`, trusted: true },
+    { type: 'html', content: `<input value="${escapeHtml(String(tier.priceAmount))}" data-field="priceAmount" type="number" step="0.00000001" style="width:100px" id="priceAmount-${tier.id}" name="priceAmount-${tier.id}" aria-label="Tier ${tier.id} price amount"/>`, trusted: true },
+    { type: 'html', content: `<div style="font-size:11px;color:#9ca3af;max-width:150px;">${marketSummary.join('<br>')}</div>`, trusted: true },
     { type: 'html', content: `<input type="checkbox" ${tier.active ? "checked" : ""} data-field="active" id="tier-active-${tier.id}" name="tier-active-${tier.id}" aria-label="Tier ${tier.id} active status"/>`, trusted: true },
     { type: 'html', content: '<button class="saveTier">Save</button>', trusted: true }
   ];
