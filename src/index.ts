@@ -34,6 +34,7 @@ import pipSafety from "./commands/pip_safety.js";
 import pipMarkets from "./commands/pip_markets.js";
 import pipBet from "./commands/pip_bet.js";
 import pipCreateMarket from "./commands/pip_create_market.js";
+import pipAutomationStatus from "./commands/pip_automation_status.js";
 import { withAutoChannelCheck } from "./middleware/channel_check.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
@@ -385,6 +386,7 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
       case "pip_markets": return withAutoChannelCheck(i as any, pipMarkets);
       case "pip_bet": return withAutoChannelCheck(i as any, pipBet);
       case "pip_create_market": return withAutoChannelCheck(i as any, pipCreateMarket);
+      case "pip_automation_status": return withAutoChannelCheck(i as any, pipAutomationStatus);
       default:
         console.warn("Unknown command:", (i as any).commandName);
     }

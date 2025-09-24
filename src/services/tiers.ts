@@ -45,9 +45,25 @@ export async function userHasActiveTaxFreeTier(userId: number, now = new Date())
 
 /**
  * Check if user can create prediction markets based on their tier membership
+ * System accounts (automation, admin) bypass tier restrictions
  */
 export async function checkMarketCreationPermission(discordId: string): Promise<MarketCreationCheck> {
   try {
+    // System accounts bypass tier restrictions
+    const systemAccounts = ['automation', 'system', 'admin', 'scheduler'];
+    if (systemAccounts.includes(discordId.toLowerCase())) {
+      return {
+        allowed: true,
+        permissions: {
+          canCreateMarkets: true,
+          dailyMarketLimit: 0, // Unlimited
+          customRakePercent: null, // Use default
+          marketCooldownMinutes: 0 // No cooldown
+        },
+        tierName: 'System'
+      };
+    }
+
     // Find the user first
     const user = await prisma.user.findFirst({
       where: { discordId }
