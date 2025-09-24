@@ -211,7 +211,9 @@ export async function processTip(data, client) {
                 },
             });
             // Build transparent tip message with full tax breakdown
-            let publicLine = `💸 <@${data.userId}> tipped ${formatAmount(atomic, token)} to <@${data.targetUserId}>`;
+            // Get USD value for the tip amount
+            const tipAmountWithUSD = await formatAmountWithUSD(atomic, token, { compact: true });
+            let publicLine = `💸 <@${data.userId}> tipped ${tipAmountWithUSD} to <@${data.targetUserId}>`;
             // Always show the sender's perspective with transparency
             if (feeAtomic > 0n) {
                 publicLine += ` (+ ${formatAmount(feeAtomic, token)} tax = ${formatAmount(totalDeducted, token)} total deducted)`;
@@ -385,9 +387,11 @@ export async function processTip(data, client) {
             }
             // Create embed with ads
             const ad = await getActiveAd();
+            // Include USD value in the group tip amount
+            const groupAmountWithUSD = await formatAmountWithUSD(atomic, token, { compact: true });
             const embed = groupTipEmbed({
                 creator: `<@${data.userId}>`,
-                amount: formatAmount(atomic, token),
+                amount: groupAmountWithUSD,
                 expiresAt: result.expiresAt,
                 claimCount: 0,
                 claimedBy: [],
