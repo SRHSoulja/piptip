@@ -12,6 +12,12 @@ export interface TokenPriceData {
   chain?: string;
   success: boolean;
   error?: string;
+  address?: string;
+  liquidity?: number;
+  warning?: string;
+  suggestion?: string;
+  isAbstractChain?: boolean;
+  isVerifiedToken?: boolean;
 }
 
 export interface MarketResolutionData {
@@ -394,7 +400,7 @@ export class MarketResolverService {
       };
 
     } catch (error) {
-      console.error(`❌ DexScreener API error for ${symbol}:`, error);
+      console.error(`❌ DexScreener API error for ${symbolOrAddress}:`, error);
 
       // Try CoinGecko fallback for major tokens
       const verifiedConfig = this.getVerifiedTokenConfig(symbolOrAddress.toUpperCase());

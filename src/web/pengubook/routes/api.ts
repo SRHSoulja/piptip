@@ -42,7 +42,7 @@ export const apiHandlers = {
       console.log(`🔍 API request for token: ${tokenSymbolOrAddress}, chain: ${preferredChain}`);
 
       // Use the enhanced market resolver with Abstract priority and chain support
-      const { marketResolver } = await import('../../services/market_resolver.js');
+      const { marketResolver } = await import('../../../services/market_resolver.js');
       const tokenData = await marketResolver.fetchDexScreenerPrice(tokenSymbolOrAddress, preferredChain);
 
       if (!tokenData.success) {
