@@ -12,17 +12,29 @@ tiersRouter.get("/tiers", async (_req, res) => {
             },
             orderBy: { createdAt: "desc" }
         });
-        // Format tiers for the old admin interface compatibility
+        // Format tiers for the admin interface with new fields
         const formattedTiers = tiers.map(tier => ({
             id: tier.id,
             name: tier.name,
             description: tier.description,
             priceAmount: tier.priceAmount, // legacy field for compatibility
             durationDays: tier.durationDays,
-            tipTaxFree: tier.tipTaxFree,
+            // Tax and rake benefits
+            tipTaxFree: tier.tipTaxFree, // legacy
+            taxReductionBps: tier.taxReductionBps,
+            rakeReductionBps: tier.rakeReductionBps,
+            // Market creation permissions
+            canCreateMarkets: tier.canCreateMarkets,
+            dailyMarketLimit: tier.dailyMarketLimit,
+            marketCooldownMinutes: tier.marketCooldownMinutes,
+            // Direct percentage rates (new fields)
+            customRakePercent: tier.customRakePercent, // PIP game rake
+            marketRakePercent: tier.marketRakePercent, // Prediction market rake
+            systemLiquidityBonus: tier.systemLiquidityBonus, // Liquidity bonus
             active: tier.active,
             tokenId: tier.prices[0]?.tokenId || null, // first token for legacy compatibility
-            token: tier.prices[0]?.token || null
+            token: tier.prices[0]?.token || null,
+            prices: tier.prices // Include all prices for multi-token support
         }));
         res.json({ ok: true, tiers: formattedTiers });
     }
@@ -33,7 +45,13 @@ tiersRouter.get("/tiers", async (_req, res) => {
 });
 tiersRouter.post("/tiers", async (req, res) => {
     try {
-        const { name, description, tokenId, priceAmount, durationDays, tipTaxFree = false, active = true, canCreateMarkets = false, dailyMarketLimit = 0, customRakePercent, marketCooldownMinutes = 0 } = req.body;
+        const { name, description, tokenId, priceAmount, durationDays, tipTaxFree = false, active = true, canCreateMarkets = false, dailyMarketLimit = 0, marketCooldownMinutes = 0, 
+        // Direct percentage rates (new fields)
+        customRakePercent, // PIP game rake percentage
+        marketRakePercent, // Prediction market rake percentage
+        systemLiquidityBonus = 0, // Liquidity bonus
+        // Legacy fields for compatibility
+        taxReductionBps = 0, rakeReductionBps = 0 } = req.body;
         if (!name || typeof name !== "string" || name.trim().length === 0) {
             return res.status(400).json({ ok: false, error: "Tier name is required" });
         }
@@ -60,12 +78,19 @@ tiersRouter.post("/tiers", async (req, res) => {
                     description: description?.trim() || null,
                     priceAmount: Number(priceAmount), // legacy field for compatibility
                     durationDays: Number(durationDays),
+                    // Tax and rake benefits
                     tipTaxFree: Boolean(tipTaxFree),
-                    active: Boolean(active),
+                    taxReductionBps: Number(taxReductionBps) || 0,
+                    rakeReductionBps: Number(rakeReductionBps) || 0,
+                    // Market creation permissions
                     canCreateMarkets: Boolean(canCreateMarkets),
                     dailyMarketLimit: Number(dailyMarketLimit) || 0,
-                    customRakePercent: customRakePercent ? Number(customRakePercent) : null,
-                    marketCooldownMinutes: Number(marketCooldownMinutes) || 0
+                    marketCooldownMinutes: Number(marketCooldownMinutes) || 0,
+                    // Direct percentage rates (new fields)
+                    customRakePercent: customRakePercent ? Number(customRakePercent) : null, // PIP game rake
+                    marketRakePercent: marketRakePercent ? Number(marketRakePercent) : 3.0, // Default 3% for prediction markets
+                    systemLiquidityBonus: Number(systemLiquidityBonus) || 0, // Liquidity bonus
+                    active: Boolean(active)
                 }
             });
             // Create tier price

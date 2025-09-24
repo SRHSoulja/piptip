@@ -81,7 +81,7 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
     ]);
 
     // Get recent reconciliation results
-    const recentReconciliations = await (await import('../../services/database.js')).prisma.reconciliationResult.findMany({
+    const recentReconciliations = await (await import('../../services/db.js')).prisma.reconciliationResult.findMany({
       take: 10,
       orderBy: { createdAt: 'desc' },
       select: {
@@ -94,7 +94,7 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
     });
 
     // Get recent dead letter jobs
-    const recentDLQJobs = await (await import('../../services/database.js')).prisma.deadLetterJob.count({
+    const recentDLQJobs = await (await import('../../services/db.js')).prisma.deadLetterJob.count({
       where: {
         createdAt: {
           gte: new Date(Date.now() - 86400000) // Last 24 hours

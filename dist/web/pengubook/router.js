@@ -12,6 +12,7 @@ import { statsHandler } from "./routes/stats.js";
 import { transactionsHandler } from "./routes/transactions.js";
 import { applyHandler, applyPostHandler } from "./routes/apply.js";
 import { marketsHandler, marketDetailHandler, placeBetHandler, createMarketHandler } from "./routes/markets.js";
+import { pipchipsMarketsHandler, pipchipsMarketDetailHandler } from "./routes/pipchips_markets.js";
 import { apiHandlers } from "./routes/api.js";
 export const pengubookModularRouter = Router();
 // Middleware to require authentication for all PenguBook routes
@@ -28,12 +29,15 @@ pengubookModularRouter.get("/apply", applyHandler);
 pengubookModularRouter.post("/apply", applyPostHandler);
 pengubookModularRouter.get("/user/:discordId", userHandler);
 pengubookModularRouter.post("/user/:discordId/tip", userTipHandler);
-// Prediction Markets routes
+// Prediction Markets routes (legacy token-based)
 pengubookModularRouter.get("/markets", marketsHandler);
 pengubookModularRouter.get("/markets/create", createMarketHandler);
 pengubookModularRouter.post("/markets/create", createMarketHandler);
 pengubookModularRouter.get("/markets/:marketId", marketDetailHandler);
 pengubookModularRouter.post("/markets/bet", placeBetHandler);
+// PIPChips Prediction Markets routes
+pengubookModularRouter.get("/pipchips", pipchipsMarketsHandler);
+pengubookModularRouter.get("/pipchips/market/:marketId", pipchipsMarketDetailHandler);
 // API routes
 pengubookModularRouter.get("/api/unread-count", apiHandlers.unreadCount);
 pengubookModularRouter.get("/api/token-price/:tokenSymbol", apiHandlers.tokenPrice);

@@ -24,9 +24,9 @@ import pipLeaderboard from "./commands/pip_leaderboard.js";
 import pipApply from "./commands/pip_apply.js";
 import pipSettings from "./commands/pip_settings.js";
 import pipSafety from "./commands/pip_safety.js";
-import pipMarkets from "./commands/pip_markets.js";
-import pipBet from "./commands/pip_bet.js";
-import pipCreateMarket from "./commands/pip_create_market.js";
+import pipBalance from "./commands/pip_balance.js";
+import pipDaily from "./commands/pip_daily.js";
+import pipBuyChips from "./commands/pip_buy_chips.js";
 import pipAutomationStatus from "./commands/pip_automation_status.js";
 import { withAutoChannelCheck } from "./middleware/channel_check.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
@@ -353,9 +353,9 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
             case "pip_apply": return withAutoChannelCheck(i, pipApply);
             case "pip_settings": return withAutoChannelCheck(i, pipSettings);
             case "pip_safety": return withAutoChannelCheck(i, pipSafety);
-            case "pip_markets": return withAutoChannelCheck(i, pipMarkets);
-            case "pip_bet": return withAutoChannelCheck(i, pipBet);
-            case "pip_create_market": return withAutoChannelCheck(i, pipCreateMarket);
+            case "pip_balance": return withAutoChannelCheck(i, pipBalance);
+            case "pip_daily": return withAutoChannelCheck(i, pipDaily);
+            case "pip_buy_chips": return withAutoChannelCheck(i, pipBuyChips);
             case "pip_automation_status": return withAutoChannelCheck(i, pipAutomationStatus);
             default:
                 console.warn("Unknown command:", i.commandName);
@@ -506,11 +506,13 @@ async function main() {
         const { serverRouter } = await import("./web/server.js");
         const { pengubookModularRouter } = await import("./web/pengubook/router.js");
         const { marketsApiRouter } = await import("./web/api/markets.js");
+        const { default: pipchipsMarketsRouter } = await import("./web/api/pipchips_markets.js");
         app.use("/admin", adminRouter);
         app.use("/auth", authRouter);
         app.use("/server", serverRouter);
         app.use("/pengubook", pengubookModularRouter);
         app.use("/api", marketsApiRouter);
+        app.use("/api/pipchips", pipchipsMarketsRouter);
         console.log("✅ Session-dependent routes configured");
         // Backup service disabled - using external cron job with backup-script.js
         // await backupService.start();

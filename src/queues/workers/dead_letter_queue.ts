@@ -2,7 +2,7 @@
 import { Worker, Job } from 'bullmq';
 import { redis, deadLetterQueue } from '../config.js';
 import { DeadLetterJobData, validateDeadLetterJob } from '../types.js';
-import { prisma } from '../../services/database.js';
+import { prisma } from '../../services/db.js';
 
 export class DeadLetterWorker {
   private worker: Worker;
@@ -14,8 +14,8 @@ export class DeadLetterWorker {
       {
         connection: redis,
         concurrency: 1, // Process DLQ items sequentially for careful handling
-        removeOnComplete: false, // Never remove completed DLQ jobs
-        removeOnFail: false, // Never remove failed DLQ jobs
+        removeOnComplete: { count: 0 }, // Never remove completed DLQ jobs
+        removeOnFail: { count: 0 }, // Never remove failed DLQ jobs
         stalledInterval: 120000, // 2 minutes - longer for manual review items
         maxStalledCount: 1, // Very conservative
       }
@@ -263,15 +263,15 @@ export class DeadLetterWorker {
       await targetQueue.add(
         `manual_retry_${dlqJob.originalJobId}_${Date.now()}`,
         {
-          ...dlqJob.originalPayload,
+          ...(dlqJob.originalPayload as object || {}),
           _manualRetry: true,
           _adminUserId: adminUserId,
           _dlqJobId: id,
         },
         {
           attempts: 3,
-          removeOnComplete: 50,
-          removeOnFail: 25,
+          removeOnComplete: { count: 50 },
+          removeOnFail: { count: 25 },
         }
       );
 

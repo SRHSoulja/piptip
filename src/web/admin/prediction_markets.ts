@@ -5,6 +5,9 @@ import { predictionMarkets } from "../../services/prediction_markets.js";
 import { marketResolver } from "../../services/market_resolver.js";
 import { marketConfig } from "../../services/market_config.js";
 import { marketAutomation } from "../../services/market_automation.js";
+import { adminPermissions } from "../../services/admin_permissions.js";
+import { marketTemplates } from "../../services/market_templates.js";
+import { getCurrentUser } from "../auth.js";
 
 export const predictionMarketsRouter = Router();
 
@@ -447,3 +450,484 @@ predictionMarketsRouter.post("/prediction_markets/resolve-expired", async (req: 
     });
   }
 });
+
+/**
+ * GET /admin/prediction_markets/templates - Get available market templates
+ */
+predictionMarketsRouter.get("/prediction_markets/templates", async (req: Request, res: Response) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    const isAdmin = await adminPermissions.isUserAdmin(currentUser.discordId);
+    const templates = marketTemplates.getAllTemplates(isAdmin);
+
+    const templatesByCategory = {
+      sports: templates.filter(t => t.category === 'sports'),
+      crypto: templates.filter(t => t.category === 'crypto'),
+      custom: templates.filter(t => t.category === 'custom'),
+      special: templates.filter(t => t.category === 'special')
+    };
+
+    const stats = await marketTemplates.getTemplateStats();
+
+    res.json({
+      success: true,
+      data: {
+        templates,
+        templatesByCategory,
+        stats,
+        userPermissions: {
+          isAdmin,
+          canCreateSpecialMarkets: await adminPermissions.canUserCreateSpecialMarkets(currentUser.discordId),
+          canResolveMarkets: await adminPermissions.canUserResolveMarkets(currentUser.discordId)
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Admin API error /templates:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch market templates'
+    });
+  }
+});
+
+/**
+ * POST /admin/prediction_markets/create-special - Create admin special market
+ */
+predictionMarketsRouter.post("/prediction_markets/create-special", async (req: Request, res: Response) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    // Check admin permissions
+    const canCreateSpecial = await adminPermissions.canUserCreateSpecialMarkets(currentUser.discordId);
+    if (!canCreateSpecial) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient privileges to create special markets'
+      });
+    }
+
+    const {
+      title,
+      description,
+      templateType,
+      outcomes,
+      liquidity,
+      endDate,
+      guildId,
+      channelId,
+      customData,
+      adminNotes
+    } = req.body;
+
+    // Validate required fields
+    if (!title || !description || !outcomes || !Array.isArray(outcomes) || outcomes.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: title, description, outcomes (min 2)'
+      });
+    }
+
+    // Validate template if provided
+    if (templateType) {
+      const canUseTemplate = marketTemplates.canUserUseTemplate(templateType, true);
+      if (!canUseTemplate) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid or restricted template type'
+        });
+      }
+
+      const validation = marketTemplates.validateTemplateConfig(templateType, outcomes, customData);
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          error: `Template validation failed: ${validation.errors.join(', ')}`
+        });
+      }
+    }
+
+    // Generate market data
+    const marketData = templateType
+      ? marketTemplates.generateMarketData(templateType, customData)
+      : { customMarket: true, ...customData };
+
+    // Set defaults for admin markets
+    const resolveAt = endDate ? new Date(endDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 1 week default
+    const marketLiquidity = liquidity ? BigInt(liquidity) : BigInt(2000); // Higher default for admin markets
+
+    // Create the special market
+    const market = await prisma.predictionMarket.create({
+      data: {
+        title,
+        description,
+        resolveAt,
+        creatorId: currentUser.discordId,
+        guildId: guildId || 'ADMIN_SPECIAL',
+        channelId: channelId || 'ADMIN_SPECIAL',
+        tokenSymbol: 'PIPCHIPS',
+        marketType: templateType || 'ADMIN_CUSTOM',
+        marketData,
+        marketOutcomes: outcomes,
+        liquidity: marketLiquidity,
+        currentPrices: outcomes.reduce((acc: any, outcome: string) => {
+          acc[outcome] = (1 / outcomes.length).toFixed(4); // Equal initial probabilities
+          return acc;
+        }, {}),
+        lmsrShares: outcomes.reduce((acc: any, outcome: string) => {
+          acc[outcome] = '0'; // No initial shares
+          return acc;
+        }, {}),
+        // Admin special market fields
+        templateType: templateType || 'CUSTOM_EVENT',
+        resolutionMethod: 'MANUAL_ADMIN',
+        isSpecialMarket: true,
+        requiresManualResolution: true,
+        adminNotes: adminNotes || `Created by admin ${currentUser.username || currentUser.discordId}`,
+        rakePercentage: 0, // Admin markets have no rake
+        minBet: 1,
+        maxBet: 10000
+      }
+    });
+
+    // Log admin action
+    try {
+      await prisma.adminSetting.upsert({
+        where: { key: `market_creation_log_${Date.now()}` },
+        update: {},
+        create: {
+          key: `market_creation_log_${Date.now()}`,
+          value: {
+            marketId: market.id,
+            createdBy: currentUser.discordId,
+            templateType: templateType || 'CUSTOM',
+            timestamp: new Date().toISOString(),
+            action: 'SPECIAL_MARKET_CREATED'
+          },
+          description: `Special market created by admin`,
+          updatedBy: currentUser.discordId
+        }
+      });
+    } catch (logError) {
+      // Don't fail market creation if logging fails
+      console.warn('Failed to log admin market creation:', logError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Admin special market created successfully',
+      data: {
+        marketId: market.id,
+        title: market.title,
+        outcomes: market.marketOutcomes,
+        resolutionMethod: market.resolutionMethod,
+        isSpecialMarket: market.isSpecialMarket,
+        createdAt: market.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Admin API error /create-special:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create special market'
+    });
+  }
+});
+
+/**
+ * GET /admin/prediction_markets/special - Get admin special markets
+ */
+predictionMarketsRouter.get("/prediction_markets/special", async (req: Request, res: Response) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    const isAdmin = await adminPermissions.isUserAdmin(currentUser.discordId);
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin privileges required'
+      });
+    }
+
+    const { limit = "50", offset = "0", status = "all" } = req.query;
+    const limitNum = Math.min(parseInt(limit as string) || 50, 100);
+    const offsetNum = parseInt(offset as string) || 0;
+
+    const where: any = {
+      isSpecialMarket: true
+    };
+
+    if (status !== "all") {
+      where.status = (status as string).toUpperCase();
+    }
+
+    const specialMarkets = await prisma.predictionMarket.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limitNum,
+      skip: offsetNum,
+      include: {
+        _count: {
+          select: { bets: true }
+        }
+      }
+    });
+
+    const marketsWithDetails = specialMarkets.map(market => ({
+      id: market.id,
+      title: market.title,
+      description: market.description,
+      outcomes: market.marketOutcomes,
+      status: market.status,
+      templateType: market.templateType,
+      resolutionMethod: market.resolutionMethod,
+      isSpecialMarket: market.isSpecialMarket,
+      requiresManualResolution: market.requiresManualResolution,
+      totalBets: market._count.bets,
+      totalVolume: Number(market.totalPipchipsVolume || 0),
+      currentPrices: market.currentPrices,
+      createdAt: market.createdAt,
+      resolveAt: market.resolveAt,
+      resolvedBy: market.resolvedBy,
+      resolvedAt: market.resolvedAt,
+      adminNotes: market.adminNotes,
+      creatorId: market.creatorId
+    }));
+
+    const totalCount = await prisma.predictionMarket.count({
+      where: { isSpecialMarket: true }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        markets: marketsWithDetails,
+        pagination: {
+          total: totalCount,
+          limit: limitNum,
+          offset: offsetNum,
+          hasMore: offsetNum + limitNum < totalCount
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Admin API error /special:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch special markets'
+    });
+  }
+});
+
+/**
+ * POST /admin/prediction_markets/:id/manual-resolve - Manually resolve market
+ */
+predictionMarketsRouter.post("/prediction_markets/:id/manual-resolve", async (req: Request, res: Response) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    const canResolve = await adminPermissions.canUserResolveMarkets(currentUser.discordId);
+    if (!canResolve) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient privileges to resolve markets'
+      });
+    }
+
+    const { id: marketId } = req.params;
+    const { outcome, notes } = req.body;
+
+    if (!outcome) {
+      return res.status(400).json({
+        success: false,
+        error: 'Outcome is required'
+      });
+    }
+
+    // Get the market
+    const market = await prisma.predictionMarket.findUnique({
+      where: { id: marketId }
+    });
+
+    if (!market) {
+      return res.status(404).json({
+        success: false,
+        error: 'Market not found'
+      });
+    }
+
+    if (market.status !== 'ACTIVE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Market is not active'
+      });
+    }
+
+    // Validate outcome is valid for this market
+    if (!market.marketOutcomes.includes(outcome)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid outcome. Must be one of: ${market.marketOutcomes.join(', ')}`
+      });
+    }
+
+    // For LMSR markets, use the existing prediction market service
+    // For multi-choice markets, we need to handle differently
+    let resolveResult;
+
+    if (market.marketOutcomes.length === 2 && (market.marketOutcomes.includes('YES') || market.marketOutcomes.includes('Yes'))) {
+      // Binary market - use existing service
+      const mappedOutcome = outcome === 'Yes' ? 'YES' : (outcome === 'No' ? 'NO' : outcome);
+      resolveResult = await predictionMarkets.resolveMarket(marketId, mappedOutcome as 'YES' | 'NO');
+    } else {
+      // Multi-choice market - resolve manually
+      resolveResult = await this.resolveMultiChoiceMarket(marketId, outcome, currentUser.discordId);
+    }
+
+    if (!resolveResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: resolveResult.error || 'Failed to resolve market'
+      });
+    }
+
+    // Update admin resolution fields
+    await prisma.predictionMarket.update({
+      where: { id: marketId },
+      data: {
+        resolvedBy: currentUser.discordId,
+        resolvedAt: new Date(),
+        adminNotes: notes ? `${market.adminNotes || ''}\n\nResolution notes: ${notes}` : market.adminNotes
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Market resolved successfully',
+      data: {
+        marketId,
+        outcome,
+        payouts: resolveResult.payouts?.length || 0,
+        totalPaidOut: resolveResult.payouts?.reduce((sum, p) => sum + p.amount, 0) || 0,
+        resolvedBy: currentUser.discordId,
+        resolvedAt: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('Admin API error /manual-resolve:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resolve market'
+    });
+  }
+});
+
+/**
+ * Helper function to resolve multi-choice markets
+ */
+async function resolveMultiChoiceMarket(
+  marketId: string,
+  winningOutcome: string,
+  adminId: string
+): Promise<{ success: boolean; payouts?: Array<{ userId: string; amount: number }>; error?: string }> {
+  try {
+    const market = await prisma.predictionMarket.findUnique({
+      where: { id: marketId },
+      include: { bets: true }
+    });
+
+    if (!market) {
+      return { success: false, error: 'Market not found' };
+    }
+
+    // For multi-choice LMSR markets: winning shares pay 1 PIPChip each
+    const payouts: Array<{ userId: string; amount: number }> = [];
+
+    for (const bet of market.bets) {
+      if (bet.side === winningOutcome && bet.sharesPurchased) {
+        // Winner gets 1 PIPChip per share owned
+        const shareCount = parseFloat(bet.sharesPurchased.toString());
+        payouts.push({
+          userId: bet.userId,
+          amount: Math.floor(shareCount) // Each share = 1 PIPChip
+        });
+      }
+      // Losing shares get nothing (already paid the cost when betting)
+    }
+
+    // Execute payouts
+    await prisma.$transaction(async (tx) => {
+      // Update market status
+      await tx.predictionMarket.update({
+        where: { id: marketId },
+        data: {
+          status: 'RESOLVED',
+          outcome: winningOutcome,
+          resolvedBy: adminId,
+          resolvedAt: new Date()
+        }
+      });
+
+      // Process payouts using PIPChips
+      for (const payout of payouts) {
+        if (payout.amount > 0) {
+          // Credit PIPChips to winner (simplified - should use pipchipsService)
+          await tx.user.update({
+            where: { discordId: payout.userId },
+            data: {
+              pipchipsBalance: { increment: BigInt(payout.amount) },
+              pipchipsEarnedTotal: { increment: BigInt(payout.amount) }
+            }
+          });
+
+          // Create transaction record
+          await tx.pipchipsTransaction.create({
+            data: {
+              userId: payout.userId,
+              amount: BigInt(payout.amount),
+              type: 'PREDICTION_PAYOUT',
+              referenceId: marketId,
+              description: `Payout ${payout.amount} PIPChips from resolved market: ${market.title}`,
+              metadata: { outcome: winningOutcome, adminResolved: true }
+            }
+          });
+        }
+      }
+    });
+
+    return { success: true, payouts };
+
+  } catch (error) {
+    console.error('Error resolving multi-choice market:', error);
+    return { success: false, error: 'Failed to resolve multi-choice market' };
+  }
+}

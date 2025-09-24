@@ -45,8 +45,12 @@ export function initTiersSection() {
         // Prediction market fields
         const canCreateMarkets = document.getElementById('canCreateMarkets')?.checked || false;
         const dailyMarketLimit = document.getElementById('dailyMarketLimit')?.value || 0;
-        const customRakePercent = document.getElementById('customRakePercent')?.value || null;
         const marketCooldownMinutes = document.getElementById('marketCooldownMinutes')?.value || 0;
+
+        // Direct fee rate fields
+        const customRakePercent = document.getElementById('customRakePercent')?.value || null;
+        const marketRakePercent = document.getElementById('marketRakePercent')?.value || 3.0;
+        const systemLiquidityBonus = document.getElementById('systemLiquidityBonus')?.value || 0;
 
         if (!name) {
           throw new Error('Tier name is required');
@@ -58,8 +62,12 @@ export function initTiersSection() {
           price: Number(price),
           canCreateMarkets,
           dailyMarketLimit: Number(dailyMarketLimit),
+          marketCooldownMinutes: Number(marketCooldownMinutes),
+
+          // Direct fee rate fields
           customRakePercent: customRakePercent ? Number(customRakePercent) : null,
-          marketCooldownMinutes: Number(marketCooldownMinutes)
+          marketRakePercent: Number(marketRakePercent),
+          systemLiquidityBonus: Number(systemLiquidityBonus)
         };
 
         const data = await makeAuthenticatedRequest('/admin/tiers', {

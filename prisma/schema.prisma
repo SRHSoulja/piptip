@@ -30,6 +30,15 @@ model User {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  // PIPChips virtual currency system
+  pipchipsBalance      BigInt    @default(10000) // Starting balance: 10,000 PIPChips
+  pipchipsEarnedTotal  BigInt    @default(0) // Total PIPChips earned from all sources
+  pipchipsSpentTotal   BigInt    @default(0) // Total PIPChips spent on predictions
+  pipchipsBoughtTotal  BigInt    @default(0) // Total PIPChips purchased with real tokens
+  lastPipchipsDaily    DateTime? // Last time user claimed daily bonus
+  dailyStreak          Int       @default(0) // Consecutive days of claiming bonus
+  longestDailyStreak   Int       @default(0) // Best streak achieved
+
   // SECURITY: Database constraints to prevent impossible states (enforced at DB level)
 
   // Gaming relations
@@ -71,6 +80,14 @@ model User {
   bannedAt          DateTime?
   bannedReason      String?
   bannedByAdminId   String?
+
+  // Admin permission system
+  isAdmin           Boolean   @default(false) // Admin privileges for all systems
+  isSuperUser       Boolean   @default(false) // Super user with unlimited access
+  adminLevel        Int       @default(0) // 0=user, 1=moderator, 2=admin, 3=super
+  canCreateMarkets  Boolean   @default(false) // Can create prediction markets
+  adminPromotedAt   DateTime? // When admin status was granted
+  adminPromotedBy   String? // Who granted admin status
 
   // PenguBook browsing relations
   profileViewsGiven    BioBrowse[] @relation("BioBrowseViewer")
@@ -118,6 +135,17 @@ model User {
   @@index([createdAt])
   @@index([showInPenguBook, bioLastUpdated])
   @@index([predictionSelfExcluded, predictionSelfExclusionEnd]) // Efficient exclusion checks
+
+  // Tournament mode tracking
+  inTournamentMode     Boolean @default(false)
+  activeTournamentId   String?
+
+  // PIPChips relations
+  pipchipsTransactions PipchipsTransaction[]
+  pipchipsPurchases   PipchipsPurchase[]
+
+  // Tournament participation
+  tournamentParticipants TournamentParticipant[]
 }
 
 model Tier {
@@ -135,8 +163,12 @@ model Tier {
   // Prediction market permissions and settings
   canCreateMarkets     Boolean  @default(false) // Whether users with this tier can create prediction markets
   dailyMarketLimit     Int      @default(0)     // Maximum markets per day (0 = no limit)
-  customRakePercent    Decimal? // Override default rake percentage (null = use system default)
+  customRakePercent    Decimal? // Override default rake percentage for PIP games (null = use system default)
   marketCooldownMinutes Int     @default(0)     // Minutes between market creations (0 = no cooldown)
+
+  // NEW: Direct market rake percentage and liquidity bonuses
+  marketRakePercent    Decimal? @default(3.0)   // Direct percentage for prediction markets (null = use system default)
+  systemLiquidityBonus Int      @default(0)     // Extra liquidity bonus for created markets
 
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -983,6 +1015,24 @@ model PredictionMarket {
   marketType      String   // PRICE_UP_DOWN, PRICE_ABOVE_BELOW, VOLUME_RANKING
   marketData      Json     // Market-specific data (target price, symbol, etc.)
 
+  // LMSR fields for PIPChips markets
+  lmsrShares      Json?    // LMSR share tracking for outcomes {"YES": "1000", "NO": "500"}
+  marketOutcomes  String[] @default(["YES", "NO"]) // Possible outcomes
+
+  // PIPChips market fields
+  totalPipchipsVolume BigInt? @default(0) // Total PIPChips volume traded
+  currentPrices       Json?   // Current LMSR prices {"YES": "0.65", "NO": "0.35"}
+  liquidity          BigInt? @default(1000) // LMSR liquidity parameter
+
+  // Admin template and resolution system
+  templateType        String? // Template used (THREE_WAY_SPORTS, MULTI_CHOICE, etc.)
+  resolutionMethod    String  @default("API_AUTO") // API_AUTO, API_SPORTS, MANUAL_ADMIN
+  isSpecialMarket     Boolean @default(false) // Admin-created special market
+  requiresManualResolution Boolean @default(false) // Needs admin to resolve
+  adminNotes          String? // Internal admin notes
+  resolvedBy          String? // Admin who resolved (for manual resolution)
+  resolvedAt          DateTime? // When market was resolved
+
   // Relations
   bets            PredictionBet[]
 
@@ -999,6 +1049,7 @@ model PredictionBet {
   side        String          // YES or NO
   amount      Int             // Bet amount in atomic units
   tokenSymbol String          // Token used for the bet
+  sharesPurchased Decimal?    @db.Decimal(20, 8) // LMSR shares purchased
   createdAt   DateTime        @default(now())
 
   // Relations
@@ -1122,4 +1173,168 @@ enum OutboxStatus {
   SENT        // Successfully delivered
   FAILED      // Failed after max attempts
   DLQ         // Moved to dead letter queue
+}
+
+// PIPChips purchase packages (managed by admins)
+model PipchipsPackage {
+  id               String  @id @default(cuid())
+  name             String  // "Starter Pack", "Premium Bundle", etc.
+  pipchipsAmount   BigInt  // Number of PIPChips in package
+  usdPrice         Decimal @db.Decimal(10, 2) // Price in USD
+  tokenSymbol      String  @default("PENGU") // Token symbol for purchase
+  tokenCost        Decimal @db.Decimal(20, 8) @default(0) // Cost in tokens
+  bonusPercentage  Int     @default(0) // Bonus percentage (0-100)
+  bonusText        String? // "20% bonus!" or similar marketing text
+  isActive         Boolean @default(true)
+  displayOrder     Int     @default(0) // For sorting in UI
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  purchases      PipchipsPurchase[]
+
+  @@index([isActive, displayOrder])
+}
+
+// Record of PIPChips purchases
+model PipchipsPurchase {
+  id                String           @id @default(cuid())
+  userId            String           // Discord ID of purchaser
+  packageId         String           // Which package was purchased
+  pipchipsAmount    BigInt           // PIPChips received
+  usdPrice          Decimal          @db.Decimal(10, 2) // USD amount paid
+  paymentTokenId    String           // Which token was used for payment
+  paymentAmount     String           // Amount of token paid (BigInt as string)
+  tokenPriceUsd     Decimal          @db.Decimal(18, 8) // USD price of token at time of purchase
+  transactionHash   String?          // Blockchain transaction hash (if applicable)
+  status            PurchaseStatus   @default(PENDING)
+  createdAt         DateTime         @default(now())
+  processedAt       DateTime?        // When purchase was completed
+
+  // Relations
+  package           PipchipsPackage  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+enum PurchaseStatus {
+  PENDING     // Waiting for payment confirmation
+  PROCESSING  // Payment confirmed, crediting PIPChips
+  COMPLETED   // PIPChips successfully credited
+  FAILED      // Purchase failed
+  REFUNDED    // Purchase was refunded
+}
+
+// Comprehensive PIPChips transaction log
+model PipchipsTransaction {
+  id            String                @id @default(cuid())
+  userId        String                // Discord ID
+  amount        BigInt                // Positive for credit, negative for debit
+  transactionType PipchipsTransactionType // Type of transaction
+  referenceId   String?               // market_id, tournament_id, purchase_id, etc.
+  balanceAfter  BigInt                // User's balance after this transaction
+  description   String?               // Human-readable description
+  metadata      Json?                 // Additional transaction data
+  createdAt     DateTime              @default(now())
+
+  // Relations
+  user          User                  @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([transactionType, createdAt])
+  @@index([referenceId])
+}
+
+enum PipchipsTransactionType {
+  DAILY_BONUS      // Daily claim bonus
+  STREAK_BONUS     // Additional streak multiplier
+  PURCHASE         // Bought with real tokens
+  BET_PLACED       // Spent on prediction
+  BET_WON          // Winnings from correct prediction
+  BET_REFUNDED     // Market cancelled/refunded
+  PREDICTION_BET   // Prediction bet placed
+  PREDICTION_WIN   // Won prediction payout
+  PREDICTION_LOSS  // Lost prediction (for tracking)
+  TOURNAMENT_ENTRY // Entry fee paid to join tournament
+  TOURNAMENT_BET   // Tournament-specific prediction bet
+  TOURNAMENT_WIN   // Tournament bet winnings (isolated balance)
+  TOURNAMENT_PRIZE // Prize from tournament/leaderboard
+  ADMIN_CREDIT     // Manual credit by admin
+  ADMIN_DEBIT      // Manual debit by admin
+  REFERRAL_BONUS   // Bonus for referring new users
+  STARTING_BONUS   // Initial 10,000 PIPChips for new users
+}
+
+// Admin-configurable system settings
+model AdminSetting {
+  key         String    @id // Setting key (e.g., 'daily_bonus_amount')
+  value       Json      // Setting value (number, string, object, etc.)
+  description String?   // What this setting controls
+  updatedAt   DateTime  @updatedAt
+  updatedBy   String?   // Admin who last updated this
+
+  @@index([updatedAt])
+}
+
+// Tournament system with context-based PIPChips isolation
+model TournamentSession {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  entryFeeUSD     Decimal
+  startTime       DateTime
+  endTime         DateTime
+  status          String   @default("UPCOMING") // UPCOMING, ACTIVE, COMPLETED, CANCELLED
+  minPlayers      Int      @default(10)
+  maxPlayers      Int?
+
+  // Prize configuration using existing multi-token system
+  prizeTokens     Json     // [{"tokenId": 1, "amount": 100}, {"tokenId": 2, "amount": 0.05}]
+  prizeDistribution Json   // {"1": 40, "2": 25, "3": 15, "4-10": 20}
+
+  // Tournament settings
+  startingPIPChips Int     @default(10000)
+  allowLatecomer  Boolean @default(false)
+
+  participants    TournamentParticipant[]
+  createdAt       DateTime @default(now())
+  createdBy       String? // Admin who created tournament
+
+  @@index([status, startTime])
+  @@index([startTime, endTime])
+}
+
+model TournamentParticipant {
+  id              String   @id @default(cuid())
+  tournamentId    String
+  userId          Int      // Reference to User.id
+
+  // Tournament-specific PIPChips tracking (isolated from regular balance)
+  pipchipsStart   Int      @default(10000)
+  pipchipsBalance Int      @default(10000)  // Current tournament balance
+
+  // Performance metrics
+  marketsPlayed   Int      @default(0)
+  correctPredictions Int   @default(0)
+  totalWagered    Int      @default(0)
+  profitLoss      Int?     // Final profit/loss (calculated at tournament end)
+
+  // Final tournament results
+  rank            Int?
+  prizesWon       Json?    // {"tokenId": 1, "amount": 40, "tokenSymbol": "USDC"}
+
+  // Entry details
+  entryTokenId    Int?     // Token used to pay entry fee
+  entryAmount     Decimal? // Amount paid in entry token
+
+  // Relations
+  tournament      TournamentSession @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enteredAt       DateTime @default(now())
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId, pipchipsBalance])
+  @@index([tournamentId, rank])
 }

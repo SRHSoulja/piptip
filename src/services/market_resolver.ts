@@ -644,7 +644,19 @@ export class MarketResolverService {
         return { success: false, error: "Market is not active" };
       }
 
-      // BULLETPROOF VALIDATION: Only allow API-guaranteed markets
+      // Check if this is a manual admin market
+      const marketData = market.marketData as any;
+      const resolutionMethod = marketData?.resolutionMethod || 'API_AUTO';
+
+      if (resolutionMethod === 'MANUAL_ADMIN') {
+        console.log(`MANUAL ADMIN MARKET: Market ${market.id} requires manual resolution by admin`);
+        return {
+          success: false,
+          error: "MANUAL_ADMIN: Market requires manual resolution by admin. Use admin dashboard to resolve."
+        };
+      }
+
+      // For API markets, ensure they meet API guarantee requirements
       if (!this.isAPIGuaranteedMarket(market)) {
         console.error(`SECURITY: Attempted to resolve non-API market ${market.id} - ${market.title}`);
         return {

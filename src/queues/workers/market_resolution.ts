@@ -2,8 +2,8 @@
 import { Worker, Job } from 'bullmq';
 import { redis, marketResolutionQueue } from '../config.js';
 import { MarketResolutionJobData, validateMarketResolutionJob, JobStatus } from '../types.js';
-import { prisma } from '../../services/database.js';
-import { getTokenPrice } from '../../services/market_resolver.js';
+import { prisma } from '../../services/db.js';
+// import { getTokenPrice } from '../../services/market_resolver.js'; // Function not exported
 import { Prisma } from '@prisma/client';
 import { logJobProcessing, logMarketOperation, createLogger } from '../../utils/logger.js';
 
@@ -17,8 +17,8 @@ export class MarketResolutionWorker {
       {
         connection: redis,
         concurrency: 5, // Process up to 5 resolutions simultaneously
-        removeOnComplete: 100,
-        removeOnFail: 50,
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
         stalledInterval: 30000, // 30 seconds
         maxStalledCount: 3,
       }
@@ -291,8 +291,8 @@ export class MarketResolutionWorker {
       {
         priority: 1, // High priority
         delay: 1000, // Small delay to ensure resolution is committed
-        removeOnComplete: 100,
-        removeOnFail: 50,
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
       }
     );
 

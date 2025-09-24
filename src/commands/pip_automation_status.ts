@@ -94,11 +94,11 @@ export default async function pipAutomationStatus(i: ChatInputCommandInteraction
       );
 
     // Add recent activity if available
-    const recentLogs = status.recentLogs || [];
+    const recentLogs = status.todaysLogs || [];
     if (recentLogs.length > 0) {
       const recentActivity = recentLogs
         .slice(-5)
-        .map(log => `${log.success ? '✅' : '❌'} ${log.type.toUpperCase()}: ${log.subtype}`)
+        .map((log: any) => `${log.success ? '✅' : '❌'} ${log.type.toUpperCase()}: ${log.subtype}`)
         .join('\n');
 
       embed.addFields({

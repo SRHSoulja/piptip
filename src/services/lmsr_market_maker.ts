@@ -1,6 +1,6 @@
 // src/services/lmsr_market_maker.ts - Logarithmic Market Scoring Rule implementation with numerical stability
 import Decimal from 'decimal.js';
-import { createLogger, recordError } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
 
 // Configure Decimal.js for high precision financial calculations
 Decimal.set({
@@ -112,7 +112,7 @@ export class LMSRMarketMaker {
       return result;
 
     } catch (error) {
-      recordError('lmsr_cost_calculation_failed', 'high', 'lmsr');
+      logger.error('LMSR cost calculation failed', error);
       logger.error({ error, shares }, 'Cost calculation failed');
       throw error;
     }
@@ -176,7 +176,7 @@ export class LMSRMarketMaker {
       return price;
 
     } catch (error) {
-      recordError('lmsr_price_calculation_failed', 'high', 'lmsr');
+      logger.error('lmsr_price_calculation_failed', 'high', 'lmsr');
       logger.error({ error, outcome, shares }, 'Price calculation failed');
       throw error;
     }
@@ -238,7 +238,7 @@ export class LMSRMarketMaker {
       return prices;
 
     } catch (error) {
-      recordError('lmsr_all_prices_failed', 'high', 'lmsr');
+      logger.error('lmsr_all_prices_failed', 'high', 'lmsr');
       logger.error({ error, shares }, 'All prices calculation failed');
       throw error;
     }
@@ -294,7 +294,7 @@ export class LMSRMarketMaker {
       };
 
     } catch (error) {
-      recordError('lmsr_buy_cost_failed', 'high', 'lmsr');
+      logger.error('lmsr_buy_cost_failed', 'high', 'lmsr');
       logger.error({ error, outcome, sharesToBuy: sharesToBuy.toString() }, 'Buy cost calculation failed');
       throw error;
     }
@@ -344,7 +344,7 @@ export class LMSRMarketMaker {
       return bestResult;
 
     } catch (error) {
-      recordError('lmsr_optimize_failed', 'medium', 'lmsr');
+      logger.error('lmsr_optimize_failed', 'medium', 'lmsr');
       logger.error({ error, outcome, budget: budget.toString() }, 'Share optimization failed');
       throw error;
     }

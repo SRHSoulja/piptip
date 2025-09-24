@@ -47,6 +47,82 @@ export async function userHasActiveTaxFreeTier(userId: number, now = new Date())
  * Check if user can create prediction markets based on their tier membership
  * System accounts (automation, admin) bypass tier restrictions
  */
+/**
+ * Get user's active tier with market creation benefits
+ */
+export async function getUserActiveTierForMarkets(discordId: string) {
+  try {
+    // System accounts get unlimited privileges
+    const systemAccounts = ['automation', 'system', 'admin', 'scheduler'];
+    if (systemAccounts.includes(discordId.toLowerCase())) {
+      return {
+        tier: {
+          name: 'System',
+          marketRakePercent: 0, // No rake for system
+          systemLiquidityBonus: 0,
+          canCreateMarkets: true,
+          dailyMarketLimit: 0,
+          marketCooldownMinutes: 0,
+          customRakePercent: null
+        },
+        membership: null
+      };
+    }
+
+    // Find the user first
+    const user = await prisma.user.findFirst({
+      where: { discordId }
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    // Find user's active tier membership with market creation privileges
+    const activeMembership = await prisma.tierMembership.findFirst({
+      where: {
+        userId: user.id,
+        status: "ACTIVE",
+        expiresAt: { gt: new Date() },
+        tier: {
+          active: true
+        }
+      },
+      include: {
+        tier: {
+          select: {
+            id: true,
+            name: true,
+            marketRakePercent: true,
+            systemLiquidityBonus: true,
+            canCreateMarkets: true,
+            dailyMarketLimit: true,
+            marketCooldownMinutes: true,
+            customRakePercent: true
+          }
+        }
+      },
+      orderBy: [
+        // Prioritize tiers with market creation access
+        { tier: { canCreateMarkets: 'desc' } },
+        // Then by lowest rake percentage (best deal)
+        { tier: { marketRakePercent: 'asc' } },
+        // Finally by highest liquidity bonus
+        { tier: { systemLiquidityBonus: 'desc' } }
+      ]
+    });
+
+    return activeMembership ? {
+      tier: activeMembership.tier,
+      membership: activeMembership
+    } : null;
+
+  } catch (error) {
+    console.error(`Error getting active tier for user ${discordId}:`, error);
+    return null;
+  }
+}
+
 export async function checkMarketCreationPermission(discordId: string): Promise<MarketCreationCheck> {
   try {
     // System accounts bypass tier restrictions

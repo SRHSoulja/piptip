@@ -60,6 +60,31 @@
         .command-item { display: flex; justify-content: space-between; padding: 8px; background: #2a2a2a; border-radius: 4px; }
         .command-name { font-weight: bold; }
         .command-count { color: #9ca3af; font-size: 12px; }
+
+        /* Special Market Management styles */
+        .template-card { background: #333; border: 1px solid #555; border-radius: 6px; padding: 12px; cursor: pointer; transition: all 0.2s; }
+        .template-card:hover { background: #3b3b3b; border-color: #60a5fa; }
+        .template-card.selected { background: #1e3a8a; border-color: #60a5fa; }
+        .template-name { font-weight: bold; color: #60a5fa; margin-bottom: 4px; }
+        .template-description { font-size: 11px; color: #9ca3af; margin-bottom: 8px; }
+        .template-details { font-size: 10px; color: #6b7280; }
+        .template-category { display: inline-block; background: #374151; color: #d1d5db; padding: 2px 6px; border-radius: 3px; font-size: 9px; margin-right: 4px; }
+        .admin-level-indicator { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
+        .admin-level-indicator.super-user { background: #7c3aed; color: #e9d5ff; }
+        .admin-level-indicator.admin { background: #059669; color: #a7f3d0; }
+        .admin-level-indicator.no-admin { background: #dc2626; color: #fecaca; }
+        .resolution-market { background: #2a2a2a; border: 1px solid #444; border-radius: 6px; padding: 15px; margin-bottom: 10px; }
+        .resolution-market.expired { border-color: #f59e0b; }
+        .resolution-market h4 { margin: 0 0 8px 0; color: #60a5fa; }
+        .resolution-details { display: grid; grid-template-columns: 1fr auto; gap: 15px; align-items: start; }
+        .market-info { color: #9ca3af; font-size: 11px; }
+        .market-outcomes { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+        .outcome-option { background: #374151; color: #d1d5db; padding: 6px 12px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; font-size: 11px; }
+        .outcome-option:hover { background: #4b5563; }
+        .outcome-option.selected { border-color: #10b981; background: #065f46; color: #a7f3d0; }
+        .resolution-actions { display: flex; gap: 8px; align-items: center; }
+        .outcome-preview { margin-top: 10px; padding: 8px; background: #0f1419; border-radius: 4px; border-left: 3px solid #10b981; }
+        .payout-preview { font-size: 10px; color: #6b7280; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -167,8 +192,16 @@
                         <label for="dailyMarketLimit">Daily market limit (0 = unlimited):</label>
                         <input type="number" id="dailyMarketLimit" name="dailyMarketLimit" value="0" min="0" style="width: 80px;">
 
-                        <label for="customRakePercent">Custom rake % (leave empty for default):</label>
+                        <h4 style="color: #f59e0b; margin-top: 15px; margin-bottom: 8px;">💰 Direct Fee Rates</h4>
+
+                        <label for="customRakePercent">PIP Game Rake % (leave empty for default):</label>
                         <input type="number" id="customRakePercent" name="customRakePercent" placeholder="3.0" min="0" max="20" step="0.1" style="width: 80px;">
+
+                        <label for="marketRakePercent">Market Rake % (direct rate):</label>
+                        <input type="number" id="marketRakePercent" name="marketRakePercent" value="3.0" min="0" max="10" step="0.1" style="width: 80px;">
+
+                        <label for="systemLiquidityBonus">Bonus Liquidity (PIPChips):</label>
+                        <input type="number" id="systemLiquidityBonus" name="systemLiquidityBonus" value="0" min="0" max="10000" style="width: 100px;">
 
                         <label for="marketCooldownMinutes">Market cooldown (minutes):</label>
                         <input type="number" id="marketCooldownMinutes" name="marketCooldownMinutes" value="0" min="0" style="width: 80px;">
@@ -186,8 +219,93 @@
                         <th>Name</th>
                         <th>Description</th>
                         <th>Price</th>
-                        <th>Prediction Markets</th>
+                        <th>PIP Game Rake</th>
+                        <th>Market Rake</th>
+                        <th>Liquidity Bonus</th>
+                        <th>Market Permissions</th>
                         <th>Active</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Tournaments Section -->
+        <div class="section">
+            <h2>🏆 Tournament Management</h2>
+            <div id="tournamentsMsg"></div>
+
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">➕ Create New Tournament</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label for="newTournamentId">Tournament ID:</label>
+                        <input type="text" id="newTournamentId" name="newTournamentId" placeholder="unique-tournament-id" style="width: 100%;">
+
+                        <label for="newTournamentName">Tournament Name:</label>
+                        <input type="text" id="newTournamentName" name="newTournamentName" placeholder="Weekly Championship" style="width: 100%;">
+
+                        <label for="newTournamentDescription">Description:</label>
+                        <input type="text" id="newTournamentDescription" name="newTournamentDescription" placeholder="Tournament description" style="width: 100%;">
+
+                        <label for="newTournamentType">Tournament Type:</label>
+                        <select id="newTournamentType" name="newTournamentType" style="width: 150px;">
+                            <option value="LEADERBOARD">Leaderboard</option>
+                            <option value="BRACKET">Bracket</option>
+                            <option value="FREE_ROLL">Free Roll</option>
+                        </select>
+
+                        <label for="newTournamentMaxParticipants">Max Participants (optional):</label>
+                        <input type="number" id="newTournamentMaxParticipants" name="newTournamentMaxParticipants" placeholder="100" min="1" style="width: 100px;">
+                    </div>
+
+                    <div>
+                        <h4 style="margin-top: 0; color: #f59e0b;">💰 Prize Configuration</h4>
+
+                        <label for="newTournamentPrizeTokens">Prize Tokens (tokenId:amount,tokenId:amount):</label>
+                        <input type="text" id="newTournamentPrizeTokens" name="newTournamentPrizeTokens" placeholder="1:100,2:0.05" style="width: 100%;">
+                        <small style="color: #9ca3af;">Example: "1:100,2:0.05" = 100 of token ID 1 + 0.05 of token ID 2</small>
+
+                        <h4 style="color: #8b5cf6; margin-top: 15px; margin-bottom: 8px;">🏅 Prize Distribution (%)</h4>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <label for="prizeDist1st">1st Place:</label>
+                                <input type="number" id="prizeDist1st" name="prizeDist1st" value="40" min="0" max="100" style="width: 60px;">%
+                            </div>
+                            <div>
+                                <label for="prizeDist2nd">2nd Place:</label>
+                                <input type="number" id="prizeDist2nd" name="prizeDist2nd" value="25" min="0" max="100" style="width: 60px;">%
+                            </div>
+                            <div>
+                                <label for="prizeDist3rd">3rd Place:</label>
+                                <input type="number" id="prizeDist3rd" name="prizeDist3rd" value="15" min="0" max="100" style="width: 60px;">%
+                            </div>
+                            <div>
+                                <label for="prizeDistRemaining">4th-10th:</label>
+                                <input type="number" id="prizeDistRemaining" name="prizeDistRemaining" value="20" min="0" max="100" style="width: 60px;">%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 15px;">
+                    <button id="createTournament">Create Tournament</button>
+                    <button id="loadTournaments">🔄 Refresh Tournaments</button>
+                </div>
+            </div>
+
+            <table id="tournamentsTbl">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Status</th>
+                        <th>Type</th>
+                        <th>Max Participants</th>
+                        <th>Prize Pool</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -330,6 +448,111 @@
                 </thead>
                 <tbody></tbody>
             </table>
+        </div>
+
+        <!-- Special Market Management Section -->
+        <div class="section">
+            <h2>⭐ Special Market Management</h2>
+            <div id="specialMarketsMsg"></div>
+
+            <!-- Admin Permission Check -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">🔐 Admin Status</h3>
+                <div id="adminPermissionStatus" style="padding: 8px; background: #0f1419; border-radius: 4px;">
+                    <span style="color: #9ca3af;">Admin Level: </span>
+                    <span id="adminLevelIndicator">Checking...</span>
+                </div>
+            </div>
+
+            <!-- Market Templates Section -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">📋 Available Templates</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;" id="templateGrid">
+                    <!-- Templates will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Create Special Market Form -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;" id="createSpecialMarketForm">
+                <h3 style="margin-top: 0;">➕ Create Special Market</h3>
+                <div style="display: grid; gap: 15px;">
+                    <div class="form-group">
+                        <label for="specialMarketTemplate">Template:</label>
+                        <select id="specialMarketTemplate" style="width: 100%;">
+                            <option value="">Select a template...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="specialMarketTitle">Title:</label>
+                        <input type="text" id="specialMarketTitle" placeholder="Market title" style="width: 100%;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="specialMarketDescription">Description:</label>
+                        <textarea id="specialMarketDescription" placeholder="Market description" rows="3" style="width: 100%; min-height: 60px;"></textarea>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label for="specialMarketResolveAt">Resolve Date/Time:</label>
+                            <input type="datetime-local" id="specialMarketResolveAt" style="width: 100%;">
+                        </div>
+                        <div class="form-group">
+                            <label for="specialMarketLiquidity">Initial Liquidity (PIPChips):</label>
+                            <input type="number" id="specialMarketLiquidity" value="1000" min="100" max="10000" style="width: 100%;">
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="customOutcomesGroup" style="display: none;">
+                        <label for="specialMarketOutcomes">Custom Outcomes (comma-separated):</label>
+                        <input type="text" id="specialMarketOutcomes" placeholder="Option A, Option B, Option C" style="width: 100%;">
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">Enter 2-10 outcomes separated by commas</div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button id="createSpecialMarket" class="btn-primary">Create Special Market</button>
+                        <button id="previewSpecialMarket" class="btn-secondary">Preview</button>
+                        <button id="resetSpecialMarketForm" class="btn-secondary">Reset Form</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual Resolution Section -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">⚖️ Manual Market Resolution</h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button id="loadExpiredManualMarkets" class="btn-info">🔄 Load Expired Manual Markets</button>
+                    <button id="loadAllManualMarkets" class="btn-secondary">📋 Load All Manual Markets</button>
+                </div>
+
+                <div id="manualResolutionSection">
+                    <!-- Manual markets will be populated here -->
+                </div>
+            </div>
+
+            <!-- Special Market Statistics -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #1a1a1a; border-radius: 6px;">
+                <h3 style="margin-top: 0;">📊 Special Market Statistics</h3>
+                <div class="overview-stats" id="specialMarketStats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalSpecialMarkets">-</div>
+                        <div class="stat-label">Total Special</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="activeManualMarkets">-</div>
+                        <div class="stat-label">Active Manual</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="pendingResolution">-</div>
+                        <div class="stat-label">Pending Resolution</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="templatesAvailable">-</div>
+                        <div class="stat-label">Templates Available</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Prediction Markets Section -->

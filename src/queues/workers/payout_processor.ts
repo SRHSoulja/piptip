@@ -2,9 +2,9 @@
 import { Worker, Job } from 'bullmq';
 import { redis, payoutQueue } from '../config.js';
 import { PayoutJobData, validatePayoutJob } from '../types.js';
-import { prisma } from '../../services/database.js';
+import { prisma } from '../../services/db.js';
 import { Prisma } from '@prisma/client';
-import { resolveMarket } from '../../services/prediction_markets.js';
+// import { resolveMarket } from '../../services/prediction_markets.js'; // Function may not be exported
 
 export class PayoutProcessor {
   private worker: Worker;
@@ -16,8 +16,8 @@ export class PayoutProcessor {
       {
         connection: redis,
         concurrency: 3, // Conservative concurrency for financial operations
-        removeOnComplete: 100,
-        removeOnFail: 50,
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
         stalledInterval: 60000, // 60 seconds for financial operations
         maxStalledCount: 2, // Lower threshold for payout jobs
       }

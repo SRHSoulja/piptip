@@ -145,7 +145,7 @@ export const trackDatabaseConnections = (count: number): void => {
  */
 export const updateActiveMarketCount = async (): Promise<void> => {
   try {
-    const { prisma } = await import('../services/database.js');
+    const { prisma } = await import('../services/db.js');
 
     // Get active markets by guild
     const activeMarketsByGuild = await prisma.predictionMarket.groupBy({
@@ -197,7 +197,7 @@ export const startBusinessMetricsCollection = (): void => {
   // Update user activity metrics every 5 minutes
   setInterval(async () => {
     try {
-      const { prisma } = await import('../services/database.js');
+      const { prisma } = await import('../services/db.js');
 
       // Active users in last 24 hours (users who placed bets)
       const activeUsers24h = await prisma.predictionBet.groupBy({

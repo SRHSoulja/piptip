@@ -29,6 +29,8 @@ import tierRolesRouter from "./admin/tier_roles.js";
 import { treasurySafetyRouter } from "./admin/treasury_safety.js";
 import { predictionMarketsRouter } from "./admin/prediction_markets.js";
 import { automationAdminRouter } from "./admin/automation.js";
+import pipchipsAdminRouter from "./admin/pipchips_admin.js";
+import { tournamentsRouter } from "./admin/tournaments.js";
 import { prisma } from "../services/db.js";
 import { getTreasurySnapshot } from "../services/treasury.js";
 import { priceAPI } from "../services/price_api.js";
@@ -721,7 +723,7 @@ adminRouter.get("/modular", async (_req, res) => {
     }
 });
 // Serve JavaScript modules dynamically
-const jsModules = ['security.js', 'validation.js', 'ui-secure-helpers.js', 'tokens.js', 'core.js', 'fees.js', 'dashboard.js', 'ads.js', 'tiers.js', 'config.js', 'servers.js', 'treasury.js', 'fees-data.js'];
+const jsModules = ['security.js', 'validation.js', 'ui-secure-helpers.js', 'tokens.js', 'core.js', 'fees.js', 'dashboard.js', 'ads.js', 'tiers.js', 'tournaments.js', 'config.js', 'servers.js', 'treasury.js', 'fees-data.js', 'special-markets.js'];
 jsModules.forEach(module => {
     adminRouter.get(`/${module}`, async (_req, res) => {
         try {
@@ -869,7 +871,7 @@ adminRouter.use((req, res, next) => {
         '/ping', '/ui', '/ui.js', '/', '/modular',
         '/security.js', '/validation.js', '/ui-secure-helpers.js',
         '/tokens.js', '/core.js', '/fees.js', '/dashboard.js',
-        '/ads.js', '/tiers.js', '/config.js', '/servers.js', '/treasury.js', '/fees-data.js'
+        '/ads.js', '/tiers.js', '/tournaments.js', '/config.js', '/servers.js', '/treasury.js', '/fees-data.js'
     ];
     if (publicPaths.includes(req.path)) {
         return next();
@@ -900,6 +902,8 @@ adminRouter.use("/tier-roles", tierRolesRouter);
 adminRouter.use("/treasury-safety", treasurySafetyRouter);
 adminRouter.use(predictionMarketsRouter);
 adminRouter.use("/automation", automationAdminRouter);
+adminRouter.use("/pipchips", pipchipsAdminRouter);
+adminRouter.use("/tournaments", tournamentsRouter);
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */
 /* ------------------------------------------------------------------------ */

@@ -16,8 +16,8 @@ export class DiscordOutboxWorker {
       {
         connection: redis,
         concurrency: 5, // Process multiple Discord messages concurrently
-        removeOnComplete: 100,
-        removeOnFail: 50,
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
         stalledInterval: 30000, // 30 seconds
         maxStalledCount: 3,
       }

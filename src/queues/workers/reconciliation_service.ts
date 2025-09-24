@@ -2,7 +2,7 @@
 import { Worker, Job } from 'bullmq';
 import { redis, reconciliationQueue } from '../config.js';
 import { ReconciliationJobData, validateReconciliationJob } from '../types.js';
-import { prisma } from '../../services/database.js';
+import { prisma } from '../../services/db.js';
 import { Prisma } from '@prisma/client';
 
 interface ReconciliationResult {
@@ -42,8 +42,8 @@ export class ReconciliationService {
       {
         connection: redis,
         concurrency: 2, // Conservative concurrency for reconciliation
-        removeOnComplete: 200, // Keep more reconciliation records
-        removeOnFail: 100,
+        removeOnComplete: { count: 200 }, // Keep more reconciliation records
+        removeOnFail: { count: 100 },
         stalledInterval: 300000, // 5 minutes - reconciliation can take time
         maxStalledCount: 2,
       }

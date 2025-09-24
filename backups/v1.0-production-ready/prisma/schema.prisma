@@ -1,0 +1,1125 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  payload   Json
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  @@index([userId, sentAt])
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  discordId  String   @unique
+  agwAddress String?  @unique // SECURITY: Prevent multiple Discord users linking same wallet
+  wins       Int      @default(0) // SECURITY: Prevent negative values
+  losses     Int      @default(0) // SECURITY: Prevent negative values
+  ties       Int      @default(0) // SECURITY: Prevent negative values
+  totalXP    Int      @default(0) // Penguin XP progression system
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // SECURITY: Database constraints to prevent impossible states (enforced at DB level)
+
+  // Gaming relations
+  challenger Match[] @relation("Challenger")
+  joiner     Match[] @relation("Joiner")
+
+  // Tipping relations
+  tipsSent     Tip[] @relation("TipFrom")
+  tipsReceived Tip[] @relation("TipTo")
+
+  // Group tipping relations
+  groupTipsCreated     GroupTip[]             @relation("GroupTipCreator")
+  groupTipsClaimed     GroupTipClaim[]        @relation("GroupTipClaims")
+  groupTipContributions GroupTipContribution[] @relation("GroupTipContributions")
+
+  // Balances
+  balances UserBalance[]
+
+  // Memberships (BACK-RELATION added)
+  tierMemberships TierMembership[]
+
+  // Notifications
+  notifications Notification[]
+
+  // Security: Withdrawal attempt tracking
+  withdrawalAttempts WithdrawalAttempt[]
+
+  // PenguBook profile fields
+  bio               String?   @db.Text
+  bioLastUpdated    DateTime?
+  bioViewCount      Int       @default(0)
+  xUsername         String?   // X/Twitter handle (without @)
+  socials           String?   @db.Text // JSON string for social links
+  allowTipsFromBook Boolean   @default(true)
+  showInPenguBook   Boolean   @default(true)
+
+  // Ban system fields
+  isBanned          Boolean   @default(false)
+  bannedAt          DateTime?
+  bannedReason      String?
+  bannedByAdminId   String?
+
+  // PenguBook browsing relations
+  profileViewsGiven    BioBrowse[] @relation("BioBrowseViewer")
+  profileViewsReceived BioBrowse[] @relation("BioBrowseProfile")
+
+  // PenguBook messaging relations
+  penguBookMessagesSent     PenguBookMessage[] @relation("PenguBookMessageSender")
+  penguBookMessagesReceived PenguBookMessage[] @relation("PenguBookMessageReceiver")
+
+  // Referral system relations
+  referralsMade     Referral[] @relation("UserReferrals")
+  referredBy        Referral[] @relation("UserReferred")
+
+  // XP tracking relations
+  xpTransactions XpTransaction[]
+
+  // Streak and achievement relations
+  streak       UserStreak? @relation("UserStreaks")
+
+  // Dynamic achievement system
+  unlockedAchievements UserAchievement[] @relation("UserAchievements")
+  achievementProgress  UserAchievementProgress[] @relation("UserProgressTracking")
+
+  // Legacy achievements (deprecated)
+  legacyAchievements Achievement[] @relation("LegacyAchievements")
+
+  stats        UserStats? @relation("UserToStats")
+
+  // Social gaming features
+  reactionsGiven    ProfileReaction[] @relation("ReactionGiver")
+  reactionsReceived ProfileReaction[] @relation("ReactionReceiver")
+  following         UserFollow[]      @relation("Follower")
+  followers         UserFollow[]      @relation("Following")
+  activityItems     ActivityFeedItem[] @relation("ActivityUser")
+
+  // Responsible gaming protection fields
+  predictionSelfExcluded      Boolean   @default(false)
+  predictionSelfExclusionEnd  DateTime?
+  predictionDailyLossLimit    Int?      // Custom daily loss limit (atomic units)
+  predictionDailyCountLimit   Int?      // Custom daily prediction count limit
+  predictionLimitsLastReset   DateTime? // Last time daily limits were reset
+  lastAgeReminderShown        DateTime? // Last time age verification reminder was shown
+
+  @@index([agwAddress])
+  @@index([createdAt])
+  @@index([showInPenguBook, bioLastUpdated])
+  @@index([predictionSelfExcluded, predictionSelfExclusionEnd]) // Efficient exclusion checks
+}
+
+model Tier {
+  id           Int      @id @default(autoincrement())
+  name         String
+  description  String?  @db.Text
+  priceAmount  Decimal? // legacy/optional
+  durationDays Int
+
+  // Flexible benefit system (replaces tipTaxFree boolean)
+  tipTaxFree   Boolean  @default(false) // DEPRECATED - keep for backward compatibility
+  taxReductionBps Int   @default(0)     // NEW: 0-10000 basis points (100% = 10000)
+  rakeReductionBps Int  @default(0)     // NEW: 0-10000 basis points (100% = 10000)
+
+  // Prediction market permissions and settings
+  canCreateMarkets     Boolean  @default(false) // Whether users with this tier can create prediction markets
+  dailyMarketLimit     Int      @default(0)     // Maximum markets per day (0 = no limit)
+  customRakePercent    Decimal? // Override default rake percentage (null = use system default)
+  marketCooldownMinutes Int     @default(0)     // Minutes between market creations (0 = no cooldown)
+
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships TierMembership[]
+
+  // ✅ back-relation to TierPrice
+  prices TierPrice[] @relation("TierToPrices")
+
+  @@index([active])
+}
+
+model TierPrice {
+  id        Int      @id @default(autoincrement())
+  tierId    Int
+  tokenId   Int
+  amount    Decimal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ✅ name both sides of the relation
+  tier  Tier  @relation("TierToPrices", fields: [tierId], references: [id], onDelete: Cascade)
+  token Token @relation("TokenToTierPrices", fields: [tokenId], references: [id], onDelete: Restrict)
+
+  @@unique([tierId, tokenId])
+  @@index([tokenId])
+}
+
+enum TierMembershipStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+model TierMembership {
+  id        Int                  @id @default(autoincrement())
+  userId    Int
+  tierId    Int
+  startedAt DateTime             @default(now())
+  expiresAt DateTime
+  txHash    String?              @unique
+  status    TierMembershipStatus @default(ACTIVE)
+  createdAt DateTime             @default(now())
+
+  // BACK-RELATIONS now have opposites on User and Tier
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier Tier @relation(fields: [tierId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, tierId, status], map: "uniq_user_tier_status") // one ACTIVE membership per (user,tier)
+  @@index([userId, tierId, expiresAt])
+  @@index([userId, status, expiresAt])
+  // SECURITY: Prevent impossible date relationships (enforced at DB level)
+}
+
+model Match {
+  id             Int       @id @default(autoincrement())
+  status         String
+  wagerAtomic    Decimal   @default(0)
+  potAtomic      Decimal   @default(0)
+  tokenId        Int
+  challengerId   Int?
+  joinerId       Int?
+  challengerMove String?
+  joinerMove     String?
+  result         String?
+  rakeAtomic     Decimal   @default(0)
+  winnerUserId   Int?
+  messageId      String?
+  channelId      String?
+  offerDeadline  DateTime?
+  createdAt      DateTime  @default(now())
+
+  // Role analytics tracking
+  guildId              String? // Server where match occurred
+  challengerRoleBenefit String? // Role that gave challenger tax benefits
+  joinerRoleBenefit    String? // Role that gave joiner tax benefits
+  challengerRakeReduction String? // Role that gave challenger rake benefits
+  joinerRakeReduction  String? // Role that gave joiner rake benefits
+  rakeSavedAtomic      Decimal @default(0) // Total rake saved due to role benefits
+
+  Challenger User? @relation("Challenger", fields: [challengerId], references: [id])
+  Joiner     User? @relation("Joiner", fields: [joinerId], references: [id])
+  Token      Token @relation(fields: [tokenId], references: [id])
+
+  @@index([status, offerDeadline])
+  @@index([createdAt])
+  @@index([challengerId])
+  @@index([joinerId])
+}
+
+enum TipStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+}
+
+model Tip {
+  id           Int       @id @default(autoincrement())
+  fromUserId   Int?
+  toUserId     Int?
+  tokenId      Int
+  amountAtomic Decimal   @default(0)
+  feeAtomic    Decimal   @default(0)
+  taxAtomic    Decimal   @default(0) // exact tax amount debited at creation
+  note         String?
+  status       TipStatus @default(PENDING)
+  refundedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  // Role analytics tracking
+  roleBenefitUsed String? // Label of role that provided tax benefit
+  taxSavedAtomic  Decimal @default(0) // Amount saved due to role benefit
+  guildId         String? // Server where tip occurred (for role context)
+
+  // Tax transparency fields (NEW)
+  taxRateAppliedBps Int   @default(0)   // Actual tax rate used (BPS) - preserves historical rates
+  exemptionRateBps  Int   @default(0)   // Percentage reduction applied (BPS) - 0-10000
+  totalDeductedAtomic Decimal @default(0) // Total amount deducted from sender (amount + tax)
+
+  From  User?  @relation("TipFrom", fields: [fromUserId], references: [id])
+  To    User?  @relation("TipTo", fields: [toUserId], references: [id])
+  Token Token @relation(fields: [tokenId], references: [id])
+
+  // PenguBook message relation
+  penguBookMessages PenguBookMessage[] @relation("PenguBookTipMessage")
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([fromUserId, status]) // For tip counting queries in achievements
+  @@index([toUserId, status]) // For received tip queries
+  @@index([fromUserId, toUserId, status]) // For unique recipient queries
+  @@index([status, createdAt]) // For completed tips with date sorting
+}
+
+enum GroupTipStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  REFUNDED
+  FAILED
+}
+
+model GroupTip {
+  id          Int      @id @default(autoincrement())
+  creatorId   Int?
+  tokenId     Int
+  totalAmount        Decimal
+  taxAtomic          Decimal  @default(0) // exact tax amount debited at creation
+  contributionsTotal Decimal  @default(0) // total amount contributed by others
+  contributorsCount  Int      @default(0) // number of contributors
+  duration           Int
+  messageId   String?
+  channelId   String?
+  guildId     String?
+  status      String   // Keep as String for backward compatibility
+  expiresAt   DateTime
+  refundedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  Creator       User?                   @relation("GroupTipCreator", fields: [creatorId], references: [id])
+  Token         Token                   @relation(fields: [tokenId], references: [id])
+  claims        GroupTipClaim[]
+  contributions GroupTipContribution[]
+
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@index([creatorId])
+  @@index([guildId])
+}
+
+enum GroupContributionStatus {
+  PENDING
+  CLAIMED
+  REFUNDED
+}
+
+model GroupTipClaim {
+  id         Int                      @id @default(autoincrement())
+  groupTipId Int
+  userId     Int?
+  status     GroupContributionStatus  @default(PENDING)
+  claimedAt  DateTime?
+  refundedAt DateTime?
+  createdAt  DateTime                 @default(now())
+
+  GroupTip GroupTip @relation(fields: [groupTipId], references: [id])
+  User     User?    @relation("GroupTipClaims", fields: [userId], references: [id])
+
+  @@unique([groupTipId, userId])
+  @@index([status])
+  @@index([groupTipId])
+  @@index([userId])
+}
+
+model GroupTipContribution {
+  id            Int      @id @default(autoincrement())
+  groupTipId    Int
+  contributorId Int
+  amount        Decimal
+  taxPaid       Decimal  @default(0)
+  status        String   @default("COMPLETED")
+  createdAt     DateTime @default(now())
+
+  groupTip    GroupTip @relation(fields: [groupTipId], references: [id], onDelete: Cascade)
+  contributor User     @relation("GroupTipContributions", fields: [contributorId], references: [id], onDelete: Cascade)
+
+  @@unique([groupTipId, contributorId])
+  @@index([groupTipId])
+  @@index([contributorId])
+  @@index([status])
+}
+
+model Token {
+  id               Int      @id @default(autoincrement())
+  address          String   @unique
+  symbol           String   @unique
+  decimals         Int
+  active           Boolean  @default(true)
+  minDeposit       Decimal  @default(50)
+  minWithdraw      Decimal  @default(50)
+  tipFeeBps        Int?
+  houseFeeBps      Int?
+  withdrawMaxPerTx Decimal?
+  withdrawDailyCap Decimal?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  balances     UserBalance[]
+  matches      Match[]
+  tips         Tip[]
+  groupTips    GroupTip[]
+  transactions Transaction[]
+
+  // Security: Withdrawal attempt tracking
+  withdrawalAttempts WithdrawalAttempt[]
+
+  // ✅ back-relation to TierPrice
+  tierPrices TierPrice[] @relation("TokenToTierPrices")
+}
+
+model UserBalance {
+  id      Int     @id @default(autoincrement())
+  userId  Int
+  tokenId Int
+  amount  Decimal @default(0) // SECURITY: Must be non-negative
+
+  User  User  @relation(fields: [userId], references: [id])
+  Token Token @relation(fields: [tokenId], references: [id])
+
+  @@unique([userId, tokenId])
+  // SECURITY: Prevent negative balances at database level (enforced at DB level)
+}
+
+model ProcessedDeposit {
+  key       String   @id
+  createdAt DateTime @default(now())
+}
+
+model DepositCursor {
+  name      String   @id
+  blockHex  String
+  updatedAt DateTime @updatedAt
+}
+
+model AppConfig {
+  id               Int      @id @default(autoincrement())
+  minDeposit       Decimal  @default(50)
+  minWithdraw      Decimal  @default(50)
+  withdrawMaxPerTx Decimal  @default(50)
+  withdrawDailyCap Decimal  @default(500)
+  houseFeeBps      Int      @default(200)
+  tipFeeBps        Int      @default(100)
+  emergencyMode    Boolean  @default(false)
+  withdrawalsPaused Boolean @default(false)
+  tippingPaused    Boolean  @default(false)
+  achievementsEnabled Boolean @default(true)
+  streakProtectionEnabled Boolean @default(true)
+
+  // Treasury Safety Features
+  treasuryMaxHoldingUSD    Decimal? // Maximum USD value treasury should hold per token
+  treasuryWarningThresholdUSD Decimal? // USD threshold for warnings
+  coldWalletAddress        String? // Address for cold storage transfers
+  treasuryMonitoringEnabled Boolean @default(false) // Enable treasury monitoring
+  autoTransferEnabled      Boolean @default(false) // Enable automatic cold wallet transfers
+  treasuryCheckIntervalMins Int     @default(60) // How often to check treasury balances
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ApprovedServer {
+  id        Int      @id @default(autoincrement())
+  guildId   String   @unique
+  note      String?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GuildSettings {
+  id               Int      @id @default(autoincrement())
+  guildId          String   @unique
+  channelMode      String   @default("ALLOW_ALL") // ALLOW_ALL, WHITELIST, BLACKLIST
+  allowedChannels  Json?    // Array of channel IDs where commands are allowed
+  blockedChannels  Json?    // Array of channel IDs where commands are blocked
+  tipChannels      Json?    // Specific channels for tip commands
+  gameChannels     Json?    // Specific channels for game commands
+  announcementChannel String? // Single channel for bot announcements
+  perChannelCooldowns Json? // Per-channel cooldown settings
+  featureRestrictions Json? // Feature-specific channel restrictions
+  autoSuggestChannels Boolean @default(true) // Auto-suggest channels on join
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([guildId])
+}
+
+model ChannelActivity {
+  id          Int      @id @default(autoincrement())
+  guildId     String
+  channelId   String
+  commandType String   // tip, game, profile, etc.
+  commandName String   // specific command name
+  userId      String
+  timestamp   DateTime @default(now())
+  success     Boolean  @default(true) // Whether command executed successfully
+
+  @@index([guildId, channelId])
+  @@index([guildId, timestamp])
+  @@index([commandType])
+}
+
+model ServerApplication {
+  id            Int      @id @default(autoincrement())
+  guildId       String   @unique // Discord server ID
+  guildName     String   // Server name at time of application
+  applicantId   String   // Discord user ID of person applying
+  applicantTag  String   // Discord username#discriminator
+  applicantRoles String? // JSON array of applicant's roles in the server
+  applicantPermissions String? // Applicant's key permissions (Administrator, ManageGuild, etc.)
+  isServerOwner Boolean  @default(false) // Whether applicant is the server owner
+  contactInfo   String?  // Email or other contact method
+  serverSize    Int?     // Member count
+  description   String   // What the server is about
+  useCase       String   // How they plan to use PIPTip
+  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewedBy    String?  // Admin who reviewed
+  reviewNote    String?  // Admin review comments
+  rejectionReason String? // If rejected, why
+  submittedAt   DateTime @default(now())
+  reviewedAt    DateTime?
+
+  @@index([status])
+  @@index([submittedAt])
+  @@index([isServerOwner])
+}
+
+model Ad {
+  id        Int      @id @default(autoincrement())
+  text      String
+  url       String?
+  active    Boolean  @default(true)
+  weight    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  type        String
+  userId      Int?
+  otherUserId Int?
+  guildId     String?
+  tokenId     Int?
+  amount      Decimal
+  fee         Decimal  @default(0)
+  txHash      String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  // USD value tracking for tax reporting and historical context
+  usdValue    Decimal? // USD value of the amount at time of transaction
+  usdFeeValue Decimal? // USD value of the fee at time of transaction
+  usdPrice    Decimal? // Token price in USD at time of transaction
+  priceSource String?  // Source of price data (dexscreener, coingecko, etc.)
+
+  Token Token? @relation(fields: [tokenId], references: [id])
+
+  @@index([createdAt])
+  @@index([guildId])
+  @@index([type])
+  @@index([userId])
+}
+
+model XpTransaction {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  amount    Int      // XP amount (can be negative for penalties)
+  reason    String   // Reason for XP change (e.g., "tip_sent", "achievement_unlocked")
+  metadata  String?  // Additional context as JSON
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([reason])
+}
+
+model WebhookEvent {
+  id        Int      @id @default(autoincrement())
+  source    String
+  key       String   @unique
+  status    String
+  payload   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// PenguBook browsing history - track who viewed whose profile
+model BioBrowse {
+  id        Int      @id @default(autoincrement())
+  viewerId  Int      // who viewed the profile
+  profileId Int      // whose profile was viewed
+  createdAt DateTime @default(now())
+  
+  viewer  User @relation("BioBrowseViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  profile User @relation("BioBrowseProfile", fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([viewerId, profileId]) // prevent duplicate views from same user
+  @@index([profileId, createdAt]) // for getting recent viewers
+  @@index([viewerId, createdAt])  // for user's browsing history
+}
+
+// PenguBook messages - direct messages sent with tips from PenguBook
+model PenguBookMessage {
+  id        Int      @id @default(autoincrement())
+  fromUserId Int     // sender
+  toUserId   Int     // recipient  
+  tipId      Int?    // link to tip if it was a tip message
+  message    String  @db.Text
+  read       Boolean @default(false)
+  createdAt  DateTime @default(now())
+  
+  from User @relation("PenguBookMessageSender", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to   User @relation("PenguBookMessageReceiver", fields: [toUserId], references: [id], onDelete: Cascade)
+  tip  Tip? @relation("PenguBookTipMessage", fields: [tipId], references: [id], onDelete: SetNull)
+  
+  @@index([toUserId, read, createdAt]) // for inbox queries
+  @@index([fromUserId, createdAt])     // for sent messages
+}
+
+model Referral {
+  id            Int      @id @default(autoincrement())
+  referrerId    Int      // User who made the referral
+  referredId    Int      // User who was referred
+  referralCode  String   @unique // Unique code for tracking
+  isVerified    Boolean  @default(false) // True when referred user has tipped >= 20 tokens
+  verifiedAt    DateTime?
+  totalTipped   Decimal  @default(0) // Track total tipped by referred user
+  createdAt     DateTime @default(now())
+
+  referrer User @relation("UserReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred User @relation("UserReferred", fields: [referredId], references: [id], onDelete: Cascade)
+
+  @@unique([referrerId, referredId]) // Prevent duplicate referrals
+  @@index([referrerId, isVerified])
+  @@index([referredId])
+  @@index([referralCode])
+}
+
+model UserStreak {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  currentWins  Int      @default(0)
+  longestWins  Int      @default(0)
+  lastGameAt   DateTime?
+  updatedAt    DateTime @updatedAt
+
+  user User @relation("UserStreaks", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, currentWins])
+  @@index([currentWins, lastGameAt]) // For leaderboard queries
+  @@index([longestWins]) // For longest streak leaderboards
+}
+
+// Dynamic Achievement System Models
+
+model AchievementDefinition {
+  id                Int      @id @default(autoincrement())
+  name              String   // Display name: "First Win Streak"
+  description       String   // "Win 3 matches in a row"
+  category          String   // "streaks", "tips", "deposits", "referrals"
+
+  // Criteria configuration
+  criteriaType      String   // "count", "sum", "streak", "unique", "custom"
+  criteriaData      Json     // Flexible criteria configuration
+  threshold         Decimal  // Target value to achieve
+
+  // Display properties
+  iconEmoji         String   // "🔥", "💰", "🏆"
+  badgeColor        String   // Hex color for badge
+  rarity           String    // "common", "rare", "epic", "legendary"
+
+  // Configuration
+  isEnabled         Boolean  @default(true)
+  isVisible         Boolean  @default(true)  // Show in UI even if not unlocked
+  isRepeatable      Boolean  @default(false) // Can be earned multiple times
+
+  // Time-gating
+  cooldownHours     Int?     // Hours between unlocks (for repeatable)
+  startDate         DateTime? // When achievement becomes available
+  endDate           DateTime? // When achievement expires
+
+  // Ordering and organization
+  sortOrder         Int      @default(0)
+  tier              Int      @default(1) // Difficulty tier (1-5)
+
+  // Metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String?  // Admin who created it
+  version           Int      @default(1) // For tracking changes
+
+  // Relations
+  unlockedAchievements UserAchievement[]
+  progressTracking     UserAchievementProgress[]
+
+  @@index([category, isEnabled])
+  @@index([isEnabled, isVisible, sortOrder])
+  @@index([startDate, endDate])
+}
+
+model UserAchievement {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  definitionId     Int
+
+  // Progress tracking
+  currentProgress  Decimal  @default(0)
+  targetProgress   Decimal  // Snapshot of threshold when unlocked
+
+  // Unlock details
+  unlockedAt       DateTime @default(now())
+  data             Json?    // Extra data about the unlock
+
+  // Time-gating tracking
+  lastUnlockedAt   DateTime? // For repeatable achievements
+  unlockCount      Int      @default(1) // How many times earned
+
+  // Relations
+  user       User @relation("UserAchievements", fields: [userId], references: [id], onDelete: Cascade)
+  definition AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, definitionId]) // One achievement per user (for non-repeatable)
+  @@index([userId, unlockedAt])
+  @@index([definitionId, unlockedAt])
+  @@index([lastUnlockedAt]) // For cooldown checks
+}
+
+model UserAchievementProgress {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  definitionId     Int
+
+  // Progress tracking
+  currentProgress  Decimal  @default(0)
+  lastProgressAt   DateTime @default(now())
+
+  // Efficiency fields
+  lastCheckedAt    DateTime @default(now())
+  progressData     Json?    // Store intermediate calculations
+
+  // Relations
+  user       User @relation("UserProgressTracking", fields: [userId], references: [id], onDelete: Cascade)
+  definition AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, definitionId])
+  @@index([userId, lastProgressAt])
+  @@index([definitionId, currentProgress])
+  @@index([lastCheckedAt]) // For batch processing
+}
+
+// Legacy Achievement model (keeping for migration compatibility)
+model Achievement {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String   // "win_streak", "referral_count", "total_tips", etc.
+  level       Int      // Achievement level/tier
+  unlockedAt  DateTime @default(now())
+  data        Json?    // Extra achievement data
+
+  user User @relation("LegacyAchievements", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, level]) // Prevent duplicate achievements
+  @@index([userId, type])
+  @@index([type, level]) // For achievement statistics queries
+  @@index([unlockedAt]) // For recent achievements and sorting
+  @@index([userId, unlockedAt]) // For user achievement history
+}
+
+// Aggregate table for user statistics (updated via triggers/background jobs)
+model UserStats {
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @unique
+  totalTipsSent         Int      @default(0)
+  totalTipsReceived     Int      @default(0)
+  totalTipAmountSent    Decimal  @default(0)
+  totalTipAmountReceived Decimal @default(0)
+  uniqueRecipients      Int      @default(0)
+  uniqueSenders         Int      @default(0)
+  totalDeposited        Decimal  @default(0)
+  totalWithdrawn        Decimal  @default(0)
+  matchesWon            Int      @default(0)
+  matchesLost           Int      @default(0)
+  matchesTied           Int      @default(0)
+  achievementCount      Int      @default(0)
+  lastTipAt             DateTime?
+  lastMatchAt           DateTime?
+  lastDepositAt         DateTime?
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  user User @relation("UserToStats", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([totalTipsSent, updatedAt]) // For tip leaderboards
+  @@index([matchesWon, updatedAt]) // For match leaderboards
+  @@index([totalDeposited, updatedAt]) // For deposit leaderboards
+  @@index([achievementCount, updatedAt]) // For achievement leaderboards
+  @@index([updatedAt]) // For finding stale records
+}
+
+// Daily aggregates for leaderboards and analytics
+model DailyStats {
+  id                 Int      @id @default(autoincrement())
+  date               DateTime @unique @db.Date
+  totalTips          Int      @default(0)
+  totalTipVolume     Decimal  @default(0)
+  totalDeposits      Int      @default(0)
+  totalDepositVolume Decimal  @default(0)
+  totalMatches       Int      @default(0)
+  newUsers           Int      @default(0)
+  activeUsers        Int      @default(0)
+  achievementsUnlocked Int    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([date])
+}
+
+// Discord role-based tax exemptions for NFT holders and partners
+model RoleTaxExemption {
+  id            Int      @id @default(autoincrement())
+  roleId        String   // Discord role ID
+  guildId       String   // Discord server ID
+  exemptionRate Decimal  @default(100.0) @db.Decimal(5,2) // 0-100% tax reduction
+  duration      Int?     // Days until expiry (null = permanent)
+  label         String   // "NFT Holder", "VIP", "Partner", etc.
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  expiresAt     DateTime? // Calculated expiry date
+
+  // Admin tracking
+  createdBy     String?  // Admin who created this exemption
+  notes         String?  // Internal notes about partnership
+
+  // Analytics relations
+  dailyAnalytics RoleBenefitAnalytics[] @relation("TaxAnalytics")
+
+  @@unique([roleId, guildId])
+  @@index([guildId, isActive])
+  // SECURITY: Prevent invalid exemption rates (enforced at DB level)
+  @@index([expiresAt])
+}
+
+// Discord role-based rake reductions for gaming benefits
+model RoleRakeReduction {
+  id              Int      @id @default(autoincrement())
+  roleId          String   // Discord role ID
+  guildId         String   // Discord server ID
+  rakeReductionBps Int     @default(0) // Basis points (5000 = 50% reduction)
+  label           String   // "NFT Holder", "VIP", "Partner", etc.
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  expiresAt       DateTime? // Calculated expiry date
+
+  // Admin tracking
+  createdBy       String?  // Admin who created this reduction
+  notes           String?  // Internal notes about partnership
+
+  // Analytics relations
+  dailyAnalytics RoleBenefitAnalytics[] @relation("RakeAnalytics")
+
+  @@unique([roleId, guildId]) // One reduction per role per server
+  @@index([guildId, isActive])
+  @@index([expiresAt])
+  // SECURITY: Prevent invalid rake reduction rates (BPS: 0-10000 = 0-100%) (enforced at DB level)
+}
+
+// Daily analytics for role-based benefits (for partnership reports)
+model RoleBenefitAnalytics {
+  id              Int      @id @default(autoincrement())
+  roleId          String   // Discord role ID
+  guildId         String   // Discord server ID
+  date            DateTime @db.Date // Analytics date (daily aggregation)
+
+  // Tip metrics (tax benefits)
+  tipsFromRoleHolders    Int     @default(0) // Tips sent by role holders
+  tipsToRoleHolders      Int     @default(0) // Tips received by role holders
+  totalTipVolumeAtomic   Decimal @default(0) // Volume tipped by role holders
+  totalTaxSavedAtomic    Decimal @default(0) // Total tax savings provided
+  averageTipSizeAtomic   Decimal @default(0) // Average tip size from role holders
+
+  // Gaming metrics (rake benefits)
+  gamesPlayedByRoleHolders Int     @default(0) // Games played by role holders
+  totalWageredAtomic       Decimal @default(0) // Volume wagered by role holders
+  gamesWonByRoleHolders    Int     @default(0) // Games won by role holders
+  totalRakeSavedAtomic     Decimal @default(0) // Total rake savings provided (NEW)
+  averageWagerSizeAtomic   Decimal @default(0) // Average wager size from role holders (NEW)
+
+  // Engagement metrics
+  activeRoleHolders       Int @default(0) // Unique role holders who tipped/gamed today
+  newRoleHoldersEngaged   Int @default(0) // First-time role holders who engaged
+
+  // Retention metrics
+  returningRoleHolders    Int @default(0) // Role holders who engaged yesterday & today
+
+  createdAt DateTime @default(now())
+
+  // Relations (flexible - can be tax OR rake exemption)
+  taxExemption  RoleTaxExemption?  @relation("TaxAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_tax_fkey")
+  rakeReduction RoleRakeReduction? @relation("RakeAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_rake_fkey")
+
+  @@unique([roleId, guildId, date]) // One record per role per day
+  @@index([guildId, date]) // Query by server and time range
+  @@index([date]) // Global analytics by date
+}
+
+// SECURITY: Database model for persistent withdrawal attempt tracking
+model WithdrawalAttempt {
+  id          Int      @id @default(autoincrement())
+  userId      Int      // User.id
+  tokenId     Int      // Token.id
+  amount      Decimal  // Amount attempted
+  createdAt   DateTime @default(now())
+  blocked     Boolean  @default(false) // Was this attempt blocked?
+  reason      String?  // Why blocked (rate limit, cooldown, etc.)
+  ipAddress   String?  // IP tracking for advanced abuse detection
+  userAgent   String?  // Browser fingerprinting
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id])
+  token       Token    @relation(fields: [tokenId], references: [id])
+
+  @@index([userId, createdAt]) // Fast lookup for user's recent attempts
+  @@index([userId, tokenId, createdAt]) // Per-token attempt tracking
+}
+
+// Social Gaming Features Models
+
+// Profile reactions system (like, fire, diamond, etc.)
+model ProfileReaction {
+  id           Int      @id @default(autoincrement())
+  giverId      Int      // User giving the reaction
+  receiverId   Int      // User receiving the reaction
+  reactionType String   // 'like', 'fire', 'diamond', 'rocket', 'star'
+  createdAt    DateTime @default(now())
+
+  // Relations
+  giver    User @relation("ReactionGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReactionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  // Ensure one reaction type per user pair
+  @@unique([giverId, receiverId, reactionType])
+  @@index([receiverId, reactionType]) // Fast lookup for reaction counts
+  @@index([giverId, createdAt]) // User's reaction history
+}
+
+// User following system
+model UserFollow {
+  id          Int      @id @default(autoincrement())
+  followerId  Int      // User doing the following
+  followingId Int      // User being followed
+  createdAt   DateTime @default(now())
+
+  // Relations
+  follower  User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  // Prevent duplicate follows and self-following
+  @@unique([followerId, followingId])
+  @@index([followingId, createdAt]) // Followers list
+  @@index([followerId, createdAt]) // Following list
+}
+
+// Activity feed for social features
+model ActivityFeedItem {
+  id         Int      @id @default(autoincrement())
+  userId     Int      // User who performed the action
+  type       String   // 'tip', 'reaction', 'follow', 'achievement', 'join', 'challenge'
+  data       Json     // Flexible data storage for activity details
+  visibility String   @default("public") // 'public', 'followers', 'private'
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user User @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([type, createdAt]) // Feed by activity type
+  @@index([userId, createdAt]) // User's activity history
+  @@index([visibility, createdAt]) // Public feed
+}
+
+// Prediction markets system
+model PredictionMarket {
+  id              String   @id @default(cuid())
+  title           String   // "Will BTC be above $70K by Friday?"
+  description     String   // Detailed market description
+  createdAt       DateTime @default(now())
+  resolveAt       DateTime // When the market should be resolved
+  status          String   @default("ACTIVE") // ACTIVE, RESOLVED, CANCELLED
+  outcome         String?  // YES, NO (null until resolved)
+
+  // Betting pools
+  totalYesBets    Int      @default(0) // Total amount bet on YES
+  totalNoBets     Int      @default(0) // Total amount bet on NO
+  totalBetCount   Int      @default(0) // Number of individual bets
+
+  // Market configuration
+  rakePercentage  Float    @default(3.0) // House rake (default 3%)
+  minBet          Int      @default(1)
+  maxBet          Int      @default(10000)
+
+  // Market metadata
+  creatorId       String   // Discord ID of market creator
+  guildId         String   // Discord guild/server ID
+  channelId       String   // Discord channel ID
+  tokenSymbol     String   // Token used for betting (PENGUIN, ICE, etc.)
+  marketType      String   // PRICE_UP_DOWN, PRICE_ABOVE_BELOW, VOLUME_RANKING
+  marketData      Json     // Market-specific data (target price, symbol, etc.)
+
+  // Relations
+  bets            PredictionBet[]
+
+  @@index([guildId, status]) // Active markets by guild
+  @@index([status, resolveAt]) // Markets to resolve
+  @@index([creatorId, createdAt]) // User's markets
+}
+
+// Individual bets on prediction markets
+model PredictionBet {
+  id          String          @id @default(cuid())
+  marketId    String          // Which market this bet is on
+  userId      String          // Discord ID of bettor
+  side        String          // YES or NO
+  amount      Int             // Bet amount in atomic units
+  tokenSymbol String          // Token used for the bet
+  createdAt   DateTime        @default(now())
+
+  // Relations
+  market      PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@index([marketId, side]) // Bets by market and side
+  @@index([userId, createdAt]) // User's betting history
+  @@index([marketId, userId]) // User's bets on specific market
+}
+
+// Automated market creation logging
+model AutoMarketLog {
+  id                String   @id // Unique identifier for this automation event
+  marketId          String?  // Market ID if creation was successful
+  type              String   // 'crypto' or 'sports'
+  subtype           String   // Specific subtype (e.g., 'price_increase_24h', 'winner')
+  success           Boolean  // Whether market creation succeeded
+  error             String?  // Error message if creation failed
+  config            Json     // Configuration and parameters used
+  guildId           String?  // Guild where market was created
+  engagementMetrics Json?    // Post-creation engagement data
+  createdAt         DateTime @default(now())
+
+  @@index([type, createdAt]) // Logs by type and date
+  @@index([success, createdAt]) // Success/failure analysis
+  @@index([guildId, createdAt]) // Guild-specific automation logs
+}
+
+// Market payout tracking for financial integrity
+model Payout {
+  id             String   @id @default(cuid())
+  marketId       String   // Reference to PredictionMarket.id
+  idempotencyKey String   @unique // Prevents duplicate payouts
+  totalAmount    String   // Total pool amount (BigInt as string)
+  winningShares  String   // Total winning shares (BigInt as string)
+  status         String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  payoutCount    Int?     // Number of individual payouts processed
+  actualTotal    String?  // Actual amount processed (should match totalAmount)
+  processedAt    DateTime @default(now())
+  completedAt    DateTime?
+  metadata       Json?    // Additional payout metadata
+  createdAt      DateTime @default(now())
+
+  @@index([marketId, status])
+  @@index([idempotencyKey])
+  @@index([status, processedAt])
+}
+
+// Dead letter queue tracking for failed jobs
+model DeadLetterJob {
+  id                   String   @id @default(cuid())
+  originalQueue        String   // Which queue the job originally came from
+  originalJobId        String   // Original job ID
+  originalPayload      Json     // Original job data
+  failureReason        String   // Why the job failed
+  attempts             Int      // Number of attempts made
+  lastError            Json     // Last error details
+  canRetry             Boolean  @default(false) // Whether automatic retry is safe
+  requiresManualReview Boolean  @default(true) // Needs admin review
+  escalationLevel      String   // low, medium, high, critical
+  estimatedResolution  String?  // Description of what's needed to fix
+  status               String   @default("PENDING") // PENDING, RETRIED, DISMISSED, RESOLVED
+  reviewedBy           String?  // Admin who reviewed/acted on this
+  dismissalReason      String?  // Reason for dismissal if applicable
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status, escalationLevel])
+  @@index([originalQueue, createdAt])
+  @@index([createdAt])
+  @@index([requiresManualReview, status])
+}
+
+// Reconciliation results tracking for balance integrity
+model ReconciliationResult {
+  id                String   @id @default(cuid())
+  type              String   // user_balance, market_pool, treasury, full_audit
+  status            String   // PASSED, FAILED, DRIFT_DETECTED, CORRECTED
+  scope             Json     // Reconciliation scope parameters
+  driftsFound       Int      @default(0) // Number of drifts detected
+  correctionsMade   Int      @default(0) // Number of corrections applied
+  toleranceExceeded Int      @default(0) // Number of drifts exceeding tolerance
+  details           Json     // Full reconciliation result details
+  createdAt         DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([status, createdAt])
+  @@index([type, status])
+}
+
+// Outbox pattern for reliable Discord message delivery
+model OutboxMessage {
+  id            String      @id @default(cuid())
+  aggregateId   String      // e.g., marketId, userId for grouping related messages
+  aggregateType String      // MARKET, USER, SYSTEM, PAYOUT
+  eventType     String      // MARKET_RESOLVED, PAYOUT_COMPLETED, NOTIFICATION
+  channelId     String?     // Discord channel ID
+  userId        String?     // Discord user ID for DMs
+  guildId       String?     // Discord guild ID
+  payload       Json        // Message content, embeds, components
+  status        OutboxStatus @default(PENDING)
+  attempts      Int         @default(0)
+  maxAttempts   Int         @default(5)
+  lastError     String?     // Last error message
+  nextRetryAt   DateTime    @default(now()) // When to retry next
+  messageHash   String      // Deduplication hash
+  priority      Int         @default(5) // 1=highest, 10=lowest
+  createdAt     DateTime    @default(now())
+  processedAt   DateTime?   // When successfully sent
+
+  @@unique([messageHash]) // Prevent duplicate messages
+  @@index([status, nextRetryAt]) // For processing queue
+  @@index([aggregateId, eventType]) // For related message queries
+  @@index([status, priority]) // For priority processing
+  @@index([createdAt]) // For cleanup and analysis
+}
+
+enum OutboxStatus {
+  PENDING     // Waiting to be sent
+  PROCESSING  // Currently being sent
+  SENT        // Successfully delivered
+  FAILED      // Failed after max attempts
+  DLQ         // Moved to dead letter queue
+}

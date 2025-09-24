@@ -1,6 +1,6 @@
 // src/queues/config.ts - Redis and BullMQ configuration with production-grade settings
-import { Queue, Worker, QueueScheduler } from 'bullmq';
-import IORedis from 'ioredis';
+import { Queue, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
 
 // Redis configuration with failover and connection pooling
 const redisConfig = {
@@ -28,7 +28,7 @@ const redisConfig = {
 };
 
 // Create Redis connection with error handling
-export const redis = new IORedis(redisConfig);
+export const redis = new Redis(redisConfig);
 
 import { logSystemHealth, logQueueHealth } from '../utils/logger.js';
 const systemHealth = logSystemHealth();
@@ -38,7 +38,7 @@ redis.on('connect', () => {
   systemHealth.startup();
 });
 
-redis.on('error', (error) => {
+redis.on('error', (error: Error) => {
   systemHealth.error(error, 'redis-connection');
 });
 
@@ -128,12 +128,13 @@ export const deadLetterQueue = new Queue('dead-letter', {
   }
 });
 
-// Queue schedulers for delayed jobs
-export const marketScheduler = new QueueScheduler('market-resolution', { connection: redis });
-export const payoutScheduler = new QueueScheduler('payouts', { connection: redis });
-export const reconciliationScheduler = new QueueScheduler('reconciliation', { connection: redis });
-export const outboxScheduler = new QueueScheduler('discord-outbox', { connection: redis });
-export const deadLetterScheduler = new QueueScheduler('dead-letter', { connection: redis });
+// Queue schedulers for delayed jobs (removed in BullMQ v5+)
+// QueueScheduler is no longer needed in BullMQ v5, Workers handle delayed jobs automatically
+// export const marketScheduler = new QueueScheduler('market-resolution', { connection: redis });
+// export const payoutScheduler = new QueueScheduler('payouts', { connection: redis });
+// export const reconciliationScheduler = new QueueScheduler('reconciliation', { connection: redis });
+// export const outboxScheduler = new QueueScheduler('discord-outbox', { connection: redis });
+// export const deadLetterScheduler = new QueueScheduler('dead-letter', { connection: redis });
 
 // Graceful shutdown handling
 export async function closeQueues(): Promise<void> {
@@ -146,11 +147,8 @@ export async function closeQueues(): Promise<void> {
     discordOutboxQueue.close(),
     deadLetterQueue.close(),
 
-    marketScheduler.close(),
-    payoutScheduler.close(),
-    reconciliationScheduler.close(),
-    outboxScheduler.close(),
-    deadLetterScheduler.close(),
+    // Note: QueueScheduler removed in BullMQ v5+
+    // Schedulers are handled automatically by Workers now
   ]);
 
   await redis.quit();
@@ -208,25 +206,12 @@ export function initializeQueueMonitoring() {
   queues.forEach(queue => {
     const queueHealth = logQueueHealth(queue.name);
 
-    queue.on('error', (error) => {
+    queue.on('error', (error: Error) => {
       queueHealth.failed('unknown', error);
     });
 
-    queue.on('waiting', (job) => {
-      // Only log at debug level to reduce noise
-    });
-
-    queue.on('active', (job) => {
-      // Only log at debug level to reduce noise
-    });
-
-    queue.on('completed', (job) => {
-      // Only log at debug level to reduce noise
-    });
-
-    queue.on('failed', (job, error) => {
-      queueHealth.failed(job?.id || 'unknown', error);
-    });
+    // Note: In BullMQ v5+, these events are on the Worker, not the Queue
+    // Removed deprecated event listeners
   });
 }
 

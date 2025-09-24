@@ -1,6 +1,10 @@
-// src/services/prediction_markets.ts - Core parimutuel betting logic
+// src/services/prediction_markets.ts - Core prediction market logic with PIPChips and LMSR
 import { prisma } from "./db.js";
 import { responsibleGaming } from "./responsible_gaming.js";
+import { pipchipsService } from "./pipchips_service.js";
+import { LMSRMarketMaker } from "./lmsr_market_maker.js";
+import { getUserActiveTierForMarkets } from "./tiers.js";
+import Decimal from 'decimal.js';
 /**
  * Core prediction market service handling parimutuel betting
  * The house NEVER bets - only facilitates and collects rake
@@ -10,6 +14,24 @@ export class PredictionMarketService {
      * Create a new prediction market
      */
     async createMarket(params) {
+        // Get user's tier information for market creation benefits
+        const userTier = await getUserActiveTierForMarkets(params.creatorId);
+        // Calculate tier-based rake percentage
+        let finalRakePercentage = params.rakePercentage || 3.0; // Default 3% rake
+        if (userTier?.tier.marketRakePercent !== null && userTier?.tier.marketRakePercent !== undefined) {
+            finalRakePercentage = Number(userTier.tier.marketRakePercent);
+        }
+        // Calculate tier-based liquidity bonus
+        const baseLiquidity = 1000;
+        const liquidityBonus = userTier?.tier.systemLiquidityBonus || 0;
+        const totalLiquidity = baseLiquidity + liquidityBonus;
+        console.log(`Creating market for user ${params.creatorId}:`, {
+            tierName: userTier?.tier.name || 'No Tier',
+            rakePercent: finalRakePercentage,
+            baseLiquidity,
+            liquidityBonus,
+            totalLiquidity
+        });
         const market = await prisma.predictionMarket.create({
             data: {
                 title: params.title,
@@ -18,16 +40,21 @@ export class PredictionMarketService {
                 creatorId: params.creatorId,
                 guildId: params.guildId,
                 channelId: params.channelId,
-                tokenSymbol: params.tokenSymbol,
+                tokenSymbol: 'PIPCHIPS', // Always use PIPChips now
                 marketType: params.marketType,
                 marketData: params.marketData,
-                rakePercentage: params.rakePercentage || 3.0, // Default 3% rake
+                rakePercentage: finalRakePercentage, // Use tier-based rake percentage
                 minBet: params.minBet || 1,
                 maxBet: params.maxBet || 10000,
                 status: 'ACTIVE',
                 totalYesBets: 0,
                 totalNoBets: 0,
-                totalBetCount: 0
+                totalBetCount: 0,
+                // PIPChips specific fields with tier bonus
+                liquidity: BigInt(totalLiquidity), // Base liquidity + tier bonus
+                totalPipchipsVolume: BigInt(0),
+                currentPrices: { YES: "0.5", NO: "0.5" }, // Initial 50/50 prices
+                lmsrShares: { YES: "0", NO: "0" } // Initial share distribution
             }
         });
         return this.mapDbMarket(market);
@@ -82,40 +109,57 @@ export class PredictionMarketService {
                 }
             }
             if (amount < market.minBet || amount > market.maxBet) {
-                return { success: false, error: `Prediction must be between ${market.minBet} and ${market.maxBet} ${market.tokenSymbol}` };
+                return { success: false, error: `Prediction must be between ${market.minBet} and ${market.maxBet} PIPChips` };
             }
             // Check responsible gaming limits
-            const gamingCheck = await responsibleGaming.canUserPredict(userId, amount, market.tokenSymbol);
+            const gamingCheck = await responsibleGaming.canUserPredict(userId, amount, 'PIPCHIPS');
             if (!gamingCheck.allowed) {
                 return {
                     success: false,
                     error: gamingCheck.reason || "Prediction not allowed",
                 };
             }
-            // Check user has sufficient balance
+            // Check user has sufficient PIPChips balance
             const user = await prisma.user.findFirst({
                 where: { discordId: userId }
             });
             if (!user) {
                 return { success: false, error: "User account not found. Use `/pip_profile` to create an account." };
             }
-            const userBalance = await prisma.userBalance.findFirst({
-                where: {
-                    userId: user.id,
-                    Token: { symbol: market.tokenSymbol }
-                },
-                include: { Token: true }
-            });
-            if (!userBalance || Number(userBalance.amount) < amount) {
-                return { success: false, error: `Insufficient ${market.tokenSymbol} balance` };
+            const userPipchips = await pipchipsService.getUserBalance(userId);
+            if (Number(userPipchips.balance) < amount) {
+                return { success: false, error: `Insufficient PIPChips balance. You have ${Number(userPipchips.balance)} PIPChips.` };
             }
-            // Execute bet transaction
+            // Execute PIPChips bet transaction
             const result = await prisma.$transaction(async (tx) => {
-                // Deduct bet amount from user balance
-                await tx.userBalance.update({
-                    where: { id: userBalance.id },
-                    data: { amount: { decrement: amount } }
+                // Deduct PIPChips from user balance using the service
+                await pipchipsService.processTransaction({
+                    userId,
+                    amount: BigInt(-amount), // Negative for deduction
+                    type: 'PREDICTION_BET',
+                    referenceId: marketId,
+                    description: `Bet ${amount} PIPChips on ${side} in market: ${market.title}`
                 });
+                // For LMSR markets, calculate shares purchased
+                let sharesPurchased = null;
+                if (market.lmsrShares) {
+                    const lmsr = new LMSRMarketMaker(new Decimal(Number(market.liquidity) || 1000), ["YES", "NO"]);
+                    const currentShares = {};
+                    // Parse current LMSR shares
+                    if (typeof market.lmsrShares === 'object' && market.lmsrShares) {
+                        for (const [outcome, shareAmount] of Object.entries(market.lmsrShares)) {
+                            if (typeof shareAmount === 'string' || typeof shareAmount === 'number') {
+                                currentShares[outcome] = new Decimal(shareAmount);
+                            }
+                        }
+                    }
+                    else {
+                        currentShares['YES'] = new Decimal(0);
+                        currentShares['NO'] = new Decimal(0);
+                    }
+                    const costCalc = lmsr.calculateBuyCost(currentShares, side, new Decimal(amount));
+                    sharesPurchased = costCalc.sharesPurchased;
+                }
                 // Create bet record
                 await tx.predictionBet.create({
                     data: {
@@ -123,18 +167,40 @@ export class PredictionMarketService {
                         userId,
                         side,
                         amount,
-                        tokenSymbol: market.tokenSymbol
+                        tokenSymbol: 'PIPCHIPS',
+                        sharesPurchased: sharesPurchased ? sharesPurchased.toFixed() : null
                     }
                 });
                 // Update market totals
                 const updates = {
-                    totalBetCount: { increment: 1 }
+                    totalBetCount: { increment: 1 },
+                    totalPipchipsVolume: { increment: BigInt(amount) }
                 };
                 if (side === 'YES') {
                     updates.totalYesBets = { increment: amount };
                 }
                 else {
                     updates.totalNoBets = { increment: amount };
+                }
+                // Update LMSR shares if this is an LMSR market
+                if (market.lmsrShares && sharesPurchased) {
+                    const currentShares = market.lmsrShares || { YES: '0', NO: '0' };
+                    const updatedShares = { ...currentShares };
+                    const currentAmount = new Decimal(updatedShares[side] || '0');
+                    updatedShares[side] = currentAmount.plus(sharesPurchased).toFixed();
+                    updates.lmsrShares = updatedShares;
+                    // Update current prices
+                    const lmsr = new LMSRMarketMaker(new Decimal(Number(market.liquidity) || 1000), ["YES", "NO"]);
+                    const sharesForPricing = {};
+                    for (const [outcome, shares] of Object.entries(updatedShares)) {
+                        sharesForPricing[outcome] = new Decimal(shares);
+                    }
+                    const prices = lmsr.calculateAllPrices(sharesForPricing);
+                    const priceRecord = {};
+                    for (const priceCalc of prices) {
+                        priceRecord[priceCalc.outcome] = priceCalc.price.toFixed(4);
+                    }
+                    updates.currentPrices = priceRecord;
                 }
                 const updatedMarket = await tx.predictionMarket.update({
                     where: { id: marketId },
@@ -177,7 +243,8 @@ export class PredictionMarketService {
     }
     /**
      * Resolve a market with the given outcome
-     * Calculates and distributes payouts using parimutuel system
+     * For LMSR markets: winning shares pay 1 PIPChip each, losing shares pay 0
+     * For legacy parimutuel markets: proportional payout system
      */
     async resolveMarket(marketId, outcome) {
         try {
@@ -203,21 +270,36 @@ export class PredictionMarketService {
                 console.log(`Market ${marketId} cancelled - insufficient betting on both sides`);
                 return await this.cancelMarket(marketId);
             }
-            // Calculate rake and prize pool
-            const houseRake = totalPool * (market.rakePercentage / 100);
-            const prizePool = totalPool - houseRake;
-            // Get winning bets
-            const winningBets = market.bets.filter(bet => bet.side === outcome);
-            const winningPool = outcome === 'YES' ? market.totalYesBets : market.totalNoBets;
-            // Calculate payouts (proportional to bet size)
             const payouts = [];
-            for (const bet of winningBets) {
-                const winShare = bet.amount / winningPool;
-                const payout = winShare * prizePool;
-                payouts.push({
-                    userId: bet.userId,
-                    amount: Math.floor(payout) // Round down to avoid fractional tokens
-                });
+            // Check if this is an LMSR market (has lmsrShares data)
+            if (market.lmsrShares) {
+                // LMSR payout: winning shares pay 1 PIPChip each, losing shares pay 0
+                for (const bet of market.bets) {
+                    if (bet.side === outcome && bet.sharesPurchased) {
+                        // Winner gets 1 PIPChip per share owned
+                        const shareCount = parseFloat(bet.sharesPurchased.toString());
+                        payouts.push({
+                            userId: bet.userId,
+                            amount: Math.floor(shareCount) // Each share = 1 PIPChip
+                        });
+                    }
+                    // Losing shares get nothing (already paid the cost when betting)
+                }
+            }
+            else {
+                // Legacy parimutuel payout system
+                const houseRake = totalPool * (market.rakePercentage / 100);
+                const prizePool = totalPool - houseRake;
+                const winningBets = market.bets.filter(bet => bet.side === outcome);
+                const winningPool = outcome === 'YES' ? market.totalYesBets : market.totalNoBets;
+                for (const bet of winningBets) {
+                    const winShare = bet.amount / winningPool;
+                    const payout = winShare * prizePool;
+                    payouts.push({
+                        userId: bet.userId,
+                        amount: Math.floor(payout)
+                    });
+                }
             }
             // Execute payout transaction
             await prisma.$transaction(async (tx) => {
@@ -229,34 +311,27 @@ export class PredictionMarketService {
                         outcome
                     }
                 });
-                // Process payouts
+                // Process payouts using PIPChips
                 for (const payout of payouts) {
-                    // Find user and their balance
-                    const user = await tx.user.findFirst({
-                        where: { discordId: payout.userId }
-                    });
-                    if (user) {
-                        const userBalance = await tx.userBalance.findFirst({
-                            where: {
-                                userId: user.id,
-                                Token: { symbol: market.tokenSymbol }
-                            }
+                    if (payout.amount > 0) {
+                        // Credit PIPChips to winner
+                        await pipchipsService.processTransaction({
+                            userId: payout.userId,
+                            amount: BigInt(payout.amount),
+                            type: 'PREDICTION_PAYOUT',
+                            referenceId: marketId,
+                            description: `Payout ${payout.amount} PIPChips from resolved market: ${market.title}`
                         });
-                        if (userBalance) {
-                            await tx.userBalance.update({
-                                where: { id: userBalance.id },
-                                data: { amount: { increment: payout.amount } }
-                            });
-                        }
                     }
-                    // Note: If user balance doesn't exist, they may have been removed from the system
-                    // In a production system, you'd want to handle this case
                 }
                 // Add house rake to treasury (optional - depends on your tokenomics)
                 // This could go to a treasury wallet or be distributed to token holders
             });
-            console.log(`Market ${marketId} resolved with outcome ${outcome}. House rake: ${houseRake}, Payouts: ${payouts.length}`);
-            return { success: true, payouts, houseRake };
+            // Calculate rake for logging (LMSR markets don't have traditional rake)
+            const totalPaidOut = payouts.reduce((sum, p) => sum + p.amount, 0);
+            const effectiveRake = market.lmsrShares ? 0 : totalPool * (market.rakePercentage / 100);
+            console.log(`Market ${marketId} resolved with outcome ${outcome}. Total paid out: ${totalPaidOut} PIPChips, Payouts: ${payouts.length}`);
+            return { success: true, payouts, houseRake: effectiveRake };
         }
         catch (error) {
             console.error('Error resolving market:', error);
@@ -283,29 +358,20 @@ export class PredictionMarketService {
                     where: { id: marketId },
                     data: { status: 'CANCELLED' }
                 });
-                // Process refunds
+                // Process refunds using PIPChips
                 for (const bet of market.bets) {
-                    const user = await tx.user.findFirst({
-                        where: { discordId: bet.userId }
+                    // Refund the original bet amount in PIPChips
+                    await pipchipsService.processTransaction({
+                        userId: bet.userId,
+                        amount: BigInt(bet.amount),
+                        type: 'PREDICTION_REFUND',
+                        referenceId: marketId,
+                        description: `Refund ${bet.amount} PIPChips from cancelled market: ${market.title}`
                     });
-                    if (user) {
-                        const userBalance = await tx.userBalance.findFirst({
-                            where: {
-                                userId: user.id,
-                                Token: { symbol: market.tokenSymbol }
-                            }
-                        });
-                        if (userBalance) {
-                            await tx.userBalance.update({
-                                where: { id: userBalance.id },
-                                data: { amount: { increment: bet.amount } }
-                            });
-                            refunds.push({
-                                userId: bet.userId,
-                                amount: bet.amount
-                            });
-                        }
-                    }
+                    refunds.push({
+                        userId: bet.userId,
+                        amount: bet.amount
+                    });
                 }
             });
             console.log(`Market ${marketId} cancelled. Refunded ${refunds.length} bets.`);
@@ -339,7 +405,7 @@ export class PredictionMarketService {
         return markets.map(m => this.mapDbMarket(m));
     }
     /**
-     * Get expired markets that need resolution
+     * Get expired markets that need resolution (excludes manual admin markets)
      */
     async getExpiredMarkets() {
         const now = new Date();
@@ -350,7 +416,33 @@ export class PredictionMarketService {
             },
             orderBy: { resolveAt: 'asc' }
         });
-        return markets.map(m => this.mapDbMarket(m));
+        // Filter out manual admin markets from automatic resolution
+        const autoResolvableMarkets = markets.filter(market => {
+            const marketData = market.marketData;
+            const resolutionMethod = marketData?.resolutionMethod || 'API_AUTO';
+            return resolutionMethod !== 'MANUAL_ADMIN';
+        });
+        return autoResolvableMarkets.map(m => this.mapDbMarket(m));
+    }
+    /**
+     * Get expired manual admin markets that require manual resolution
+     */
+    async getExpiredManualAdminMarkets() {
+        const now = new Date();
+        const markets = await prisma.predictionMarket.findMany({
+            where: {
+                status: 'ACTIVE',
+                resolveAt: { lte: now }
+            },
+            orderBy: { resolveAt: 'asc' }
+        });
+        // Filter to only manual admin markets
+        const manualAdminMarkets = markets.filter(market => {
+            const marketData = market.marketData;
+            const resolutionMethod = marketData?.resolutionMethod || 'API_AUTO';
+            return resolutionMethod === 'MANUAL_ADMIN';
+        });
+        return manualAdminMarkets.map(m => this.mapDbMarket(m));
     }
     /**
      * Get user's bets for a market
@@ -403,7 +495,12 @@ export class PredictionMarketService {
             channelId: dbMarket.channelId,
             tokenSymbol: dbMarket.tokenSymbol,
             marketType: dbMarket.marketType,
-            marketData: dbMarket.marketData
+            marketData: dbMarket.marketData,
+            // PIPChips specific fields
+            liquidity: dbMarket.liquidity ? Number(dbMarket.liquidity) : undefined,
+            totalPipchipsVolume: dbMarket.totalPipchipsVolume ? Number(dbMarket.totalPipchipsVolume) : undefined,
+            currentPrices: dbMarket.currentPrices ? (typeof dbMarket.currentPrices === 'string' ? JSON.parse(dbMarket.currentPrices) : dbMarket.currentPrices) : undefined,
+            lmsrShares: dbMarket.lmsrShares ? (typeof dbMarket.lmsrShares === 'string' ? JSON.parse(dbMarket.lmsrShares) : dbMarket.lmsrShares) : undefined
         };
     }
 }

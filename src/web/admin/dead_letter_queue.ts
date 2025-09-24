@@ -1,7 +1,7 @@
 // src/web/admin/dead_letter_queue.ts - Admin interface for dead letter queue management
 import { Request, Response } from 'express';
 import { deadLetterWorker } from '../../queues/workers/dead_letter_queue.js';
-import { prisma } from '../../services/database.js';
+import { prisma } from '../../services/db.js';
 
 export async function getDeadLetterDashboard(req: Request, res: Response) {
   try {
