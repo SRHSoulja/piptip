@@ -106,10 +106,11 @@ export async function inboxHandler(req: Request, res: Response) {
                         <button onclick="closeComposeModal()" class="pg-modal-close">&times;</button>
                     </div>
                     <form id="composeForm" class="pg-modal-body">
-                        <div class="pg-form-group">
+                        <div class="pg-form-group" style="position: relative;">
                             <label for="recipientDiscordId">Recipient (Discord ID)</label>
-                            <input type="text" id="recipientDiscordId" placeholder="Enter Discord ID or User#1234" required>
-                            <small class="pg-form-hint">Enter the full Discord ID or User#1234 format</small>
+                            <input type="text" id="recipientDiscordId" placeholder="Start typing to search users..." required autocomplete="off">
+                            <div id="userAutocomplete" style="position: absolute; top: calc(100% - 20px); left: 0; right: 0; background: var(--pg-dark-300); border: 1px solid var(--pg-dark-500); border-radius: 8px; max-height: 200px; overflow-y: auto; display: none; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
+                            <small class="pg-form-hint">Start typing to search for users by name or Discord ID</small>
                         </div>
 
                         <div class="pg-form-group">
@@ -146,7 +147,11 @@ export async function inboxHandler(req: Request, res: Response) {
             });
 
             // Focus on recipient input
-            document.getElementById('recipientDiscordId').focus();
+            const recipientInput = document.getElementById('recipientDiscordId');
+            recipientInput.focus();
+
+            // Add autocomplete functionality
+            setupAutocomplete(recipientInput);
         }
 
         async function handleMessageSubmit(e) {
@@ -302,6 +307,121 @@ export async function inboxHandler(req: Request, res: Response) {
 
             // Focus on message input for replies
             messageInput.focus();
+        }
+
+        // Autocomplete functionality
+        function setupAutocomplete(input) {
+            const autocompleteDiv = document.getElementById('userAutocomplete');
+            let searchTimeout;
+            let selectedIndex = -1;
+
+            input.addEventListener('input', async function() {
+                clearTimeout(searchTimeout);
+                const query = this.value.trim();
+
+                if (query.length < 2) {
+                    autocompleteDiv.style.display = 'none';
+                    return;
+                }
+
+                // Debounce the search
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const response = await fetch('/pengubook/api/search-users?q=' + encodeURIComponent(query));
+                        const data = await response.json();
+
+                        if (data.success && data.users.length > 0) {
+                            displayAutocompleteResults(data.users);
+                        } else {
+                            autocompleteDiv.style.display = 'none';
+                        }
+                    } catch (error) {
+                        console.error('Search error:', error);
+                        autocompleteDiv.style.display = 'none';
+                    }
+                }, 300);
+            });
+
+            function displayAutocompleteResults(users) {
+                selectedIndex = -1;
+                autocompleteDiv.innerHTML = users.map((user, index) => {
+                    const bioHtml = user.bioText ? '<div style="font-size: 12px; color: var(--pg-accent-secondary); opacity: 0.6; margin-top: 4px;">' + user.bioText + '</div>' : '';
+                    return '<div class="autocomplete-item" data-index="' + index + '" data-discord-id="' + user.discordId + '" style="padding: 12px; cursor: pointer; border-bottom: 1px solid var(--pg-dark-400); display: flex; align-items: center; gap: 12px;">' +
+                           '<img src="' + user.avatarURL + '" alt="" style="width: 32px; height: 32px; border-radius: 50%;">' +
+                           '<div style="flex: 1;">' +
+                           '<div style="font-weight: 500;">' + user.displayName + '</div>' +
+                           '<div style="font-size: 12px; color: var(--pg-accent-secondary); opacity: 0.8;">' + user.discordId + '</div>' +
+                           bioHtml +
+                           '</div>' +
+                           '</div>';
+                }).join('');
+
+                autocompleteDiv.style.display = 'block';
+
+                // Add click handlers
+                const items = autocompleteDiv.querySelectorAll('.autocomplete-item');
+                items.forEach(item => {
+                    item.addEventListener('click', function() {
+                        const discordId = this.dataset.discordId;
+                        input.value = discordId;
+                        autocompleteDiv.style.display = 'none';
+                        // Focus on message content
+                        document.getElementById('messageContent').focus();
+                    });
+
+                    // Hover effect
+                    item.addEventListener('mouseenter', function() {
+                        items.forEach(i => i.style.backgroundColor = '');
+                        this.style.backgroundColor = 'var(--pg-dark-400)';
+                        selectedIndex = parseInt(this.dataset.index);
+                    });
+                });
+            }
+
+            // Handle keyboard navigation
+            input.addEventListener('keydown', function(e) {
+                const items = autocompleteDiv.querySelectorAll('.autocomplete-item');
+
+                if (items.length === 0) return;
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                    updateSelection(items);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    selectedIndex = Math.max(selectedIndex - 1, 0);
+                    updateSelection(items);
+                } else if (e.key === 'Enter' && selectedIndex >= 0) {
+                    e.preventDefault();
+                    const selectedItem = items[selectedIndex];
+                    if (selectedItem) {
+                        input.value = selectedItem.dataset.discordId;
+                        autocompleteDiv.style.display = 'none';
+                        document.getElementById('messageContent').focus();
+                    }
+                } else if (e.key === 'Escape') {
+                    autocompleteDiv.style.display = 'none';
+                }
+            });
+
+            function updateSelection(items) {
+                items.forEach((item, index) => {
+                    if (index === selectedIndex) {
+                        item.style.backgroundColor = 'var(--pg-dark-400)';
+                        item.scrollIntoView({ block: 'nearest' });
+                    } else {
+                        item.style.backgroundColor = '';
+                    }
+                });
+            }
+
+            // Hide autocomplete when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!input.contains(e.target) && !autocompleteDiv.contains(e.target)) {
+                    autocompleteDiv.style.display = 'none';
+                }
+            });
         }
 
         // Make functions global

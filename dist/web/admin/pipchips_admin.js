@@ -283,8 +283,8 @@ pipchipsAdminRouter.post("/settings", async (req, res) => {
         for (const [key, value] of Object.entries(settings)) {
             await prisma.adminSetting.upsert({
                 where: { key },
-                create: { key, value },
-                update: { value }
+                create: { key, value: JSON.stringify(value) },
+                update: { value: JSON.stringify(value) }
             });
         }
         res.json({
@@ -382,7 +382,7 @@ function generatePIPChipsAdminHTML(data) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${topUsers.map(user => `
+                    ${topUsers.map((user) => `
                         <tr>
                             <td>${user.xUsername || user.discordId.slice(0, 8)}</td>
                             <td class="pipchips-amount">${Number(user.pipchipsBalance).toLocaleString()}</td>
@@ -409,7 +409,7 @@ function generatePIPChipsAdminHTML(data) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${activeMarkets.map(market => `
+                    ${activeMarkets.map((market) => `
                         <tr>
                             <td>${market.title}</td>
                             <td class="pipchips-amount">${market.totalPipchipsVolume?.toLocaleString() || 0}</td>

@@ -114,7 +114,7 @@ predictionMarketsRouter.post("/prediction_markets/:id/resolve", async (req, res)
         // Get market details
         const market = await prisma.predictionMarket.findUnique({
             where: { id },
-            include: { _count: { select: { bets: true } } }
+            include: { _count: { select: { participations: true } } }
         });
         if (!market) {
             return res.status(404).json({
@@ -143,7 +143,7 @@ predictionMarketsRouter.post("/prediction_markets/:id/resolve", async (req, res)
                 outcome,
                 payouts: result.payouts?.length || 0,
                 houseRake: result.houseRake || 0,
-                totalBets: market._count.bets
+                totalParticipations: market._count.participations
             }
         });
     }
@@ -613,7 +613,7 @@ predictionMarketsRouter.get("/prediction_markets/special", async (req, res) => {
             resolutionMethod: market.resolutionMethod,
             isSpecialMarket: market.isSpecialMarket,
             requiresManualResolution: market.requiresManualResolution,
-            totalBets: market._count.bets,
+            totalParticipations: market._count.participations,
             totalVolume: Number(market.totalPipchipsVolume || 0),
             currentPrices: market.currentPrices,
             createdAt: market.createdAt,
@@ -707,7 +707,7 @@ predictionMarketsRouter.post("/prediction_markets/:id/manual-resolve", async (re
         }
         else {
             // Multi-choice market - resolve manually
-            resolveResult = await this.resolveMultiChoiceMarket(marketId, outcome, currentUser.discordId);
+            resolveResult = await resolveMultiChoiceMarket(marketId, outcome, currentUser?.discordId || 'admin');
         }
         if (!resolveResult.success) {
             return res.status(400).json({
@@ -719,7 +719,7 @@ predictionMarketsRouter.post("/prediction_markets/:id/manual-resolve", async (re
         await prisma.predictionMarket.update({
             where: { id: marketId },
             data: {
-                resolvedBy: currentUser.discordId,
+                resolvedBy: currentUser?.discordId || 'admin',
                 resolvedAt: new Date(),
                 adminNotes: notes ? `${market.adminNotes || ''}\n\nResolution notes: ${notes}` : market.adminNotes
             }
@@ -732,7 +732,7 @@ predictionMarketsRouter.post("/prediction_markets/:id/manual-resolve", async (re
                 outcome,
                 payouts: resolveResult.payouts?.length || 0,
                 totalPaidOut: resolveResult.payouts?.reduce((sum, p) => sum + p.amount, 0) || 0,
-                resolvedBy: currentUser.discordId,
+                resolvedBy: currentUser?.discordId || 'admin',
                 resolvedAt: new Date()
             }
         });
@@ -786,7 +786,7 @@ async function resolveMultiChoiceMarket(marketId, winningOutcome, adminId) {
             for (const payout of payouts) {
                 if (payout.amount > 0) {
                     // Credit PIPChips to winner (simplified - should use pipchipsService)
-                    await tx.user.update({
+                    const updatedUser = await tx.user.update({
                         where: { discordId: payout.userId },
                         data: {
                             pipchipsBalance: { increment: BigInt(payout.amount) },
@@ -798,7 +798,8 @@ async function resolveMultiChoiceMarket(marketId, winningOutcome, adminId) {
                         data: {
                             userId: payout.userId,
                             amount: BigInt(payout.amount),
-                            type: 'PREDICTION_PAYOUT',
+                            balanceAfter: updatedUser.pipchipsBalance,
+                            transactionType: 'PREDICTION_WIN',
                             referenceId: marketId,
                             description: `Payout ${payout.amount} PIPChips from resolved market: ${market.title}`,
                             metadata: { outcome: winningOutcome, adminResolved: true }

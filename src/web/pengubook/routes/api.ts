@@ -532,19 +532,25 @@ export const apiHandlers = {
         });
         added = true;
 
-        // Get proper target user display name
+        // Get proper display names for both users
         let targetUserHandle = `User#${targetDiscordId.slice(-4)}`;
+        let userHandle = `User#${currentUser.discordId.slice(-4)}`;
         const client = getDiscordClient();
         if (client) {
           try {
-            const discordUser = await client.users.fetch(targetDiscordId);
-            targetUserHandle = discordUser.displayName || discordUser.username || targetUserHandle;
+            // Fetch target user
+            const targetDiscordUser = await client.users.fetch(targetDiscordId);
+            targetUserHandle = targetDiscordUser.displayName || targetDiscordUser.username || targetUserHandle;
+
+            // Fetch current user
+            const currentDiscordUser = await client.users.fetch(currentUser.discordId);
+            userHandle = currentDiscordUser.displayName || currentDiscordUser.username || userHandle;
           } catch (error) {
-            // Keep fallback value
+            // Keep fallback values
           }
         }
 
-        // Create activity feed item
+        // Create activity feed item with both user handles
         await prisma.activityFeedItem.create({
           data: {
             userId: fromUser.id,
@@ -552,7 +558,8 @@ export const apiHandlers = {
             data: {
               reactionType: reactionType,
               targetUserId: targetUser.id,
-              targetUserHandle: targetUserHandle
+              targetUserHandle: targetUserHandle,
+              userHandle: userHandle  // Store the acting user's handle
             },
             visibility: 'public'
           }
@@ -627,26 +634,33 @@ export const apiHandlers = {
         });
         following = true;
 
-        // Get proper target user display name
+        // Get proper display names for both users
         let targetUserHandle = `User#${targetDiscordId.slice(-4)}`;
+        let userHandle = `User#${currentUser.discordId.slice(-4)}`;
         const client = getDiscordClient();
         if (client) {
           try {
-            const discordUser = await client.users.fetch(targetDiscordId);
-            targetUserHandle = discordUser.displayName || discordUser.username || targetUserHandle;
+            // Fetch target user
+            const targetDiscordUser = await client.users.fetch(targetDiscordId);
+            targetUserHandle = targetDiscordUser.displayName || targetDiscordUser.username || targetUserHandle;
+
+            // Fetch current user
+            const currentDiscordUser = await client.users.fetch(currentUser.discordId);
+            userHandle = currentDiscordUser.displayName || currentDiscordUser.username || userHandle;
           } catch (error) {
-            // Keep fallback value
+            // Keep fallback values
           }
         }
 
-        // Create activity feed item
+        // Create activity feed item with both user handles
         await prisma.activityFeedItem.create({
           data: {
             userId: fromUser.id,
             type: 'follow',
             data: {
               targetUserId: targetUser.id,
-              targetUserHandle: targetUserHandle
+              targetUserHandle: targetUserHandle,
+              userHandle: userHandle  // Store the acting user's handle
             },
             visibility: 'public'
           }

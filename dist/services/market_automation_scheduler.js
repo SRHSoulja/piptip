@@ -505,7 +505,8 @@ export class MarketAutomationScheduler {
             return false; // Too short
         if (symbol.includes('�') || symbol.includes('\x00'))
             return false; // Invalid chars
-        if (symbol.match(/[^\w]/g) && symbol.match(/[^\w]/g).length > 2)
+        const specialChars = symbol.match(/[^\w]/g);
+        if (specialChars && specialChars.length > 2)
             return false; // Too many special chars
         // Skip obvious scam patterns
         const scamPatterns = ['TEST', 'FAKE', 'SCAM', 'RUG', 'PONZI'];

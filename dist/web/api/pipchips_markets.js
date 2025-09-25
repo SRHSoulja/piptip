@@ -167,7 +167,8 @@ pipchipsMarketsRouter.get("/market/:id", async (req, res) => {
             });
         }
         // Initialize LMSR for this market
-        const lmsr = new PIPChipsLMSR(market.liquidityParameter || 1000, market.marketOutcomes);
+        const lmsr = new PIPChipsLMSR(1000, // Default liquidity parameter
+        market.marketOutcomes);
         // Parse current shares
         const currentShares = {};
         for (const outcome of market.marketOutcomes) {
@@ -194,7 +195,7 @@ pipchipsMarketsRouter.get("/market/:id", async (req, res) => {
                 side: participation.side,
                 amount: participation.amount,
                 shares: participation.sharesPurchased,
-                potentialPayout: participation.potentialPayout,
+                // potentialPayout: calculated dynamically if needed
                 timestamp: participation.createdAt.toISOString(),
                 userId: participation.userId.slice(0, 8) + '...' // Anonymize
             })) : [];
@@ -225,8 +226,8 @@ pipchipsMarketsRouter.get("/market/:id", async (req, res) => {
                 // Meta
                 createdAt: market.createdAt.toISOString(),
                 creatorId: market.creatorId,
-                winningOutcome: market.winningOutcome,
-                totalPayout: market.totalPayout
+                outcome: market.outcome
+                // Legacy fields removed: winningOutcome, totalPayout
             }
         });
     }
@@ -388,7 +389,7 @@ pipchipsMarketsRouter.get("/user/balance", async (req, res) => {
             success: true,
             user: {
                 discordId: currentUser.discordId,
-                username: currentUser.discordUsername
+                username: currentUser.username
             },
             balance: {
                 current: Number(balance.balance),
@@ -445,12 +446,11 @@ pipchipsMarketsRouter.get("/user/participations", async (req, res) => {
                         title: true,
                         description: true,
                         status: true,
-                        winningOutcome: true,
+                        outcome: true,
                         resolveAt: true,
                         marketType: true,
                         marketOutcomes: true,
-                        totalPipchipsVolume: true,
-                        totalPayout: true
+                        totalPipchipsVolume: true
                     }
                 }
             },
@@ -463,11 +463,11 @@ pipchipsMarketsRouter.get("/user/participations", async (req, res) => {
             const market = participation.market;
             let result = null;
             let actualPayout = 0;
-            if (market.status === 'RESOLVED' && market.winningOutcome) {
-                const won = participation.side === market.winningOutcome;
+            if (market.status === 'RESOLVED' && market.outcome) {
+                const won = participation.side === market.outcome;
                 if (won) {
                     // For PIPChips: payout is shares * 1000 PIPChips per share
-                    actualPayout = Math.floor(participation.sharesPurchased * 1000);
+                    actualPayout = Math.floor((participation.sharesPurchased || new Decimal(0)).toNumber() * 1000);
                 }
                 result = won ? 'won' : 'lost';
             }
@@ -486,13 +486,13 @@ pipchipsMarketsRouter.get("/user/participations", async (req, res) => {
                 outcome: participation.side,
                 pipchipsAmount: participation.amount,
                 sharesPurchased: participation.sharesPurchased,
-                potentialPayout: participation.potentialPayout,
+                // potentialPayout: calculated dynamically if needed
                 actualPayout,
                 placedAt: participation.createdAt.toISOString(),
                 result,
                 market: {
                     status: market.status,
-                    winningOutcome: market.winningOutcome,
+                    outcome: market.outcome,
                     resolveAt: market.resolveAt.toISOString(),
                     marketType: market.marketType,
                     outcomes: market.marketOutcomes,

@@ -14,6 +14,7 @@ export async function loadAllData() {
       loadTokens(),
       loadConfig(),
       loadTiers(),
+      loadTournaments(),
     ]);
 
     // Then load data-heavy sections
@@ -24,6 +25,7 @@ export async function loadAllData() {
       loadTreasury(),
       loadAds(),
       loadFees(),
+      loadSpecialMarkets(),
     ]);
 
     console.log("✅ All admin data loaded successfully");
@@ -41,6 +43,11 @@ async function loadConfig() {
 async function loadTiers() {
   const { loadTiers: loadTiersImpl } = await import('/admin/tiers.js');
   return loadTiersImpl();
+}
+
+async function loadTournaments() {
+  const { loadTournaments: loadTournamentsImpl } = await import('/admin/tournaments.js');
+  return loadTournamentsImpl();
 }
 
 async function loadServers() {
@@ -76,6 +83,11 @@ async function loadFees() {
   return loadFeesImpl();
 }
 
+async function loadSpecialMarkets() {
+  const { loadSpecialMarketsData } = await import('/admin/special-markets.js');
+  return loadSpecialMarketsData();
+}
+
 // Initialize the admin dashboard
 export async function initDashboard() {
   console.log("🎛️ Initializing admin dashboard...");
@@ -94,6 +106,9 @@ export async function initDashboard() {
     const { initTiersSection } = await import('/admin/tiers.js');
     initTiersSection();
 
+    const { initTournamentsSection } = await import('/admin/tournaments.js');
+    initTournamentsSection();
+
     const { initConfigSection } = await import('/admin/config.js');
     initConfigSection();
 
@@ -108,6 +123,9 @@ export async function initDashboard() {
 
     const { initFeesSection } = await import('/admin/fees-data.js');
     initFeesSection();
+
+    const { initSpecialMarketsSection } = await import('/admin/special-markets.js');
+    initSpecialMarketsSection();
 
     console.log("✅ All sections initialized");
   } catch (error) {
