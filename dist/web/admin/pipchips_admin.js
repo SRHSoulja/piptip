@@ -22,7 +22,7 @@ pipchipsAdminRouter.get("/", async (req, res) => {
                 user: {
                     select: {
                         discordId: true,
-                        username: true
+                        xUsername: true
                     }
                 }
             }
@@ -33,7 +33,7 @@ pipchipsAdminRouter.get("/", async (req, res) => {
             take: 10,
             select: {
                 discordId: true,
-                username: true,
+                xUsername: true,
                 pipchipsBalance: true,
                 pipchipsEarnedTotal: true,
                 pipchipsSpentTotal: true,
@@ -44,7 +44,7 @@ pipchipsAdminRouter.get("/", async (req, res) => {
         // Get active PIPChips markets
         const activeMarkets = await prisma.predictionMarket.findMany({
             where: {
-                currency: 'PIPCHIPS',
+                tokenSymbol: 'PIPCHIPS',
                 status: 'ACTIVE'
             },
             select: {
@@ -81,7 +81,7 @@ pipchipsAdminRouter.get("/users", async (req, res) => {
         const where = {};
         if (search) {
             where.OR = [
-                { username: { contains: search, mode: 'insensitive' } },
+                { xUsername: { contains: search, mode: 'insensitive' } },
                 { discordId: { contains: search } }
             ];
         }
@@ -93,7 +93,7 @@ pipchipsAdminRouter.get("/users", async (req, res) => {
                 skip: offsetNum,
                 select: {
                     discordId: true,
-                    username: true,
+                    xUsername: true,
                     pipchipsBalance: true,
                     pipchipsEarnedTotal: true,
                     pipchipsSpentTotal: true,
@@ -138,10 +138,10 @@ pipchipsAdminRouter.post("/users/:discordId/adjust", async (req, res) => {
         }
         const adjustAmount = BigInt(parseInt(amount));
         if (type === 'credit') {
-            await pipchipsService.creditPIPChips(discordId, adjustAmount, 'ADMIN_ADJUSTMENT', undefined, `Admin credit: ${reason}`, { adminUserId: req.user?.discordId });
+            await pipchipsService.creditPIPChips(discordId, adjustAmount, 'ADMIN_CREDIT', undefined, `Admin credit: ${reason}`, { adminUserId: req.user?.discordId });
         }
         else if (type === 'debit') {
-            await pipchipsService.debitPIPChips(discordId, adjustAmount, 'ADMIN_ADJUSTMENT', undefined, `Admin debit: ${reason}`, { adminUserId: req.user?.discordId });
+            await pipchipsService.debitPIPChips(discordId, adjustAmount, 'ADMIN_DEBIT', undefined, `Admin debit: ${reason}`, { adminUserId: req.user?.discordId });
         }
         else {
             return res.status(400).json({
@@ -189,7 +189,9 @@ pipchipsAdminRouter.post("/packages", async (req, res) => {
         const { pipchipsAmount, tokenCost, tokenSymbol, bonusPercentage, isActive } = req.body;
         const newPackage = await prisma.pipchipsPackage.create({
             data: {
+                name: `${pipchipsAmount} PIPChips`,
                 pipchipsAmount: BigInt(pipchipsAmount),
+                usdPrice: parseFloat(tokenCost),
                 tokenCost: parseFloat(tokenCost),
                 tokenSymbol: tokenSymbol.toUpperCase(),
                 bonusPercentage: parseInt(bonusPercentage) || 0,
@@ -382,7 +384,7 @@ function generatePIPChipsAdminHTML(data) {
                 <tbody>
                     ${topUsers.map(user => `
                         <tr>
-                            <td>${user.username || user.discordId.slice(0, 8)}</td>
+                            <td>${user.xUsername || user.discordId.slice(0, 8)}</td>
                             <td class="pipchips-amount">${Number(user.pipchipsBalance).toLocaleString()}</td>
                             <td>${Number(user.pipchipsEarnedTotal).toLocaleString()}</td>
                             <td>${Number(user.pipchipsSpentTotal).toLocaleString()}</td>
@@ -437,7 +439,7 @@ function generatePIPChipsAdminHTML(data) {
                 <tbody>
                     ${recentTransactions.map((tx) => `
                         <tr>
-                            <td>${tx.user?.username || tx.userId.slice(0, 8)}</td>
+                            <td>${tx.user?.xUsername || tx.userId.slice(0, 8)}</td>
                             <td><span class="transaction-type ${tx.amount > 0 ? 'type-credit' : 'type-debit'}">${tx.transactionType}</span></td>
                             <td class="pipchips-amount">${tx.amount > 0 ? '+' : ''}${Number(tx.amount).toLocaleString()}</td>
                             <td>${tx.description || 'N/A'}</td>
@@ -531,7 +533,7 @@ function generateUserManagementHTML(data) {
                 <tbody>
                     ${users.map((user) => `
                         <tr>
-                            <td>${user.username || user.discordId.slice(0, 8)}</td>
+                            <td>${user.xUsername || user.discordId.slice(0, 8)}</td>
                             <td class="pipchips-amount">${Number(user.pipchipsBalance).toLocaleString()}</td>
                             <td>${Number(user.pipchipsEarnedTotal).toLocaleString()}</td>
                             <td>${Number(user.pipchipsSpentTotal).toLocaleString()}</td>

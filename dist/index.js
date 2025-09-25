@@ -513,6 +513,10 @@ async function main() {
         app.use("/pengubook", pengubookModularRouter);
         app.use("/api", marketsApiRouter);
         app.use("/api/pipchips", pipchipsMarketsRouter);
+        // Add redirect for common mistyped URL
+        app.get("/pipchips", (req, res) => {
+            res.redirect("/pengubook/pipchips");
+        });
         console.log("✅ Session-dependent routes configured");
         // Backup service disabled - using external cron job with backup-script.js
         // await backupService.start();

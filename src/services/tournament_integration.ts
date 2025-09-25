@@ -1,6 +1,6 @@
 // src/services/tournament_integration.ts - Integration layer for tournament-aware predictions
 import { prisma } from "./db.js";
-import { placeTournamentAwareBet, processWinningsWithContext } from "./tournament_context.js";
+import { placeTournamentAwareParticipation, processWinningsWithContext } from "./tournament_context.js";
 
 /**
  * Tournament-aware wrapper for prediction market betting
@@ -44,15 +44,15 @@ export async function processPayoutsWithTournamentContext(marketId: string, outc
     // Get all participations for this market
     const participations = await prisma.predictionParticipation.findMany({
       where: { marketId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            discordId: true,
-            inTournamentMode: true,
-            activeTournamentId: true
-          }
-        }
+      select: {
+        id: true,
+        userId: true,
+        marketId: true,
+        side: true,
+        amount: true,
+        tokenSymbol: true,
+        sharesPurchased: true,
+        createdAt: true
       }
     });
 
@@ -71,10 +71,13 @@ export async function processPayoutsWithTournamentContext(marketId: string, outc
         payout = 0;
       }
 
+      // Convert userId string to number
+      const userIdNum = parseInt(participation.userId);
+
       // Process winnings with tournament context
       if (payout > 0) {
         await processWinningsWithContext(
-          participation.user.id,
+          userIdNum,
           marketId,
           payout,
           won
@@ -82,7 +85,7 @@ export async function processPayoutsWithTournamentContext(marketId: string, outc
       }
 
       // Log result
-      console.log(`${won ? '✅ Win' : '❌ Loss'}: ${participation.user.discordId} ${won ? `gets ${payout}` : 'loses'} PIPChips ${participation.user.inTournamentMode ? '(Tournament)' : '(Regular)'}`);
+      console.log(`${won ? '✅ Win' : '❌ Loss'}: User ${participation.userId} ${won ? `gets ${payout}` : 'loses'} PIPChips`);
     }
 
   } catch (error) {

@@ -501,8 +501,8 @@ pipchipsMarketsRouter.get("/user/participations", async (req, res) => {
             };
         });
         // Filter by status if requested
-        const filteredBets = status === 'all' ? formattedBets :
-            formattedBets.filter(bet => {
+        const filteredBets = status === 'all' ? formattedParticipations :
+            formattedParticipations.filter(bet => {
                 if (status === 'active')
                     return bet.result === 'pending';
                 if (status === 'won')

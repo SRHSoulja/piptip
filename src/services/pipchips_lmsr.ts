@@ -130,7 +130,7 @@ export class PIPChipsLMSR {
           select: {
             id: true,
             lmsrShares: true,
-            liquidityParameter: true,
+            liquidity: true,
             marketOutcomes: true,
             status: true,
             resolveAt: true
@@ -152,8 +152,8 @@ export class PIPChipsLMSR {
         // 2. Parse current shares from database
         const currentShares: Record<string, Decimal> = {};
         for (const outcome of market.marketOutcomes) {
-          const shares = market.lmsrShares?.[outcome] || 0;
-          currentShares[outcome] = new Decimal(shares);
+          const shares = (market.lmsrShares as Record<string, any>)?.[outcome] || 0;
+          currentShares[outcome] = new Decimal(shares.toString());
         }
 
         // 3. Calculate bet cost and shares
@@ -192,9 +192,7 @@ export class PIPChipsLMSR {
             amount: Number(costCalc.actualCost),
             tokenSymbol: 'PIPCHIPS',
             side: outcome,
-            sharesPurchased: costCalc.sharesPurchased.toNumber(),
-            potentialPayout: costCalc.potentialPayout.toNumber(),
-            purchasePrice: costCalc.newPrice.toNumber()
+            sharesPurchased: costCalc.sharesPurchased
           }
         });
 
@@ -285,8 +283,7 @@ export class PIPChipsLMSR {
       const result = await prisma.$transaction(async (tx) => {
         // 1. Get all participations for this market
         const allParticipations = await tx.predictionParticipation.findMany({
-          where: { marketId },
-          include: { user: true }
+          where: { marketId }
         });
 
         const winningParticipations = allParticipations.filter(participation => participation.side === winningOutcome);
@@ -296,7 +293,8 @@ export class PIPChipsLMSR {
 
         // 2. Process winning participations - pay out 1000 PIPChips per share
         for (const participation of winningParticipations) {
-          const payout = BigInt(Math.floor(participation.sharesPurchased * 1000));
+          const sharesPurchased = participation.sharesPurchased || new Decimal(0);
+          const payout = BigInt(Math.floor(sharesPurchased.toNumber() * 1000));
 
           await pipchipsService.creditPIPChips(
             participation.userId,
@@ -337,9 +335,8 @@ export class PIPChipsLMSR {
           where: { id: marketId },
           data: {
             status: 'RESOLVED',
-            winningOutcome,
-            resolvedAt: new Date(),
-            totalPayout: Number(totalPayout)
+            outcome: winningOutcome,
+            resolvedAt: new Date()
           }
         });
 

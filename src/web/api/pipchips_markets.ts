@@ -87,7 +87,7 @@ pipchipsMarketsRouter.get("/markets", async (req: Request, res: Response) => {
       // Parse current shares
       const currentShares: Record<string, Decimal> = {};
       for (const outcome of market.marketOutcomes) {
-        const shares = market.lmsrShares?.[outcome] || 0;
+        const shares = (market.lmsrShares as Record<string, number>)?.[outcome] || 0;
         currentShares[outcome] = new Decimal(shares);
       }
 
@@ -194,14 +194,14 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
 
     // Initialize LMSR for this market
     const lmsr = new PIPChipsLMSR(
-      market.liquidityParameter || 1000,
+      1000, // Default liquidity parameter
       market.marketOutcomes
     );
 
     // Parse current shares
     const currentShares: Record<string, Decimal> = {};
     for (const outcome of market.marketOutcomes) {
-      const shares = market.lmsrShares?.[outcome] || 0;
+      const shares = (market.lmsrShares as Record<string, number>)?.[outcome] || 0;
       currentShares[outcome] = new Decimal(shares);
     }
 
@@ -228,7 +228,7 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
         side: participation.side,
         amount: participation.amount,
         shares: participation.sharesPurchased,
-        potentialPayout: participation.potentialPayout,
+        // potentialPayout: calculated dynamically if needed
         timestamp: participation.createdAt.toISOString(),
         userId: participation.userId.slice(0, 8) + '...' // Anonymize
       })) : [];
@@ -266,8 +266,8 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
         // Meta
         createdAt: market.createdAt.toISOString(),
         creatorId: market.creatorId,
-        winningOutcome: market.winningOutcome,
-        totalPayout: market.totalPayout
+        outcome: market.outcome
+        // Legacy fields removed: winningOutcome, totalPayout
       }
     });
 
@@ -397,7 +397,7 @@ pipchipsMarketsRouter.post("/bet", async (req: Request, res: Response) => {
         pipchipsAmount: betAmount,
         sharesPurchased: 0, // Will be calculated based on LMSR if market uses it
         potentialPayout: betAmount * 2, // Simplified - actual payout depends on market resolution
-        currentPrice: parseFloat(currentPrices[outcome] || '0.5'),
+        currentPrice: parseFloat((currentPrices as Record<string, string>)[outcome] || '0.5'),
         slippage: 0, // Will be calculated properly once LMSR is fully integrated
         timestamp: new Date().toISOString()
       },
@@ -448,7 +448,7 @@ pipchipsMarketsRouter.get("/user/balance", async (req: Request, res: Response) =
       success: true,
       user: {
         discordId: currentUser.discordId,
-        username: currentUser.discordUsername
+        username: currentUser.username
       },
       balance: {
         current: Number(balance.balance),
@@ -508,12 +508,11 @@ pipchipsMarketsRouter.get("/user/participations", async (req: Request, res: Resp
             title: true,
             description: true,
             status: true,
-            winningOutcome: true,
+            outcome: true,
             resolveAt: true,
             marketType: true,
             marketOutcomes: true,
-            totalPipchipsVolume: true,
-            totalPayout: true
+            totalPipchipsVolume: true
           }
         }
       },
@@ -528,11 +527,11 @@ pipchipsMarketsRouter.get("/user/participations", async (req: Request, res: Resp
       let result = null;
       let actualPayout = 0;
 
-      if (market.status === 'RESOLVED' && market.winningOutcome) {
-        const won = participation.side === market.winningOutcome;
+      if (market.status === 'RESOLVED' && market.outcome) {
+        const won = participation.side === market.outcome;
         if (won) {
           // For PIPChips: payout is shares * 1000 PIPChips per share
-          actualPayout = Math.floor(participation.sharesPurchased * 1000);
+          actualPayout = Math.floor((participation.sharesPurchased || new Decimal(0)).toNumber() * 1000);
         }
         result = won ? 'won' : 'lost';
       } else if (market.status === 'CANCELLED') {
@@ -550,13 +549,13 @@ pipchipsMarketsRouter.get("/user/participations", async (req: Request, res: Resp
         outcome: participation.side,
         pipchipsAmount: participation.amount,
         sharesPurchased: participation.sharesPurchased,
-        potentialPayout: participation.potentialPayout,
+        // potentialPayout: calculated dynamically if needed
         actualPayout,
         placedAt: participation.createdAt.toISOString(),
         result,
         market: {
           status: market.status,
-          winningOutcome: market.winningOutcome,
+          outcome: market.outcome,
           resolveAt: market.resolveAt.toISOString(),
           marketType: market.marketType,
           outcomes: market.marketOutcomes,
@@ -566,8 +565,8 @@ pipchipsMarketsRouter.get("/user/participations", async (req: Request, res: Resp
     });
 
     // Filter by status if requested
-    const filteredBets = status === 'all' ? formattedBets :
-      formattedBets.filter(bet => {
+    const filteredBets = status === 'all' ? formattedParticipations :
+      formattedParticipations.filter(bet => {
         if (status === 'active') return bet.result === 'pending';
         if (status === 'won') return bet.result === 'won';
         if (status === 'lost') return bet.result === 'lost';

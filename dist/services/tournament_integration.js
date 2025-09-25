@@ -1,6 +1,6 @@
 // src/services/tournament_integration.ts - Integration layer for tournament-aware predictions
 import { prisma } from "./db.js";
-import { processWinningsWithContext } from "./tournament_context.js";
+import { placeTournamentAwareParticipation, processWinningsWithContext } from "./tournament_context.js";
 /**
  * Tournament-aware wrapper for prediction market betting
  * This integrates with existing Discord commands and prediction systems
@@ -33,15 +33,15 @@ export async function processPayoutsWithTournamentContext(marketId, outcome) {
         // Get all participations for this market
         const participations = await prisma.predictionParticipation.findMany({
             where: { marketId },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        discordId: true,
-                        inTournamentMode: true,
-                        activeTournamentId: true
-                    }
-                }
+            select: {
+                id: true,
+                userId: true,
+                marketId: true,
+                side: true,
+                amount: true,
+                tokenSymbol: true,
+                sharesPurchased: true,
+                createdAt: true
             }
         });
         console.log(`🎯 Processing ${participations.length} participations for market ${marketId} with outcome ${outcome}`);
@@ -57,12 +57,14 @@ export async function processPayoutsWithTournamentContext(marketId, outcome) {
                 // Lost participation - no payout
                 payout = 0;
             }
+            // Convert userId string to number
+            const userIdNum = parseInt(participation.userId);
             // Process winnings with tournament context
             if (payout > 0) {
-                await processWinningsWithContext(participation.user.id, marketId, payout, won);
+                await processWinningsWithContext(userIdNum, marketId, payout, won);
             }
             // Log result
-            console.log(`${won ? '✅ Win' : '❌ Loss'}: ${participation.user.discordId} ${won ? `gets ${payout}` : 'loses'} PIPChips ${participation.user.inTournamentMode ? '(Tournament)' : '(Regular)'}`);
+            console.log(`${won ? '✅ Win' : '❌ Loss'}: User ${participation.userId} ${won ? `gets ${payout}` : 'loses'} PIPChips`);
         }
     }
     catch (error) {

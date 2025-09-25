@@ -6,33 +6,20 @@ export const tournamentsRouter = Router();
 // Get all tournaments
 tournamentsRouter.get("/tournaments", async (_req, res) => {
     try {
-        const tournaments = await prisma.appConfig.findMany({
-            where: {
-                key: {
-                    startsWith: "tournament_"
-                },
-                NOT: {
-                    key: {
-                        endsWith: "_results"
-                    }
-                }
-            },
-            orderBy: { updatedAt: "desc" }
+        const tournaments = await prisma.tournamentSession.findMany({
+            orderBy: { startTime: "desc" }
         });
-        const formattedTournaments = tournaments.map(tournament => {
-            const config = JSON.parse(tournament.value);
-            return {
-                id: config.id,
-                name: config.name,
-                description: config.description,
-                status: config.status,
-                type: config.type,
-                maxParticipants: config.maxParticipants,
-                prizeTokens: config.prizeTokens,
-                createdAt: tournament.createdAt,
-                updatedAt: tournament.updatedAt
-            };
-        });
+        const formattedTournaments = tournaments.map(tournament => ({
+            id: tournament.id,
+            name: tournament.name,
+            description: tournament.description || 'No description',
+            status: tournament.status,
+            type: 'PREDICTION',
+            maxParticipants: tournament.maxPlayers,
+            prizeTokens: tournament.prizeTokens,
+            createdAt: tournament.createdAt,
+            updatedAt: tournament.startTime
+        }));
         res.json({ ok: true, tournaments: formattedTournaments });
     }
     catch (error) {
@@ -55,12 +42,9 @@ tournamentsRouter.get("/tournaments/:id", async (req, res) => {
         // Get results if tournament is completed
         let results = null;
         try {
-            const resultsConfig = await prisma.appConfig.findUnique({
-                where: { key: `tournament_${tournamentId}_results` }
-            });
-            if (resultsConfig) {
-                results = JSON.parse(resultsConfig.value);
-            }
+            // For now, just return null results
+            // TODO: Implement proper results storage
+            results = null;
         }
         catch (e) {
             // Results don't exist yet

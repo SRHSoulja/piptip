@@ -16,34 +16,21 @@ export const tournamentsRouter = Router();
 // Get all tournaments
 tournamentsRouter.get("/tournaments", async (_req: Request, res: Response) => {
   try {
-    const tournaments = await prisma.appConfig.findMany({
-      where: {
-        key: {
-          startsWith: "tournament_"
-        },
-        NOT: {
-          key: {
-            endsWith: "_results"
-          }
-        }
-      },
-      orderBy: { updatedAt: "desc" }
+    const tournaments = await prisma.tournamentSession.findMany({
+      orderBy: { startTime: "desc" }
     });
 
-    const formattedTournaments = tournaments.map(tournament => {
-      const config = JSON.parse(tournament.value as string) as TournamentConfig;
-      return {
-        id: config.id,
-        name: config.name,
-        description: config.description,
-        status: config.status,
-        type: config.type,
-        maxParticipants: config.maxParticipants,
-        prizeTokens: config.prizeTokens,
-        createdAt: tournament.createdAt,
-        updatedAt: tournament.updatedAt
-      };
-    });
+    const formattedTournaments = tournaments.map(tournament => ({
+      id: tournament.id,
+      name: tournament.name,
+      description: tournament.description || 'No description',
+      status: tournament.status,
+      type: 'PREDICTION',
+      maxParticipants: tournament.maxPlayers,
+      prizeTokens: tournament.prizeTokens,
+      createdAt: tournament.createdAt,
+      updatedAt: tournament.startTime
+    }));
 
     res.json({ ok: true, tournaments: formattedTournaments });
   } catch (error) {
@@ -71,12 +58,9 @@ tournamentsRouter.get("/tournaments/:id", async (req: Request, res: Response) =>
     // Get results if tournament is completed
     let results = null;
     try {
-      const resultsConfig = await prisma.appConfig.findUnique({
-        where: { key: `tournament_${tournamentId}_results` }
-      });
-      if (resultsConfig) {
-        results = JSON.parse(resultsConfig.value as string);
-      }
+      // For now, just return null results
+      // TODO: Implement proper results storage
+      results = null;
     } catch (e) {
       // Results don't exist yet
     }
@@ -135,7 +119,7 @@ tournamentsRouter.post("/tournaments", async (req: Request, res: Response) => {
     }
 
     // Validate prize distribution percentages sum to 100
-    const totalPercentage = Object.values(prizeDistribution).reduce((sum: number, pct: number) => sum + pct, 0);
+    const totalPercentage = Object.values(prizeDistribution).reduce((sum: number, pct: unknown) => sum + (pct as number), 0);
     if (Math.abs(totalPercentage - 100) > 0.01) {
       return res.status(400).json({
         ok: false,

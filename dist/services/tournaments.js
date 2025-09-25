@@ -116,9 +116,10 @@ export async function distributeTournamentPrizes(tournamentId, leaderboard) {
                         // Record the prize transaction using existing TOURNAMENT_PRIZE type
                         await tx.pipchipsTransaction.create({
                             data: {
-                                userId: winner.userId,
-                                amount: new Decimal(prize.amount),
-                                type: 'TOURNAMENT_PRIZE',
+                                userId: winner.userId.toString(),
+                                amount: BigInt(prize.amount),
+                                transactionType: 'TOURNAMENT_PRIZE',
+                                balanceAfter: BigInt(0), // Will be updated by service
                                 description: `Tournament prize: ${config.name} - Position #${winner.position}`,
                                 metadata: {
                                     tournamentId,

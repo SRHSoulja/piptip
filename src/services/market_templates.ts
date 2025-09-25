@@ -334,7 +334,7 @@ export class MarketTemplateService {
       };
 
     } catch (error) {
-      logger.error('Error getting template stats', error);
+      logger.error({ error }, 'Error getting template stats');
       return null;
     }
   }

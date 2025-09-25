@@ -3,6 +3,7 @@ import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
 import { PIPChipsLMSR } from "../../../services/pipchips_lmsr.js";
 import { pipchipsService } from "../../../services/pipchips_service.js";
+import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { Decimal } from 'decimal.js';
 export async function pipchipsMarketsHandler(req, res) {
     try {
@@ -24,6 +25,8 @@ export async function pipchipsMarketsHandler(req, res) {
         else if (status === "resolved") {
             where.status = 'RESOLVED';
         }
+        // Ensure user exists in database
+        const dbUser = await findOrCreateUser(currentUser.discordId);
         const [markets, totalMarkets, userBalance] = await Promise.all([
             prisma.predictionMarket.findMany({
                 where,
@@ -107,6 +110,8 @@ export async function pipchipsMarketDetailHandler(req, res) {
         if (!currentUser) {
             return res.redirect("/auth/discord");
         }
+        // Ensure user exists in database
+        const dbUser = await findOrCreateUser(currentUser.discordId);
         const { marketId } = req.params;
         const market = await prisma.predictionMarket.findUnique({
             where: {

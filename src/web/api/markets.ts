@@ -363,48 +363,72 @@ marketsApiRouter.get("/user/participations", async (req: Request, res: Response)
     // Get user's participations with market details
     const participations = await prisma.predictionParticipation.findMany({
       where: { userId: discordId },
-      include: {
-        market: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            status: true,
-            outcome: true,
-            resolveAt: true,
-            marketType: true,
-            tokenSymbol: true,
-            totalYesBets: true,
-            totalNoBets: true
-          }
-        }
+      select: {
+        id: true,
+        marketId: true,
+        userId: true,
+        side: true,
+        amount: true,
+        tokenSymbol: true,
+        sharesPurchased: true,
+        createdAt: true
       },
       orderBy: { createdAt: 'desc' },
       take: limitNum,
       skip: offsetNum
     });
 
+    // Get market information for all participations
+    const marketIds = [...new Set(participations.map(p => p.marketId))];
+    const markets = await prisma.predictionMarket.findMany({
+      where: { id: { in: marketIds } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        outcome: true,
+        resolveAt: true,
+        marketType: true,
+        tokenSymbol: true,
+        totalYesBets: true,
+        totalNoBets: true
+      }
+    });
+
+    const marketMap = new Map(markets.map(m => [m.id, m]));
+
     // Calculate results and format response
-    const formattedBets = bets.map(bet => {
-      const market = bet.market;
+    const formattedBets = participations.map(bet => {
+      const market = marketMap.get(bet.marketId);
+      if (!market) {
+        return {
+          id: bet.id,
+          marketId: bet.marketId,
+          marketTitle: 'Market not found',
+          marketDescription: '',
+          side: bet.side,
+          amount: bet.amount,
+          tokenSymbol: bet.tokenSymbol,
+          placedAt: bet.createdAt.toISOString(),
+          result: 'unknown',
+          payout: 0
+        };
+      }
+
       let result = null;
       let payout = 0;
 
       if (market.status === 'RESOLVED' && market.outcome) {
         const won = bet.side === market.outcome;
         if (won) {
-          // Calculate payout (simplified - you might want to get actual payout from transaction records)
-          const totalPool = market.totalYesBets + market.totalNoBets;
-          const winningPool = market.outcome === 'YES' ? market.totalYesBets : market.totalNoBets;
-          const winShare = bet.amount / winningPool;
-          const rake = totalPool * 0.03; // Assuming 3% rake
-          const prizePool = totalPool - rake;
-          payout = Math.floor(winShare * prizePool);
+          // Simplified payout calculation
+          payout = Number(bet.amount) * 2; // Simplified - 2x for correct predictions
         }
         result = won ? 'won' : 'lost';
       } else if (market.status === 'CANCELLED') {
         result = 'refunded';
-        payout = bet.amount;
+        payout = Number(bet.amount);
       } else {
         result = 'pending';
       }
@@ -415,7 +439,7 @@ marketsApiRouter.get("/user/participations", async (req: Request, res: Response)
         marketTitle: market.title,
         marketDescription: market.description,
         side: bet.side,
-        amount: bet.amount,
+        amount: Number(bet.amount),
         tokenSymbol: bet.tokenSymbol,
         placedAt: bet.createdAt.toISOString(),
         result,
@@ -425,7 +449,7 @@ marketsApiRouter.get("/user/participations", async (req: Request, res: Response)
           outcome: market.outcome,
           resolveAt: market.resolveAt.toISOString(),
           marketType: market.marketType,
-          totalPool: market.totalYesBets + market.totalNoBets
+          totalPool: Number(market.totalYesBets) + Number(market.totalNoBets)
         }
       };
     });

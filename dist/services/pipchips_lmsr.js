@@ -71,7 +71,7 @@ export class PIPChipsLMSR {
                     select: {
                         id: true,
                         lmsrShares: true,
-                        liquidityParameter: true,
+                        liquidity: true,
                         marketOutcomes: true,
                         status: true,
                         resolveAt: true
@@ -90,7 +90,7 @@ export class PIPChipsLMSR {
                 const currentShares = {};
                 for (const outcome of market.marketOutcomes) {
                     const shares = market.lmsrShares?.[outcome] || 0;
-                    currentShares[outcome] = new Decimal(shares);
+                    currentShares[outcome] = new Decimal(shares.toString());
                 }
                 // 3. Calculate bet cost and shares
                 const costCalc = await this.calculateBetCost(currentShares, outcome, pipchipsAmount);
@@ -117,9 +117,7 @@ export class PIPChipsLMSR {
                         amount: Number(costCalc.actualCost),
                         tokenSymbol: 'PIPCHIPS',
                         side: outcome,
-                        sharesPurchased: costCalc.sharesPurchased.toNumber(),
-                        potentialPayout: costCalc.potentialPayout.toNumber(),
-                        purchasePrice: costCalc.newPrice.toNumber()
+                        sharesPurchased: costCalc.sharesPurchased
                     }
                 });
                 // 8. Update market state in database
@@ -186,15 +184,15 @@ export class PIPChipsLMSR {
             const result = await prisma.$transaction(async (tx) => {
                 // 1. Get all participations for this market
                 const allParticipations = await tx.predictionParticipation.findMany({
-                    where: { marketId },
-                    include: { user: true }
+                    where: { marketId }
                 });
                 const winningParticipations = allParticipations.filter(participation => participation.side === winningOutcome);
                 const losingParticipations = allParticipations.filter(participation => participation.side !== winningOutcome);
                 let totalPayout = BigInt(0);
                 // 2. Process winning participations - pay out 1000 PIPChips per share
                 for (const participation of winningParticipations) {
-                    const payout = BigInt(Math.floor(participation.sharesPurchased * 1000));
+                    const sharesPurchased = participation.sharesPurchased || new Decimal(0);
+                    const payout = BigInt(Math.floor(sharesPurchased.toNumber() * 1000));
                     await pipchipsService.creditPIPChips(participation.userId, payout, 'PREDICTION_WIN', marketId, `Won ${payout} PIPChips from market resolution`, {
                         marketId,
                         originalParticipation: participation.amount,
@@ -224,9 +222,8 @@ export class PIPChipsLMSR {
                     where: { id: marketId },
                     data: {
                         status: 'RESOLVED',
-                        winningOutcome,
-                        resolvedAt: new Date(),
-                        totalPayout: Number(totalPayout)
+                        outcome: winningOutcome,
+                        resolvedAt: new Date()
                     }
                 });
                 return {

@@ -86,20 +86,22 @@ export async function enterTournament(params) {
                     tokenId: token.id,
                     amount: new Decimal(-entryFeeAmount),
                     type: 'TOURNAMENT_ENTRY',
-                    description: `Tournament entry: ${tournament.name}`,
-                    metadata: {
+                    metadata: JSON.stringify({
                         tournamentId,
                         tournamentName: tournament.name
-                    }
+                    })
                 }
             });
+            // Get user's current balance for PIPChips transaction
+            const currentUser = await tx.user.findUnique({ where: { id: userId } });
             // Log PIPChips allocation
             await tx.pipchipsTransaction.create({
                 data: {
-                    userId,
-                    amount: tournament.startingPIPChips,
-                    type: 'TOURNAMENT_ENTRY',
+                    userId: userId.toString(),
+                    amount: BigInt(tournament.startingPIPChips),
+                    transactionType: 'TOURNAMENT_ENTRY',
                     description: `Tournament starting PIPChips: ${tournament.name}`,
+                    balanceAfter: currentUser?.pipchipsBalance || BigInt(0),
                     metadata: {
                         tournamentId,
                         isTournamentBalance: true,
@@ -159,24 +161,21 @@ export async function placeTournamentAwareParticipation(params) {
                 // Create prediction participation with tournament context
                 await tx.predictionParticipation.create({
                     data: {
-                        userId,
+                        userId: userId.toString(),
                         marketId,
-                        amount: new Decimal(amount),
+                        amount: amount,
                         side,
-                        tokenSymbol: 'PIPChips', // Tournament PIPChips
-                        metadata: {
-                            tournamentId: user.activeTournamentId,
-                            isTournamentParticipation: true
-                        }
+                        tokenSymbol: 'PIPChips'
                     }
                 });
                 // Log tournament-specific transaction
                 await tx.pipchipsTransaction.create({
                     data: {
-                        userId,
-                        amount: -amount,
-                        type: 'TOURNAMENT_PARTICIPATION',
+                        userId: userId.toString(),
+                        amount: BigInt(-amount),
+                        transactionType: 'TOURNAMENT_BET',
                         description: `Tournament participation: ${amount} PIPChips on ${side}`,
+                        balanceAfter: BigInt(0), // Tournament balance - not tracked in regular pipchips
                         metadata: {
                             tournamentId: user.activeTournamentId,
                             marketId,
@@ -206,20 +205,23 @@ export async function placeTournamentAwareParticipation(params) {
                 // Create prediction participation
                 await tx.predictionParticipation.create({
                     data: {
-                        userId,
+                        userId: userId.toString(),
                         marketId,
-                        amount: new Decimal(amount),
+                        amount: amount,
                         side,
                         tokenSymbol: 'PIPChips'
                     }
                 });
+                // Get updated balance after deduction
+                const updatedUser = await tx.user.findUnique({ where: { id: userId } });
                 // Log regular transaction
                 await tx.pipchipsTransaction.create({
                     data: {
-                        userId,
-                        amount: -amount,
-                        type: 'PREDICTION_PARTICIPATION',
+                        userId: userId.toString(),
+                        amount: BigInt(-amount),
+                        transactionType: 'BET_PLACED',
                         description: `Prediction participation: ${amount} PIPChips on ${side}`,
+                        balanceAfter: updatedUser?.pipchipsBalance || BigInt(0),
                         metadata: { marketId, side }
                     }
                 });
@@ -252,16 +254,14 @@ export async function processWinningsWithContext(userId, marketId, winnings, won
         // Check if this was a tournament participation
         const participation = await prisma.predictionParticipation.findFirst({
             where: {
-                userId,
+                userId: userId.toString(),
                 marketId
             },
             orderBy: { createdAt: 'desc' }
         });
-        const isTournamentParticipation = participation?.metadata &&
-            typeof participation.metadata === 'object' &&
-            participation.metadata !== null &&
-            'isTournamentParticipation' in participation.metadata &&
-            participation.metadata.isTournamentParticipation === true;
+        // For now, determine tournament participation based on user context
+        // TODO: Use metadata field when it's properly implemented
+        const isTournamentParticipation = user.inTournamentMode && user.activeTournamentId;
         if (isTournamentParticipation && user.inTournamentMode && user.activeTournamentId && user.tournamentParticipants.length > 0) {
             // TOURNAMENT WINNINGS - Add to tournament balance
             const participant = user.tournamentParticipants[0];
@@ -277,10 +277,11 @@ export async function processWinningsWithContext(userId, marketId, winnings, won
                 // Log tournament winnings
                 await tx.pipchipsTransaction.create({
                     data: {
-                        userId,
-                        amount: winnings,
-                        type: 'TOURNAMENT_WIN',
+                        userId: userId.toString(),
+                        amount: BigInt(winnings),
+                        transactionType: 'TOURNAMENT_WIN',
                         description: `Tournament participation ${won ? 'won' : 'refunded'}: ${winnings} PIPChips`,
+                        balanceAfter: BigInt(0), // Tournament balance - not tracked in regular pipchips
                         metadata: {
                             tournamentId: user.activeTournamentId,
                             marketId,
@@ -303,13 +304,16 @@ export async function processWinningsWithContext(userId, marketId, winnings, won
                         pipchipsEarnedTotal: { increment: winnings }
                     }
                 });
+                // Get updated balance after credit
+                const updatedUser = await tx.user.findUnique({ where: { id: userId } });
                 // Log regular winnings
                 await tx.pipchipsTransaction.create({
                     data: {
-                        userId,
-                        amount: winnings,
-                        type: 'PREDICTION_WIN',
+                        userId: userId.toString(),
+                        amount: BigInt(winnings),
+                        transactionType: 'BET_WON',
                         description: `Prediction participation ${won ? 'won' : 'refunded'}: ${winnings} PIPChips`,
+                        balanceAfter: updatedUser?.pipchipsBalance || BigInt(0),
                         metadata: { marketId, won }
                     }
                 });

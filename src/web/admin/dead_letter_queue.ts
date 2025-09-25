@@ -79,10 +79,10 @@ export async function getDeadLetterJob(req: Request, res: Response) {
 export async function retryDeadLetterJob(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const adminUserId = req.user?.id || 'unknown';
+    const adminUserId = (req as any).user?.id || 'unknown';
 
     // Validate admin permissions
-    if (!req.user?.isAdmin) {
+    if (!(req as any).user?.isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
@@ -109,10 +109,10 @@ export async function dismissDeadLetterJob(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const adminUserId = req.user?.id || 'unknown';
+    const adminUserId = (req as any).user?.id || 'unknown';
 
     // Validate admin permissions
-    if (!req.user?.isAdmin) {
+    if (!(req as any).user?.isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
@@ -162,10 +162,10 @@ export async function getDeadLetterStats(req: Request, res: Response) {
 export async function bulkRetryDeadLetterJobs(req: Request, res: Response) {
   try {
     const { jobIds } = req.body;
-    const adminUserId = req.user?.id || 'unknown';
+    const adminUserId = (req as any).user?.id || 'unknown';
 
     // Validate admin permissions
-    if (!req.user?.isAdmin) {
+    if (!(req as any).user?.isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
@@ -205,10 +205,10 @@ export async function bulkRetryDeadLetterJobs(req: Request, res: Response) {
 export async function cleanupDeadLetterJobs(req: Request, res: Response) {
   try {
     const { olderThanDays = 30 } = req.body;
-    const adminUserId = req.user?.id || 'unknown';
+    const adminUserId = (req as any).user?.id || 'unknown';
 
     // Validate admin permissions
-    if (!req.user?.isAdmin) {
+    if (!(req as any).user?.isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 

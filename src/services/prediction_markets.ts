@@ -150,7 +150,7 @@ export class PredictionMarketService {
       const marketData = market.marketData as any;
       if (marketData?.bettingClosesAtGameStart || marketData?.gameStartTime) {
         const currentTime = new Date();
-        let bettingCutoffTime: Date;
+        let bettingCutoffTime: Date | null = null;
 
         if (marketData.bettingClosesAt) {
           bettingCutoffTime = new Date(marketData.bettingClosesAt);
@@ -427,7 +427,7 @@ export class PredictionMarketService {
             await pipchipsService.processTransaction({
               userId: payout.userId,
               amount: BigInt(payout.amount),
-              type: 'PREDICTION_PAYOUT',
+              type: 'BET_WON',
               referenceId: marketId,
               description: `Payout ${payout.amount} PIPChips from resolved market: ${market.title}`
             });
@@ -486,7 +486,7 @@ export class PredictionMarketService {
           await pipchipsService.processTransaction({
             userId: participation.userId,
             amount: BigInt(participation.amount),
-            type: 'PREDICTION_REFUND',
+            type: 'BET_REFUNDED',
             referenceId: marketId,
             description: `Refund ${participation.amount} PIPChips from cancelled market: ${market.title}`
           });

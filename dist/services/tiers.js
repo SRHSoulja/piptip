@@ -199,7 +199,7 @@ export async function checkMarketCreationPermission(discordId) {
             permissions: {
                 canCreateMarkets: tier.canCreateMarkets,
                 dailyMarketLimit: tier.dailyMarketLimit,
-                customRakePercent: tier.customRakePercent,
+                customRakePercent: tier.customRakePercent ? Number(tier.customRakePercent) : null,
                 marketCooldownMinutes: tier.marketCooldownMinutes
             },
             tierName: tier.name
