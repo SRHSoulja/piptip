@@ -827,33 +827,55 @@ export const apiHandlers = {
             if (!query || query.length < 2) {
                 return res.json({ success: true, users: [] });
             }
-            // Search all users (not just PenguBook users) for messaging
-            const users = await prisma.user.findMany({
-                where: {
-                    AND: [
-                        { discordId: { not: currentUser.discordId } }, // Exclude self
-                        {
-                            OR: [
-                                { discordId: { contains: query, mode: 'insensitive' } },
-                                // Search by Discord ID partial match
-                            ]
-                        }
+            // For username search, we need to get more users and filter after fetching Discord names
+            // If the query is numeric, prioritize Discord ID search
+            const isNumericQuery = /^\d+$/.test(query);
+            let users;
+            if (isNumericQuery) {
+                // Numeric query - search Discord IDs first (fast path)
+                users = await prisma.user.findMany({
+                    where: {
+                        AND: [
+                            { discordId: { not: currentUser.discordId } }, // Exclude self
+                            { discordId: { contains: query, mode: 'insensitive' } }
+                        ]
+                    },
+                    select: {
+                        discordId: true,
+                        createdAt: true,
+                        wins: true,
+                        bio: true,
+                        showInPenguBook: true
+                    },
+                    take: 15,
+                    orderBy: [
+                        { showInPenguBook: 'desc' },
+                        { wins: 'desc' },
+                        { createdAt: 'desc' }
                     ]
-                },
-                select: {
-                    discordId: true,
-                    createdAt: true,
-                    wins: true,
-                    bio: true,
-                    showInPenguBook: true
-                },
-                take: 15,
-                orderBy: [
-                    { showInPenguBook: 'desc' }, // PenguBook users first
-                    { wins: 'desc' }, // Popular users first
-                    { createdAt: 'desc' }
-                ]
-            });
+                });
+            }
+            else {
+                // Text query - get more users to search through their Discord names
+                users = await prisma.user.findMany({
+                    where: {
+                        discordId: { not: currentUser.discordId } // Exclude self
+                    },
+                    select: {
+                        discordId: true,
+                        createdAt: true,
+                        wins: true,
+                        bio: true,
+                        showInPenguBook: true
+                    },
+                    take: 50, // Get more users for username filtering
+                    orderBy: [
+                        { showInPenguBook: 'desc' },
+                        { wins: 'desc' },
+                        { createdAt: 'desc' }
+                    ]
+                });
+            }
             // Enhance with Discord usernames and filter by name too
             const client = getDiscordClient();
             console.log(`[Search API] Discord client available: ${!!client}, ready: ${client?.isReady()}`);
@@ -892,21 +914,31 @@ export const apiHandlers = {
             // Filter by username after fetching Discord names
             const filteredUsers = enhancedUsers.filter(user => {
                 const lowerQuery = query.toLowerCase();
-                // Search by Discord ID
-                if (user.discordId.toLowerCase().includes(lowerQuery)) {
-                    return true;
+                // For numeric queries, prioritize Discord ID matches
+                if (isNumericQuery) {
+                    return user.discordId.toLowerCase().includes(lowerQuery);
                 }
-                // Search by display name (if we got it from Discord)
-                if (user.rawDisplayName && !user.rawDisplayName.startsWith('Player ') &&
-                    user.rawDisplayName.toLowerCase().includes(lowerQuery)) {
+                // For text queries, prioritize username matches
+                // Search by display name (prioritize real Discord names)
+                if (user.rawDisplayName && !user.rawDisplayName.startsWith('Player ')) {
+                    if (user.rawDisplayName.toLowerCase().includes(lowerQuery)) {
+                        console.log(`[Search API] Username match: "${user.rawDisplayName}" contains "${query}"`);
+                        return true;
+                    }
+                }
+                // Also check Discord ID for text queries (fallback)
+                if (user.discordId.toLowerCase().includes(lowerQuery)) {
+                    console.log(`[Search API] ID match: "${user.discordId}" contains "${query}"`);
                     return true;
                 }
                 // Search in bio text
                 if (user.bioText && user.bioText.toLowerCase().includes(lowerQuery)) {
+                    console.log(`[Search API] Bio match: "${user.bioText}" contains "${query}"`);
                     return true;
                 }
                 return false;
             });
+            console.log(`[Search API] Query "${query}" (numeric: ${isNumericQuery}) filtered ${enhancedUsers.length} users down to ${filteredUsers.length} results`);
             return res.json({
                 success: true,
                 users: filteredUsers.slice(0, 10) // Limit to top 10 results
