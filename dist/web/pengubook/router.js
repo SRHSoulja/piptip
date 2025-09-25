@@ -52,5 +52,6 @@ pengubookModularRouter.post("/api/react", apiHandlers.react);
 pengubookModularRouter.post("/api/follow", apiHandlers.follow);
 pengubookModularRouter.get("/api/social-data/:discordId", apiHandlers.socialData);
 pengubookModularRouter.get("/api/activity-feed", apiHandlers.activityFeed);
+pengubookModularRouter.get("/api/search-users", apiHandlers.searchUsers);
 // Export template function for use in routes
 export { generateBaseHTML };

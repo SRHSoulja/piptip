@@ -739,18 +739,23 @@ export const apiHandlers = {
         take: 20
       });
 
-      // Helper function to get Discord username
-      const getDiscordUsername = async (discordId: string): Promise<string> => {
+      // Helper function to get Discord username with fallback to stored data
+      const getDiscordUsername = async (discordId: string, storedHandle?: string): Promise<string> => {
+        // If we have a stored handle and it's not a fallback format, use it
+        if (storedHandle && !storedHandle.startsWith('User#')) {
+          return storedHandle;
+        }
+
         try {
           const client = getDiscordClient();
           if (client) {
             const user = await client.users.fetch(discordId);
-            return user.displayName || user.username || `User#${discordId.slice(-4)}`;
+            return user.displayName || user.username || storedHandle || `User#${discordId.slice(-4)}`;
           }
         } catch (error) {
-          // Fallback on error
+          // Fallback to stored handle or default format
         }
-        return `User#${discordId.slice(-4)}`;
+        return storedHandle || `User#${discordId.slice(-4)}`;
       };
 
       // Format activities for display with enhanced data
@@ -759,8 +764,8 @@ export const apiHandlers = {
         let text = '';
         let icon = '📝';
 
-        // Get proper username
-        const username = await getDiscordUsername(activity.user.discordId);
+        // Get proper username using stored data when available
+        const username = await getDiscordUsername(activity.user.discordId, data.userHandle);
 
         switch (activity.type) {
           case 'reaction':
@@ -782,28 +787,44 @@ export const apiHandlers = {
 
           case 'tip':
             icon = '💸';
-            // Fix duplicate token display and add USD value if available
-            const amount = data.amount || '0';
-            const token = data.token || data.tokenSymbol || 'Unknown';
+            // Parse tip amount and token - data.amount might be "2 ABSTER" format
+            let amount = data.amount || '0';
+            let token = data.token || data.tokenSymbol || 'Unknown';
 
-            // Remove duplicate if token already includes symbol
-            let cleanToken = token;
-            if (typeof token === 'string' && token.includes(' ')) {
-              const parts = token.trim().split(' ');
-              cleanToken = parts[0]; // Use first part
+            // If amount already includes token symbol, parse it
+            if (typeof amount === 'string' && amount.includes(' ')) {
+              const parts = amount.trim().split(' ');
+              amount = parts[0]; // Numeric part
+              if (!data.token) {
+                token = parts[1]; // Token symbol from amount if not separately provided
+              }
             }
 
-            let tipDisplay = `${amount} ${cleanToken}`;
+            // Clean up token symbol (remove duplicates)
+            if (typeof token === 'string' && token.includes(' ')) {
+              const parts = token.trim().split(' ');
+              token = parts[0]; // Use first part
+            }
+
+            let tipDisplay = `${amount} ${token}`;
 
             // Check if data already includes USD value
             if (data.usdValue && data.usdValue > 0) {
               tipDisplay += ` ($${data.usdValue.toFixed(2)} USD)`;
             } else if (data.usdPrice && data.usdPrice > 0) {
-              const usdValue = parseFloat(amount) * data.usdPrice;
-              tipDisplay += ` ($${usdValue.toFixed(2)} USD)`;
+              const numericAmount = parseFloat(amount.toString());
+              if (!isNaN(numericAmount)) {
+                const usdValue = numericAmount * data.usdPrice;
+                tipDisplay += ` ($${usdValue.toFixed(2)} USD)`;
+              }
             }
 
-            text = `${username} sent a tip of ${tipDisplay}`;
+            // Get target user's proper handle
+            const targetHandle = data.targetUserHandle && !data.targetUserHandle.startsWith('User#')
+              ? data.targetUserHandle
+              : `User#${String(data.targetUserId).slice(-4)}`;
+
+            text = `${username} sent a tip of ${tipDisplay} to ${targetHandle}`;
             break;
 
           case 'achievement':

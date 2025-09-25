@@ -657,11 +657,31 @@ export const apiHandlers = {
                 orderBy: { createdAt: 'desc' },
                 take: 20
             });
-            // Format activities for display
-            const formattedActivities = activities.map(activity => {
+            // Helper function to get Discord username with fallback to stored data
+            const getDiscordUsername = async (discordId, storedHandle) => {
+                // If we have a stored handle and it's not a fallback format, use it
+                if (storedHandle && !storedHandle.startsWith('User#')) {
+                    return storedHandle;
+                }
+                try {
+                    const client = getDiscordClient();
+                    if (client) {
+                        const user = await client.users.fetch(discordId);
+                        return user.displayName || user.username || storedHandle || `User#${discordId.slice(-4)}`;
+                    }
+                }
+                catch (error) {
+                    // Fallback to stored handle or default format
+                }
+                return storedHandle || `User#${discordId.slice(-4)}`;
+            };
+            // Format activities for display with enhanced data
+            const formattedActivities = await Promise.all(activities.map(async (activity) => {
                 const data = activity.data;
                 let text = '';
                 let icon = '📝';
+                // Get proper username using stored data when available
+                const username = await getDiscordUsername(activity.user.discordId, data.userHandle);
                 switch (activity.type) {
                     case 'reaction':
                         const reactionEmojis = {
@@ -672,34 +692,67 @@ export const apiHandlers = {
                             star: '⭐'
                         };
                         icon = reactionEmojis[data.reactionType] || '👍';
-                        text = `User#${activity.user.discordId.slice(-4)} reacted with ${icon} to ${data.targetUserHandle}`;
+                        text = `${username} reacted with ${icon} to ${data.targetUserHandle}`;
                         break;
                     case 'follow':
                         icon = '👥';
-                        text = `User#${activity.user.discordId.slice(-4)} started following ${data.targetUserHandle}`;
+                        text = `${username} started following ${data.targetUserHandle}`;
                         break;
                     case 'tip':
                         icon = '💸';
-                        text = `User#${activity.user.discordId.slice(-4)} sent a tip of ${data.amount} ${data.token}`;
+                        // Parse tip amount and token - data.amount might be "2 ABSTER" format
+                        let amount = data.amount || '0';
+                        let token = data.token || data.tokenSymbol || 'Unknown';
+                        // If amount already includes token symbol, parse it
+                        if (typeof amount === 'string' && amount.includes(' ')) {
+                            const parts = amount.trim().split(' ');
+                            amount = parts[0]; // Numeric part
+                            if (!data.token) {
+                                token = parts[1]; // Token symbol from amount if not separately provided
+                            }
+                        }
+                        // Clean up token symbol (remove duplicates)
+                        if (typeof token === 'string' && token.includes(' ')) {
+                            const parts = token.trim().split(' ');
+                            token = parts[0]; // Use first part
+                        }
+                        let tipDisplay = `${amount} ${token}`;
+                        // Check if data already includes USD value
+                        if (data.usdValue && data.usdValue > 0) {
+                            tipDisplay += ` ($${data.usdValue.toFixed(2)} USD)`;
+                        }
+                        else if (data.usdPrice && data.usdPrice > 0) {
+                            const numericAmount = parseFloat(amount.toString());
+                            if (!isNaN(numericAmount)) {
+                                const usdValue = numericAmount * data.usdPrice;
+                                tipDisplay += ` ($${usdValue.toFixed(2)} USD)`;
+                            }
+                        }
+                        // Get target user's proper handle
+                        const targetHandle = data.targetUserHandle && !data.targetUserHandle.startsWith('User#')
+                            ? data.targetUserHandle
+                            : `User#${String(data.targetUserId).slice(-4)}`;
+                        text = `${username} sent a tip of ${tipDisplay} to ${targetHandle}`;
                         break;
                     case 'achievement':
                         icon = '🏆';
-                        text = `User#${activity.user.discordId.slice(-4)} unlocked achievement: ${data.achievementName}`;
+                        text = `${username} unlocked achievement: ${data.achievementName}`;
                         break;
                     case 'join':
                         icon = '💎';
-                        text = `User#${activity.user.discordId.slice(-4)} joined PenguBook`;
+                        text = `${username} joined PenguBook`;
                         break;
                     default:
-                        text = `User#${activity.user.discordId.slice(-4)} performed an action`;
+                        text = `${username} performed an action`;
                 }
                 return {
                     icon,
                     text,
                     time: getTimeAgo(activity.createdAt),
-                    type: activity.type
+                    type: activity.type,
+                    userId: activity.user.discordId
                 };
-            });
+            }));
             return res.json({
                 success: true,
                 activities: formattedActivities
@@ -708,6 +761,76 @@ export const apiHandlers = {
         catch (error) {
             console.error("Activity feed API error:", error);
             res.status(500).json({ success: false, error: "Failed to fetch activity feed" });
+        }
+    },
+    // Search users for compose message
+    async searchUsers(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            const query = req.query.q;
+            if (!query || query.length < 2) {
+                return res.json({ success: true, users: [] });
+            }
+            // Search PenguBook users by Discord handle/username
+            const users = await prisma.user.findMany({
+                where: {
+                    AND: [
+                        { showInPenguBook: true },
+                        { discordId: { not: currentUser.discordId } }, // Exclude self
+                        {
+                            OR: [
+                                { discordId: { contains: query, mode: 'insensitive' } },
+                                // You could add more search fields here if you store usernames
+                            ]
+                        }
+                    ]
+                },
+                select: {
+                    discordId: true,
+                    createdAt: true,
+                    wins: true,
+                    bioText: true
+                },
+                take: 10,
+                orderBy: [
+                    { wins: 'desc' }, // Popular users first
+                    { createdAt: 'desc' }
+                ]
+            });
+            // Enhance with Discord usernames
+            const client = getDiscordClient();
+            const enhancedUsers = await Promise.all(users.map(async (user) => {
+                let displayName = `User#${user.discordId.slice(-4)}`;
+                let avatarURL = `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png`;
+                if (client) {
+                    try {
+                        const discordUser = await client.users.fetch(user.discordId);
+                        displayName = discordUser.displayName || discordUser.username;
+                        avatarURL = discordUser.displayAvatarURL({ size: 64 });
+                    }
+                    catch (error) {
+                        // Keep fallback values
+                    }
+                }
+                return {
+                    discordId: user.discordId,
+                    displayName,
+                    avatarURL,
+                    wins: user.wins,
+                    bioText: user.bioText?.substring(0, 100) || ''
+                };
+            }));
+            return res.json({
+                success: true,
+                users: enhancedUsers
+            });
+        }
+        catch (error) {
+            console.error("User search API error:", error);
+            res.status(500).json({ success: false, error: "Failed to search users" });
         }
     }
 };
