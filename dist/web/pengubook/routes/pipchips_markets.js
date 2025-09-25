@@ -410,11 +410,23 @@ function generatePIPChipsMarketsPageContent(markets, options) {
       }
 
       .pipchips-info-box {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
+        background: #1f2937;
+        border: 1px solid #374151;
         border-radius: 12px;
         padding: 20px;
         margin-top: 40px;
+        color: #f3f4f6;
+      }
+      .pipchips-info-box h3 {
+        color: #60a5fa;
+        margin-bottom: 16px;
+      }
+      .pipchips-info-box ul {
+        color: #d1d5db;
+        line-height: 1.6;
+      }
+      .pipchips-info-box li {
+        margin-bottom: 8px;
       }
     </style>
   `;
