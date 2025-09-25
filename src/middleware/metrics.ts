@@ -199,8 +199,8 @@ export const startBusinessMetricsCollection = (): void => {
     try {
       const { prisma } = await import('../services/db.js');
 
-      // Active users in last 24 hours (users who placed bets)
-      const activeUsers24h = await prisma.predictionBet.groupBy({
+      // Active users in last 24 hours (users who placed participations)
+      const activeUsers24h = await prisma.predictionParticipation.groupBy({
         by: ['userId'],
         where: {
           createdAt: {
@@ -218,7 +218,7 @@ export const startBusinessMetricsCollection = (): void => {
       );
 
       // Active users in last 7 days
-      const activeUsers7d = await prisma.predictionBet.groupBy({
+      const activeUsers7d = await prisma.predictionParticipation.groupBy({
         by: ['userId'],
         where: {
           createdAt: {

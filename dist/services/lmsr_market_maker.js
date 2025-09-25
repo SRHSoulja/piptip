@@ -1,5 +1,5 @@
 // src/services/lmsr_market_maker.ts - Logarithmic Market Scoring Rule implementation with numerical stability
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 import { createLogger } from '../utils/logger.js';
 // Configure Decimal.js for high precision financial calculations
 Decimal.set({
@@ -76,7 +76,7 @@ export class LMSRMarketMaker {
             return result;
         }
         catch (error) {
-            logger.error('LMSR cost calculation failed', error);
+            logger.error({ error }, 'LMSR cost calculation failed');
             logger.error({ error, shares }, 'Cost calculation failed');
             throw error;
         }
@@ -129,7 +129,7 @@ export class LMSRMarketMaker {
             return price;
         }
         catch (error) {
-            logger.error('lmsr_price_calculation_failed', 'high', 'lmsr');
+            logger.error('lmsr_price_calculation_failed - high priority lmsr error');
             logger.error({ error, outcome, shares }, 'Price calculation failed');
             throw error;
         }
@@ -181,7 +181,7 @@ export class LMSRMarketMaker {
             return prices;
         }
         catch (error) {
-            logger.error('lmsr_all_prices_failed', 'high', 'lmsr');
+            logger.error('lmsr_all_prices_failed - high priority lmsr error');
             logger.error({ error, shares }, 'All prices calculation failed');
             throw error;
         }
@@ -224,7 +224,7 @@ export class LMSRMarketMaker {
             };
         }
         catch (error) {
-            logger.error('lmsr_buy_cost_failed', 'high', 'lmsr');
+            logger.error('lmsr_buy_cost_failed - high priority lmsr error');
             logger.error({ error, outcome, sharesToBuy: sharesToBuy.toString() }, 'Buy cost calculation failed');
             throw error;
         }
@@ -264,7 +264,7 @@ export class LMSRMarketMaker {
             return bestResult;
         }
         catch (error) {
-            logger.error('lmsr_optimize_failed', 'medium', 'lmsr');
+            logger.error('lmsr_optimize_failed - medium priority lmsr error');
             logger.error({ error, outcome, budget: budget.toString() }, 'Share optimization failed');
             throw error;
         }
@@ -315,7 +315,7 @@ export class LMSRMarketMaker {
                     return false;
                 }
                 const amount = shares[outcome];
-                if (amount.isNaN() || amount.isInfinite() || amount.lt(0)) {
+                if (amount.isNaN() || !amount.isFinite() || amount.lt(0)) {
                     logger.warn({ outcome, amount: amount.toString() }, 'Invalid share amount');
                     return false;
                 }

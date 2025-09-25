@@ -6,7 +6,7 @@ import { placeTournamentAwareBet, processWinningsWithContext } from "./tournamen
  * Tournament-aware wrapper for prediction market betting
  * This integrates with existing Discord commands and prediction systems
  */
-export async function placeBetWithTournamentContext(params: {
+export async function placeParticipationWithTournamentContext(params: {
   userId: number;
   discordId: string;
   marketId: string;
@@ -16,8 +16,8 @@ export async function placeBetWithTournamentContext(params: {
   const { userId, discordId, marketId, amount, side } = params;
 
   try {
-    // Use tournament context-aware betting
-    const result = await placeTournamentAwareBet({
+    // Use tournament context-aware participation
+    const result = await placeTournamentAwareParticipation({
       userId,
       marketId,
       amount,
@@ -25,14 +25,14 @@ export async function placeBetWithTournamentContext(params: {
     });
 
     if (result.success) {
-      console.log(`🎯 Bet placed: ${discordId} wagered ${amount} PIPChips on ${side} ${result.usedTournamentBalance ? '(Tournament)' : '(Regular)'}`);
+      console.log(`🎯 Participation placed: ${discordId} wagered ${amount} PIPChips on ${side} ${result.usedTournamentBalance ? '(Tournament)' : '(Regular)'}`);
     }
 
     return result;
 
   } catch (error) {
-    console.error('Tournament integration bet error:', error);
-    return { success: false, error: 'Failed to place bet' };
+    console.error('Tournament integration participation error:', error);
+    return { success: false, error: 'Failed to place participation' };
   }
 }
 
@@ -41,8 +41,8 @@ export async function placeBetWithTournamentContext(params: {
  */
 export async function processPayoutsWithTournamentContext(marketId: string, outcome: 'YES' | 'NO'): Promise<void> {
   try {
-    // Get all bets for this market
-    const bets = await prisma.predictionBet.findMany({
+    // Get all participations for this market
+    const participations = await prisma.predictionParticipation.findMany({
       where: { marketId },
       include: {
         user: {
@@ -56,25 +56,25 @@ export async function processPayoutsWithTournamentContext(marketId: string, outc
       }
     });
 
-    console.log(`🎯 Processing ${bets.length} bets for market ${marketId} with outcome ${outcome}`);
+    console.log(`🎯 Processing ${participations.length} participations for market ${marketId} with outcome ${outcome}`);
 
-    for (const bet of bets) {
-      const won = bet.side === outcome;
+    for (const participation of participations) {
+      const won = participation.side === outcome;
       let payout = 0;
 
       if (won) {
         // Calculate payout based on market maker or simple 2:1 ratio
         // For now, using simple calculation
-        payout = Number(bet.amount) * 2; // Simplified - would use LMSR calculations
+        payout = Number(participation.amount) * 2; // Simplified - would use LMSR calculations
       } else {
-        // Lost bet - no payout
+        // Lost participation - no payout
         payout = 0;
       }
 
       // Process winnings with tournament context
       if (payout > 0) {
         await processWinningsWithContext(
-          bet.user.id,
+          participation.user.id,
           marketId,
           payout,
           won
@@ -82,7 +82,7 @@ export async function processPayoutsWithTournamentContext(marketId: string, outc
       }
 
       // Log result
-      console.log(`${won ? '✅ Win' : '❌ Loss'}: ${bet.user.discordId} ${won ? `gets ${payout}` : 'loses'} PIPChips ${bet.user.inTournamentMode ? '(Tournament)' : '(Regular)'}`);
+      console.log(`${won ? '✅ Win' : '❌ Loss'}: ${participation.user.discordId} ${won ? `gets ${payout}` : 'loses'} PIPChips ${participation.user.inTournamentMode ? '(Tournament)' : '(Regular)'}`);
     }
 
   } catch (error) {
@@ -144,25 +144,25 @@ export async function getUserBalanceContext(userId: number): Promise<{
 }
 
 /**
- * Check if user can place bet (respects tournament or regular balance)
+ * Check if user can place participation (respects tournament or regular balance)
  */
-export async function canUserPlaceBet(userId: number, amount: number): Promise<{ canBet: boolean; reason?: string; mode: 'tournament' | 'regular' }> {
+export async function canUserPlaceParticipation(userId: number, amount: number): Promise<{ canParticipate: boolean; reason?: string; mode: 'tournament' | 'regular' }> {
   try {
     const context = await getUserBalanceContext(userId);
 
     if (context.balance < amount) {
       return {
-        canBet: false,
+        canParticipate: false,
         reason: `Insufficient ${context.mode === 'tournament' ? 'tournament' : 'regular'} PIPChips (${context.balance} available, ${amount} needed)`,
         mode: context.mode
       };
     }
 
-    return { canBet: true, mode: context.mode };
+    return { canParticipate: true, mode: context.mode };
 
   } catch (error) {
-    console.error('Can user bet check error:', error);
-    return { canBet: false, reason: 'Error checking balance', mode: 'regular' };
+    console.error('Can user participate check error:', error);
+    return { canParticipate: false, reason: 'Error checking balance', mode: 'regular' };
   }
 }
 

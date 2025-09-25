@@ -1,7 +1,7 @@
 // src/services/outbox/outbox_service.ts - Reliable Discord message delivery with outbox pattern
 import { Prisma, OutboxStatus } from '@prisma/client';
 import { Client, TextChannel, EmbedBuilder, ButtonBuilder, ActionRowBuilder } from 'discord.js';
-import { prisma } from '../database.js';
+import { prisma } from '../db.js';
 import crypto from 'crypto';
 
 interface OutboxMessage {
@@ -400,7 +400,7 @@ export class OutboxService {
     }));
 
     return {
-      messagesByStatus: stats.reduce((acc, stat) => {
+      messagesByStatus: stats.reduce((acc: Record<string, number>, stat: any) => {
         acc[stat.status] = stat._count.id;
         return acc;
       }, {} as Record<string, number>),

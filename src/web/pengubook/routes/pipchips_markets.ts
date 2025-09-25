@@ -6,7 +6,7 @@ import { prisma } from "../../../services/db.js";
 import { pipchipsLMSR, PIPChipsLMSR } from "../../../services/pipchips_lmsr.js";
 import { pipchipsService } from "../../../services/pipchips_service.js";
 import { findOrCreateUser } from "../../../services/user_helpers.js";
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 
 export async function pipchipsMarketsHandler(req: Request, res: Response) {
   try {
@@ -31,6 +31,9 @@ export async function pipchipsMarketsHandler(req: Request, res: Response) {
       where.status = 'RESOLVED';
     }
 
+    // Ensure user exists in database
+    const dbUser = await findOrCreateUser(currentUser.discordId);
+
     const [markets, totalMarkets, userBalance] = await Promise.all([
       prisma.predictionMarket.findMany({
         where,
@@ -42,7 +45,7 @@ export async function pipchipsMarketsHandler(req: Request, res: Response) {
         skip: offsetNum,
         include: {
           _count: {
-            select: { bets: { where: { tokenSymbol: 'PIPCHIPS' } } }
+            select: { participations: { where: { tokenSymbol: 'PIPCHIPS' } } }
           }
         }
       }),
@@ -88,7 +91,7 @@ export async function pipchipsMarketsHandler(req: Request, res: Response) {
       return {
         ...market,
         totalVolume: market.totalPipchipsVolume || 0,
-        totalBets: market._count.bets,
+        totalBets: market._count.participations,
         timeLeftMs: Math.max(0, timeLeft),
         bettingClosed,
         prices: pricesMap,
@@ -125,6 +128,9 @@ export async function pipchipsMarketDetailHandler(req: Request, res: Response) {
       return res.redirect("/auth/discord");
     }
 
+    // Ensure user exists in database
+    const dbUser = await findOrCreateUser(currentUser.discordId);
+
     const { marketId } = req.params;
 
     const market = await prisma.predictionMarket.findUnique({
@@ -135,7 +141,7 @@ export async function pipchipsMarketDetailHandler(req: Request, res: Response) {
       include: {
         _count: {
           select: {
-            bets: { where: { tokenSymbol: 'PIPCHIPS' } }
+            participations: { where: { tokenSymbol: 'PIPCHIPS' } }
           }
         }
       }
@@ -145,8 +151,8 @@ export async function pipchipsMarketDetailHandler(req: Request, res: Response) {
       return res.status(404).send('PIPChips market not found');
     }
 
-    // Get user's bets on this market
-    const userBets = await prisma.predictionBet.findMany({
+    // Get user's participations on this market
+    const userParticipations = await prisma.predictionParticipation.findMany({
       where: {
         marketId: marketId,
         userId: currentUser.discordId,
@@ -155,8 +161,8 @@ export async function pipchipsMarketDetailHandler(req: Request, res: Response) {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Get recent betting history
-    const recentBets = await prisma.predictionBet.findMany({
+    // Get recent participation history
+    const recentParticipations = await prisma.predictionParticipation.findMany({
       where: {
         marketId,
         tokenSymbol: 'PIPCHIPS'
@@ -208,30 +214,30 @@ export async function pipchipsMarketDetailHandler(req: Request, res: Response) {
     const bettingClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
 
     // Calculate potential payouts for different bet amounts
-    const potentialBets = [10, 50, 100, 500, 1000].map(amount => {
+    const potentialBets = await Promise.all([10, 50, 100, 500, 1000].map(async (amount) => {
       const results: Record<string, any> = {};
       for (const outcome of market.marketOutcomes) {
         try {
-          const costCalc = lmsr.calculateBuyCost(currentShares, outcome, new Decimal(amount).div(1000));
+          const costCalc = await lmsr.calculateBetCost(currentShares, outcome, BigInt(amount));
           results[outcome] = {
             amount,
-            cost: costCalc.cost.times(1000).toNumber(),
+            cost: Number(costCalc.actualCost),
             shares: costCalc.sharesPurchased.toNumber(),
             payout: costCalc.sharesPurchased.times(1000).toNumber(),
-            odds: costCalc.sharesPurchased.times(1000).div(costCalc.cost.times(1000)).toNumber()
+            odds: costCalc.sharesPurchased.times(1000).div(new Decimal(Number(costCalc.actualCost))).toNumber()
           };
         } catch (error) {
           results[outcome] = { amount, error: 'Cannot calculate' };
         }
       }
       return results;
-    });
+    }));
 
     const content = generatePIPChipsMarketDetailContent({
       market: {
         ...market,
         totalVolume: market.totalPipchipsVolume || 0,
-        totalBets: market._count.bets,
+        totalBets: market._count.participations,
         timeLeftMs: Math.max(0, timeLeft),
         bettingClosed,
         prices: pricesMap,
@@ -239,8 +245,8 @@ export async function pipchipsMarketDetailHandler(req: Request, res: Response) {
         marketDepth,
         currency: 'PIPCHIPS'
       },
-      userBets,
-      recentBets,
+      userParticipations,
+      recentParticipations,
       userBalance: Number(userBalance.balance),
       streakInfo,
       potentialBets,
@@ -485,7 +491,7 @@ function generateMarketCard(market: any) {
 }
 
 function generatePIPChipsMarketDetailContent(data: any) {
-  const { market, userBets, userBalance, streakInfo, potentialBets } = data;
+  const { market, userParticipations, userBalance, streakInfo, potentialBets } = data;
 
   return `
     <div class="pipchips-market-detail">
@@ -548,17 +554,17 @@ function generatePIPChipsMarketDetailContent(data: any) {
         </div>
       ` : ''}
 
-      <!-- User's Bets -->
-      ${userBets.length > 0 ? `
-        <div class="user-bets-section">
+      <!-- User's Participations -->
+      ${userParticipations.length > 0 ? `
+        <div class="user-participations-section">
           <h3>Your Predictions</h3>
-          <div class="user-bets">
-            ${userBets.map((bet: any) => `
-              <div class="user-bet">
-                <span class="bet-outcome">${bet.side}</span>
-                <span class="bet-amount">${bet.amount} PIPChips</span>
-                <span class="potential-payout">→ ${bet.potentialPayout.toLocaleString()} PIPChips</span>
-                <span class="bet-date">${new Date(bet.createdAt).toLocaleDateString()}</span>
+          <div class="user-participations">
+            ${userParticipations.map((participation: any) => `
+              <div class="user-participation">
+                <span class="participation-outcome">${participation.side}</span>
+                <span class="participation-amount">${participation.amount} PIPChips</span>
+                <span class="potential-payout">→ ${participation.potentialPayout.toLocaleString()} PIPChips</span>
+                <span class="participation-date">${new Date(participation.createdAt).toLocaleDateString()}</span>
               </div>
             `).join('')}
           </div>
@@ -576,7 +582,7 @@ function generatePIPChipsMarketDetailContent(data: any) {
         if (!confirm(\`Place \${amount} PIPChips on \${outcome}?\`)) return;
 
         try {
-          const response = await fetch('/api/pipchips/bet', {
+          const response = await fetch('/api/pipchips/participate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ marketId, outcome, pipchipsAmount: amount })
@@ -585,13 +591,13 @@ function generatePIPChipsMarketDetailContent(data: any) {
           const result = await response.json();
 
           if (result.success) {
-            alert(\`Bet placed successfully! You bought \${result.bet.sharesPurchased.toFixed(2)} shares.\`);
+            alert(\`Participation placed successfully! You bought \${result.participation.sharesPurchased.toFixed(2)} shares.\`);
             location.reload();
           } else {
             alert('Error: ' + result.error);
           }
         } catch (error) {
-          alert('Network error placing bet');
+          alert('Network error placing participation');
         }
       }
     </script>

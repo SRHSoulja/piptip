@@ -97,14 +97,14 @@ export class ReconciliationService {
             const balances = await tx.userBalance.findMany({
                 where,
                 include: {
-                    user: { select: { discordId: true } },
-                    token: { select: { symbol: true } }
+                    User: { select: { discordId: true } },
+                    Token: { select: { symbol: true } }
                 }
             });
             result.summary.totalChecked = balances.length;
             for (const balance of balances) {
-                const calculatedBalance = await this.calculateUserBalance(tx, balance.userId, balance.tokenId, jobData.scope);
-                const actualBalance = BigInt(balance.amount);
+                const calculatedBalance = await this.calculateUserBalance(tx, balance.userId.toString(), balance.tokenId.toString(), jobData.scope);
+                const actualBalance = BigInt(balance.amount.toString());
                 const expectedBalance = calculatedBalance;
                 const difference = actualBalance - expectedBalance;
                 const absDifference = difference < 0 ? -difference : difference;
@@ -127,26 +127,25 @@ export class ReconciliationService {
                         await tx.userBalance.update({
                             where: { userId_tokenId: { userId: balance.userId, tokenId: balance.tokenId } },
                             data: {
-                                amount: expectedBalance.toString(),
-                                lastUpdated: new Date()
+                                amount: expectedBalance.toString()
                             }
                         });
                         // Log the correction
                         await tx.transaction.create({
                             data: {
-                                id: `reconciliation_${balance.userId}_${balance.tokenId}_${Date.now()}`,
+                                // id will be auto-generated
                                 userId: balance.userId,
                                 tokenId: balance.tokenId,
                                 type: 'RECONCILIATION',
                                 amount: difference.toString(),
-                                description: `Balance reconciliation: corrected drift of ${difference.toString()}`,
-                                metadata: {
+                                // description: `Balance reconciliation: corrected drift of ${difference.toString()}`, // Field doesn't exist in schema
+                                metadata: JSON.stringify({
                                     jobId: jobData.id,
                                     jobType: 'reconciliation',
                                     severity,
                                     oldBalance: actualBalance.toString(),
                                     newBalance: expectedBalance.toString(),
-                                }
+                                })
                             }
                         });
                         result.corrections.push({
@@ -181,8 +180,8 @@ export class ReconciliationService {
         // Calculate expected balance from transaction history
         const transactions = await tx.transaction.findMany({
             where: {
-                userId,
-                tokenId,
+                userId: parseInt(userId),
+                tokenId: parseInt(tokenId),
                 ...(scope.startTime && { createdAt: { gte: new Date(scope.startTime) } }),
                 ...(scope.endTime && { createdAt: { lte: new Date(scope.endTime) } })
             }
@@ -190,7 +189,7 @@ export class ReconciliationService {
         // Sum all transactions to get expected balance
         let calculatedBalance = 0n;
         for (const tx_record of transactions) {
-            calculatedBalance += BigInt(tx_record.amount);
+            calculatedBalance += BigInt(tx_record.amount.toString());
         }
         return calculatedBalance;
     }
@@ -209,16 +208,16 @@ export class ReconciliationService {
                 where.id = jobData.scope.marketId;
             const markets = await tx.predictionMarket.findMany({
                 where,
-                include: { bets: true }
+                include: { participations: true }
             });
             result.summary.totalChecked = markets.length;
             for (const market of markets) {
-                // Calculate expected pool from bets
-                const expectedYesTotal = market.bets
-                    .filter(bet => bet.side === 'YES')
+                // Calculate expected pool from participations
+                const expectedYesTotal = market.participations
+                    .filter((bet) => bet.side === 'YES')
                     .reduce((sum, bet) => sum + bet.amount, 0);
-                const expectedNoTotal = market.bets
-                    .filter(bet => bet.side === 'NO')
+                const expectedNoTotal = market.participations
+                    .filter((bet) => bet.side === 'NO')
                     .reduce((sum, bet) => sum + bet.amount, 0);
                 // Compare with stored totals
                 const actualYesTotal = market.totalYesBets;

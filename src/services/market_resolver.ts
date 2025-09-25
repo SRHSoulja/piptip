@@ -327,7 +327,7 @@ export class MarketResolverService {
         console.log(`🎯 Applying enhanced filtering for verified token: ${symbol}`);
 
         // Log top candidates
-        filteredPairs.slice(0, 5).forEach((pair, index) => {
+        filteredPairs.slice(0, 5).forEach((pair: any, index: number) => {
           const liquidity = parseFloat(pair.liquidity?.usd || '0');
           const volume = parseFloat(pair.volume?.h24 || '0');
           const price = parseFloat(pair.priceUsd || '0');
@@ -863,7 +863,7 @@ export class MarketResolverService {
 
     try {
       // Get all active sports markets
-      const sportsMarkets = await predictionMarkets.getActiveMarkets().then(markets =>
+      const sportsMarkets = await predictionMarkets.getActiveMarkets('').then(markets =>
         markets.filter(m => m.marketType.startsWith('SPORTS_') && m.marketData?.eventId)
       );
 
@@ -945,13 +945,13 @@ export class MarketResolverService {
     try {
       const { prisma } = await import("./db.js");
 
-      // Get all bets on this market
-      const bets = await prisma.predictionBet.findMany({
+      // Get all participations on this market
+      const participations = await prisma.predictionParticipation.findMany({
         where: { marketId },
-        include: { User: true }
+        // User relation doesn't exist in PredictionParticipation schema
       });
 
-      // Refund all bets
+      // Refund all participations
       await prisma.$transaction(async (tx) => {
         // Update market status
         await tx.predictionMarket.update({
@@ -963,28 +963,30 @@ export class MarketResolverService {
               ...metadata,
               cancelledAt: new Date().toISOString(),
               cancelReason: reason,
-              refundsProcessed: bets.length
+              refundsProcessed: participations.length
             }
           }
         });
 
         // Process refunds
-        for (const bet of bets) {
-          if (bet.User) {
+        for (const participation of participations) {
+          // Get user by participation.userId
+          const user = await tx.user.findUnique({ where: { discordId: participation.userId } });
+          if (user) {
             await tx.userBalance.updateMany({
               where: {
-                userId: bet.User.id,
-                tokenSymbol: bet.tokenSymbol
+                userId: user.id,
+                Token: { symbol: participation.tokenSymbol }
               },
               data: {
-                amount: { increment: bet.amount }
+                amount: { increment: participation.amount }
               }
             });
           }
         }
       });
 
-      console.log(`✅ Sports market ${marketId} cancelled and ${bets.length} bets refunded due to: ${reason}`);
+      console.log(`✅ Sports market ${marketId} cancelled and ${participations.length} participations refunded due to: ${reason}`);
 
     } catch (error) {
       console.error(`Failed to cancel sports market ${marketId}:`, error);

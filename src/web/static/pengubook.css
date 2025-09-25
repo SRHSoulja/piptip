@@ -3015,12 +3015,13 @@ p {
 
 .pg-activity-text {
   margin: 0 0 var(--pg-space-1) 0;
-  color: var(--pg-dark-700);
+  color: var(--pg-dark-800);
   line-height: 1.5;
+  font-weight: 500;
 }
 
 .pg-activity-text strong {
-  color: var(--pg-dark-800);
+  color: var(--pg-dark-900);
   font-weight: 600;
 }
 

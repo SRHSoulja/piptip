@@ -1,5 +1,5 @@
 // src/services/pipchips_lmsr.ts - PIPChips-powered LMSR Market Maker for web predictions
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 import { LMSRMarketMaker } from './lmsr_market_maker.js';
 import { pipchipsService } from './pipchips_service.js';
 import { prisma } from './db.js';
@@ -109,8 +109,8 @@ export class PIPChipsLMSR {
                 for (const o of market.marketOutcomes) {
                     newPrices[o] = this.lmsr.calculatePrice(newShares, o);
                 }
-                // 7. Create bet record
-                const bet = await tx.predictionBet.create({
+                // 7. Create participation record
+                const participation = await tx.predictionParticipation.create({
                     data: {
                         userId,
                         marketId,
@@ -156,7 +156,7 @@ export class PIPChipsLMSR {
                 };
             });
             financialLog.success({
-                betId: marketId,
+                participationId: marketId,
                 newBalance: 'calculated',
                 shares: result.sharesPurchased.toString()
             });
@@ -167,12 +167,12 @@ export class PIPChipsLMSR {
                 amount: result.pipchipsAmount.toString(),
                 shares: result.sharesPurchased.toString(),
                 payout: result.potentialPayout.toString()
-            }, 'PIPChips bet placed successfully');
+            }, 'PIPChips participation placed successfully');
             return result;
         }
         catch (error) {
             financialLog.error(error);
-            logger.error({ error, userId, marketId, outcome, amount: pipchipsAmount.toString() }, 'Place bet failed');
+            logger.error({ error, userId, marketId, outcome, amount: pipchipsAmount.toString() }, 'Place participation failed');
             throw error;
         }
     }
@@ -184,38 +184,38 @@ export class PIPChipsLMSR {
         try {
             financialLog.start();
             const result = await prisma.$transaction(async (tx) => {
-                // 1. Get all bets for this market
-                const allBets = await tx.predictionBet.findMany({
+                // 1. Get all participations for this market
+                const allParticipations = await tx.predictionParticipation.findMany({
                     where: { marketId },
                     include: { user: true }
                 });
-                const winningBets = allBets.filter(bet => bet.side === winningOutcome);
-                const losingBets = allBets.filter(bet => bet.side !== winningOutcome);
+                const winningParticipations = allParticipations.filter(participation => participation.side === winningOutcome);
+                const losingParticipations = allParticipations.filter(participation => participation.side !== winningOutcome);
                 let totalPayout = BigInt(0);
-                // 2. Process winning bets - pay out 1000 PIPChips per share
-                for (const bet of winningBets) {
-                    const payout = BigInt(Math.floor(bet.sharesPurchased * 1000));
-                    await pipchipsService.creditPIPChips(bet.userId, payout, 'PREDICTION_WIN', marketId, `Won ${payout} PIPChips from market resolution`, {
+                // 2. Process winning participations - pay out 1000 PIPChips per share
+                for (const participation of winningParticipations) {
+                    const payout = BigInt(Math.floor(participation.sharesPurchased * 1000));
+                    await pipchipsService.creditPIPChips(participation.userId, payout, 'PREDICTION_WIN', marketId, `Won ${payout} PIPChips from market resolution`, {
                         marketId,
-                        originalBet: bet.amount,
+                        originalParticipation: participation.amount,
                         outcome: winningOutcome,
-                        shares: bet.sharesPurchased
+                        shares: participation.sharesPurchased
                     });
                     totalPayout += payout;
                 }
-                // 3. Log losing bets (no payout, already debited)
-                for (const bet of losingBets) {
+                // 3. Log losing participations (no payout, already debited)
+                for (const participation of losingParticipations) {
                     await pipchipsService.processTransaction({
-                        userId: bet.userId,
+                        userId: participation.userId,
                         amount: BigInt(0), // No payout
                         type: 'PREDICTION_LOSS',
                         referenceId: marketId,
-                        description: `Lost ${bet.amount} PIPChips from market resolution`,
+                        description: `Lost ${participation.amount} PIPChips from market resolution`,
                         metadata: {
                             marketId,
-                            originalBet: bet.amount,
-                            outcome: bet.side,
-                            shares: bet.sharesPurchased
+                            originalParticipation: participation.amount,
+                            outcome: participation.side,
+                            shares: participation.sharesPurchased
                         }
                     });
                 }
@@ -233,8 +233,8 @@ export class PIPChipsLMSR {
                     marketId,
                     winningOutcome,
                     totalPayout,
-                    winnersCount: winningBets.length,
-                    losersCount: losingBets.length
+                    winnersCount: winningParticipations.length,
+                    losersCount: losingParticipations.length
                 };
             });
             financialLog.success({

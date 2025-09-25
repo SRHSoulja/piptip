@@ -9,7 +9,7 @@ export interface TournamentEntry {
   entryFeeAmount: number;
 }
 
-export interface TournamentBet {
+export interface TournamentParticipation {
   userId: number;
   marketId: string;
   amount: number;
@@ -150,9 +150,9 @@ export async function enterTournament(params: TournamentEntry): Promise<{ succes
 }
 
 /**
- * Place a bet using tournament context (isolated PIPChips vs regular balance)
+ * Place a participation using tournament context (isolated PIPChips vs regular balance)
  */
-export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ success: boolean; error?: string; usedTournamentBalance?: boolean }> {
+export async function placeTournamentAwareParticipation(params: TournamentParticipation): Promise<{ success: boolean; error?: string; usedTournamentBalance?: boolean }> {
   try {
     const { userId, marketId, amount, side } = params;
 
@@ -182,7 +182,7 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
         return { success: false, error: 'Insufficient tournament PIPChips' };
       }
 
-      // Process tournament bet
+      // Process tournament participation
       await prisma.$transaction(async (tx) => {
         // Deduct from tournament balance
         await tx.tournamentParticipant.update({
@@ -194,8 +194,8 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
           }
         });
 
-        // Create prediction bet with tournament context
-        await tx.predictionBet.create({
+        // Create prediction participation with tournament context
+        await tx.predictionParticipation.create({
           data: {
             userId,
             marketId,
@@ -204,7 +204,7 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
             tokenSymbol: 'PIPChips', // Tournament PIPChips
             metadata: {
               tournamentId: user.activeTournamentId,
-              isTournamentBet: true
+              isTournamentParticipation: true
             }
           }
         });
@@ -214,8 +214,8 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
           data: {
             userId,
             amount: -amount,
-            type: 'TOURNAMENT_BET',
-            description: `Tournament bet: ${amount} PIPChips on ${side}`,
+            type: 'TOURNAMENT_PARTICIPATION',
+            description: `Tournament participation: ${amount} PIPChips on ${side}`,
             metadata: {
               tournamentId: user.activeTournamentId,
               marketId,
@@ -234,7 +234,7 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
         return { success: false, error: 'Insufficient regular PIPChips' };
       }
 
-      // Process regular bet using existing system
+      // Process regular participation using existing system
       await prisma.$transaction(async (tx) => {
         // Deduct from regular balance
         await tx.user.update({
@@ -245,8 +245,8 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
           }
         });
 
-        // Create prediction bet
-        await tx.predictionBet.create({
+        // Create prediction participation
+        await tx.predictionParticipation.create({
           data: {
             userId,
             marketId,
@@ -261,8 +261,8 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
           data: {
             userId,
             amount: -amount,
-            type: 'PREDICTION_BET',
-            description: `Prediction bet: ${amount} PIPChips on ${side}`,
+            type: 'PREDICTION_PARTICIPATION',
+            description: `Prediction participation: ${amount} PIPChips on ${side}`,
             metadata: { marketId, side }
           }
         });
@@ -272,13 +272,13 @@ export async function placeTournamentAwareBet(params: TournamentBet): Promise<{ 
     }
 
   } catch (error) {
-    console.error('Tournament-aware bet error:', error);
-    return { success: false, error: 'Failed to place bet' };
+    console.error('Tournament-aware participation error:', error);
+    return { success: false, error: 'Failed to place participation' };
   }
 }
 
 /**
- * Process bet winnings with tournament context awareness
+ * Process participation winnings with tournament context awareness
  */
 export async function processWinningsWithContext(userId: number, marketId: string, winnings: number, won: boolean): Promise<void> {
   try {
@@ -295,8 +295,8 @@ export async function processWinningsWithContext(userId: number, marketId: strin
 
     if (!user) return;
 
-    // Check if this was a tournament bet
-    const bet = await prisma.predictionBet.findFirst({
+    // Check if this was a tournament participation
+    const participation = await prisma.predictionParticipation.findFirst({
       where: {
         userId,
         marketId
@@ -304,13 +304,13 @@ export async function processWinningsWithContext(userId: number, marketId: strin
       orderBy: { createdAt: 'desc' }
     });
 
-    const isTournamentBet = bet?.metadata &&
-      typeof bet.metadata === 'object' &&
-      bet.metadata !== null &&
-      'isTournamentBet' in bet.metadata &&
-      bet.metadata.isTournamentBet === true;
+    const isTournamentParticipation = participation?.metadata &&
+      typeof participation.metadata === 'object' &&
+      participation.metadata !== null &&
+      'isTournamentParticipation' in participation.metadata &&
+      participation.metadata.isTournamentParticipation === true;
 
-    if (isTournamentBet && user.inTournamentMode && user.activeTournamentId && user.tournamentParticipants.length > 0) {
+    if (isTournamentParticipation && user.inTournamentMode && user.activeTournamentId && user.tournamentParticipants.length > 0) {
       // TOURNAMENT WINNINGS - Add to tournament balance
       const participant = user.tournamentParticipants[0];
 
@@ -330,7 +330,7 @@ export async function processWinningsWithContext(userId: number, marketId: strin
             userId,
             amount: winnings,
             type: 'TOURNAMENT_WIN',
-            description: `Tournament bet ${won ? 'won' : 'refunded'}: ${winnings} PIPChips`,
+            description: `Tournament participation ${won ? 'won' : 'refunded'}: ${winnings} PIPChips`,
             metadata: {
               tournamentId: user.activeTournamentId,
               marketId,
@@ -361,7 +361,7 @@ export async function processWinningsWithContext(userId: number, marketId: strin
             userId,
             amount: winnings,
             type: 'PREDICTION_WIN',
-            description: `Prediction bet ${won ? 'won' : 'refunded'}: ${winnings} PIPChips`,
+            description: `Prediction participation ${won ? 'won' : 'refunded'}: ${winnings} PIPChips`,
             metadata: { marketId, won }
           }
         });

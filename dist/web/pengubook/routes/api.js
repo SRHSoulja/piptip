@@ -792,7 +792,7 @@ export const apiHandlers = {
                     discordId: true,
                     createdAt: true,
                     wins: true,
-                    bioText: true
+                    bio: true
                 },
                 take: 10,
                 orderBy: [
@@ -820,7 +820,7 @@ export const apiHandlers = {
                     displayName,
                     avatarURL,
                     wins: user.wins,
-                    bioText: user.bioText?.substring(0, 100) || ''
+                    bioText: user.bio?.substring(0, 100) || ''
                 };
             }));
             return res.json({

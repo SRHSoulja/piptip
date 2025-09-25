@@ -532,6 +532,18 @@ export const apiHandlers = {
         });
         added = true;
 
+        // Get proper target user display name
+        let targetUserHandle = `User#${targetDiscordId.slice(-4)}`;
+        const client = getDiscordClient();
+        if (client) {
+          try {
+            const discordUser = await client.users.fetch(targetDiscordId);
+            targetUserHandle = discordUser.displayName || discordUser.username || targetUserHandle;
+          } catch (error) {
+            // Keep fallback value
+          }
+        }
+
         // Create activity feed item
         await prisma.activityFeedItem.create({
           data: {
@@ -540,7 +552,7 @@ export const apiHandlers = {
             data: {
               reactionType: reactionType,
               targetUserId: targetUser.id,
-              targetUserHandle: `User#${targetDiscordId.slice(-4)}`
+              targetUserHandle: targetUserHandle
             },
             visibility: 'public'
           }
@@ -615,6 +627,18 @@ export const apiHandlers = {
         });
         following = true;
 
+        // Get proper target user display name
+        let targetUserHandle = `User#${targetDiscordId.slice(-4)}`;
+        const client = getDiscordClient();
+        if (client) {
+          try {
+            const discordUser = await client.users.fetch(targetDiscordId);
+            targetUserHandle = discordUser.displayName || discordUser.username || targetUserHandle;
+          } catch (error) {
+            // Keep fallback value
+          }
+        }
+
         // Create activity feed item
         await prisma.activityFeedItem.create({
           data: {
@@ -622,7 +646,7 @@ export const apiHandlers = {
             type: 'follow',
             data: {
               targetUserId: targetUser.id,
-              targetUserHandle: `User#${targetDiscordId.slice(-4)}`
+              targetUserHandle: targetUserHandle
             },
             visibility: 'public'
           }
@@ -892,7 +916,7 @@ export const apiHandlers = {
           discordId: true,
           createdAt: true,
           wins: true,
-          bioText: true
+          bio: true
         },
         take: 10,
         orderBy: [
@@ -923,7 +947,7 @@ export const apiHandlers = {
             displayName,
             avatarURL,
             wins: user.wins,
-            bioText: user.bioText?.substring(0, 100) || ''
+            bioText: user.bio?.substring(0, 100) || ''
           };
         })
       );

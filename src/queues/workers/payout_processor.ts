@@ -4,7 +4,7 @@ import { redis, payoutQueue } from '../config.js';
 import { PayoutJobData, validatePayoutJob } from '../types.js';
 import { prisma } from '../../services/db.js';
 import { Prisma } from '@prisma/client';
-// import { resolveMarket } from '../../services/prediction_markets.js'; // Function may not be exported
+import { PredictionMarketService } from '../../services/prediction_markets.js';
 
 export class PayoutProcessor {
   private worker: Worker;
@@ -141,7 +141,7 @@ export class PayoutProcessor {
       const market = await tx.predictionMarket.findUnique({
         where: { id: jobData.marketId },
         include: {
-          bets: true
+          participations: true
         }
       });
 
@@ -175,7 +175,8 @@ export class PayoutProcessor {
 
       // Use existing resolveMarket function for payout calculations
       // Note: This function handles the parimutuel calculations and balance updates
-      const result = await resolveMarket(jobData.marketId, outcome);
+      const marketService = new PredictionMarketService();
+      const result = await marketService.resolveMarket(jobData.marketId, outcome as 'YES' | 'NO' | 'CANCEL');
 
       if (!result.success) {
         throw new Error(`Failed to process payouts for market ${jobData.marketId}`);
@@ -183,7 +184,7 @@ export class PayoutProcessor {
 
       // Update payout record as completed
       const payoutCount = result.payouts?.length || 0;
-      const totalProcessed = result.payouts?.reduce((sum, p) => sum + p.amount, 0) || 0;
+      const totalProcessed = result.payouts?.reduce((sum: number, p: any) => sum + p.amount, 0) || 0;
 
       await tx.payout.update({
         where: { idempotencyKey: jobData.idempotencyKey },

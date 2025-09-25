@@ -184,7 +184,7 @@ class ResponsibleGamingService {
       const isNewDay = lastReset !== today;
 
       // Get today's prediction activity
-      const todaysPredictions = await prisma.predictionBet.count({
+      const todaysPredictions = await prisma.predictionParticipation.count({
         where: {
           userId: userId,
           createdAt: {
@@ -195,8 +195,8 @@ class ResponsibleGamingService {
       });
 
       // Calculate today's losses (simplified - actual losses would need market resolution data)
-      // For now, we'll track total amount bet today as potential loss
-      const todaysBetAmount = await prisma.predictionBet.aggregate({
+      // For now, we'll track total amount participated today as potential loss
+      const todaysParticipationAmount = await prisma.predictionParticipation.aggregate({
         where: {
           userId: userId,
           createdAt: {
@@ -209,7 +209,7 @@ class ResponsibleGamingService {
         }
       });
 
-      const currentDailyLoss = todaysBetAmount._sum.amount || 0;
+      const currentDailyLoss = todaysParticipationAmount._sum.amount || 0;
 
       // Reset daily counters if it's a new day
       if (isNewDay) {
@@ -306,14 +306,14 @@ class ResponsibleGamingService {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const [weeklyPredictions, weeklyBetAmount, user] = await Promise.all([
-      prisma.predictionBet.count({
+    const [weeklyPredictions, weeklyParticipationAmount, user] = await Promise.all([
+      prisma.predictionParticipation.count({
         where: {
           userId: userId,
           createdAt: { gte: weekAgo }
         }
       }),
-      prisma.predictionBet.aggregate({
+      prisma.predictionParticipation.aggregate({
         where: {
           userId: userId,
           createdAt: { gte: weekAgo }
@@ -334,7 +334,7 @@ class ResponsibleGamingService {
       limits,
       weeklyStats: {
         predictionsThisWeek: weeklyPredictions,
-        potentialLossThisWeek: weeklyBetAmount._sum.amount || 0
+        potentialLossThisWeek: weeklyParticipationAmount._sum.amount || 0
       },
       lastAgeReminderShown: lastAgeReminder || undefined,
       needsAgeReminder

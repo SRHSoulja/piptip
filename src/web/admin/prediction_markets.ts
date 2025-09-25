@@ -38,7 +38,7 @@ predictionMarketsRouter.get("/prediction_markets", async (req: Request, res: Res
       skip: offsetNum,
       include: {
         _count: {
-          select: { bets: true }
+          select: { participations: true }
         }
       }
     });
@@ -68,7 +68,7 @@ predictionMarketsRouter.get("/prediction_markets", async (req: Request, res: Res
         totalPool,
         yesPool: market.totalYesBets,
         noPool: market.totalNoBets,
-        totalBets: market._count.bets,
+        totalBets: market._count.participations,
         rakePercentage: market.rakePercentage,
 
         // Betting limits
@@ -269,14 +269,14 @@ predictionMarketsRouter.get("/prediction_markets/stats", async (req: Request, re
       prisma.predictionMarket.count({ where: { status: 'RESOLVED' } }),
       prisma.predictionMarket.count({ where: { status: 'CANCELLED' } }),
 
-      // Betting stats
-      prisma.predictionBet.count(),
-      prisma.predictionBet.aggregate({
+      // Participation stats
+      prisma.predictionParticipation.count(),
+      prisma.predictionParticipation.aggregate({
         _sum: { amount: true }
       }),
 
       // Recent activity (last 24 hours)
-      prisma.predictionBet.count({
+      prisma.predictionParticipation.count({
         where: {
           createdAt: {
             gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -286,7 +286,7 @@ predictionMarketsRouter.get("/prediction_markets/stats", async (req: Request, re
     ]);
 
     // Get top tokens by volume
-    const tokenStats = await prisma.predictionBet.groupBy({
+    const tokenStats = await prisma.predictionParticipation.groupBy({
       by: ['tokenSymbol'],
       _count: { tokenSymbol: true },
       _sum: { amount: true },
@@ -310,14 +310,14 @@ predictionMarketsRouter.get("/prediction_markets/stats", async (req: Request, re
           resolved: resolvedMarkets,
           cancelled: cancelledMarkets
         },
-        betting: {
-          totalBets,
+        participation: {
+          totalParticipations: totalBets,
           totalVolume: totalVolume._sum.amount || 0,
           recentActivity24h: recentActivity
         },
         topTokens: tokenStats.map(stat => ({
           symbol: stat.tokenSymbol,
-          bets: stat._count.tokenSymbol || 0,
+          participations: stat._count.tokenSymbol || 0,
           volume: stat._sum.amount || 0
         })),
         automation: {
@@ -689,7 +689,7 @@ predictionMarketsRouter.get("/prediction_markets/special", async (req: Request, 
       skip: offsetNum,
       include: {
         _count: {
-          select: { bets: true }
+          select: { participations: true }
         }
       }
     });
@@ -862,7 +862,7 @@ async function resolveMultiChoiceMarket(
   try {
     const market = await prisma.predictionMarket.findUnique({
       where: { id: marketId },
-      include: { bets: true }
+      include: { participations: true }
     });
 
     if (!market) {
@@ -872,16 +872,16 @@ async function resolveMultiChoiceMarket(
     // For multi-choice LMSR markets: winning shares pay 1 PIPChip each
     const payouts: Array<{ userId: string; amount: number }> = [];
 
-    for (const bet of market.bets) {
-      if (bet.side === winningOutcome && bet.sharesPurchased) {
+    for (const participation of market.participations) {
+      if (participation.side === winningOutcome && participation.sharesPurchased) {
         // Winner gets 1 PIPChip per share owned
-        const shareCount = parseFloat(bet.sharesPurchased.toString());
+        const shareCount = parseFloat(participation.sharesPurchased.toString());
         payouts.push({
-          userId: bet.userId,
+          userId: participation.userId,
           amount: Math.floor(shareCount) // Each share = 1 PIPChip
         });
       }
-      // Losing shares get nothing (already paid the cost when betting)
+      // Losing shares get nothing (already paid the cost when participation)
     }
 
     // Execute payouts

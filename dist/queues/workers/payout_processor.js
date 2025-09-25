@@ -4,7 +4,7 @@ import { redis } from '../config.js';
 import { validatePayoutJob } from '../types.js';
 import { prisma } from '../../services/db.js';
 import { Prisma } from '@prisma/client';
-// import { resolveMarket } from '../../services/prediction_markets.js'; // Function may not be exported
+import { PredictionMarketService } from '../../services/prediction_markets.js';
 export class PayoutProcessor {
     worker;
     constructor() {
@@ -110,7 +110,7 @@ export class PayoutProcessor {
             const market = await tx.predictionMarket.findUnique({
                 where: { id: jobData.marketId },
                 include: {
-                    bets: true
+                    participations: true
                 }
             });
             if (!market) {
@@ -139,7 +139,8 @@ export class PayoutProcessor {
             }
             // Use existing resolveMarket function for payout calculations
             // Note: This function handles the parimutuel calculations and balance updates
-            const result = await resolveMarket(jobData.marketId, outcome);
+            const marketService = new PredictionMarketService();
+            const result = await marketService.resolveMarket(jobData.marketId, outcome);
             if (!result.success) {
                 throw new Error(`Failed to process payouts for market ${jobData.marketId}`);
             }

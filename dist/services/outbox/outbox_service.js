@@ -1,5 +1,5 @@
 import { EmbedBuilder, ButtonBuilder, ActionRowBuilder } from 'discord.js';
-import { prisma } from '../database.js';
+import { prisma } from '../db.js';
 import crypto from 'crypto';
 export class OutboxService {
     discord;

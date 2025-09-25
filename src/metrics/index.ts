@@ -212,7 +212,7 @@ export const metrics = {
 
 // Register all metrics
 Object.values(metrics).forEach(metric => {
-  register.registerMetric(metric);
+  register.registerMetric(metric as any);
 });
 
 // === METRIC HELPER FUNCTIONS ===

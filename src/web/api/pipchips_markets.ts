@@ -5,7 +5,7 @@ import { pipchipsLMSR, PIPChipsLMSR } from "../../services/pipchips_lmsr.js";
 import { pipchipsService } from "../../services/pipchips_service.js";
 import { predictionMarkets } from "../../services/prediction_markets.js";
 import { getCurrentUser } from "../auth.js";
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 
 export const pipchipsMarketsRouter = Router();
 
@@ -70,7 +70,7 @@ pipchipsMarketsRouter.get("/markets", async (req: Request, res: Response) => {
         skip: offsetNum,
         include: {
           _count: {
-            select: { bets: true }
+            select: { participations: true }
           }
         }
       }),
@@ -80,7 +80,7 @@ pipchipsMarketsRouter.get("/markets", async (req: Request, res: Response) => {
     // Calculate live prices using LMSR for each market
     const marketsWithPrices = markets.map(market => {
       const lmsr = new PIPChipsLMSR(
-        market.liquidityParameter || 1000,
+        Number(market.liquidity) || 1000,
         market.marketOutcomes
       );
 
@@ -115,8 +115,8 @@ pipchipsMarketsRouter.get("/markets", async (req: Request, res: Response) => {
         // PIPChips info
         currency: 'PIPCHIPS',
         totalVolume: market.totalPipchipsVolume || 0,
-        totalBets: market._count.bets,
-        liquidityParameter: market.liquidityParameter,
+        totalBets: market._count.participations,
+        liquidityParameter: Number(market.liquidity),
 
         // Live LMSR prices
         prices: pricesMap,
@@ -158,11 +158,11 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
 
     const market = await prisma.predictionMarket.findUnique({
       where: {
-        id,
-        currency: 'PIPCHIPS' // Ensure it's a PIPChips market
+        id
+        // PIPChips markets identified by tokenSymbol instead of currency
       },
       include: {
-        bets: include_bets === "true" ? {
+        participations: include_bets === "true" ? {
           where: { tokenSymbol: 'PIPCHIPS' },
           orderBy: { createdAt: 'desc' },
           take: 50,
@@ -171,14 +171,13 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
             side: true,
             amount: true,
             sharesPurchased: true,
-            potentialPayout: true,
             createdAt: true,
             userId: true
           }
         } : false,
         _count: {
           select: {
-            bets: {
+            participations: {
               where: { tokenSymbol: 'PIPCHIPS' }
             }
           }
@@ -223,15 +222,15 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
     const bettingClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
 
     // Format betting history (anonymize user IDs for privacy)
-    const bettingHistory = include_bets === "true" && market.bets ?
-      market.bets.map(bet => ({
-        id: bet.id,
-        side: bet.side,
-        amount: bet.amount,
-        shares: bet.sharesPurchased,
-        potentialPayout: bet.potentialPayout,
-        timestamp: bet.createdAt.toISOString(),
-        userId: bet.userId.slice(0, 8) + '...' // Anonymize
+    const participationHistory = include_bets === "true" && market.participations ?
+      market.participations.map(participation => ({
+        id: participation.id,
+        side: participation.side,
+        amount: participation.amount,
+        shares: participation.sharesPurchased,
+        potentialPayout: participation.potentialPayout,
+        timestamp: participation.createdAt.toISOString(),
+        userId: participation.userId.slice(0, 8) + '...' // Anonymize
       })) : [];
 
     res.json({
@@ -250,8 +249,8 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
         // PIPChips market info
         currency: 'PIPCHIPS',
         totalVolume: market.totalPipchipsVolume || 0,
-        totalBets: market._count.bets,
-        liquidityParameter: market.liquidityParameter,
+        totalBets: market._count.participations,
+        liquidityParameter: Number(market.liquidity),
 
         // LMSR pricing
         prices: pricesMap,
@@ -262,7 +261,7 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
 
         // Market data
         marketData: market.marketData,
-        recentBets: bettingHistory,
+        recentParticipations: participationHistory,
 
         // Meta
         createdAt: market.createdAt.toISOString(),
@@ -282,7 +281,7 @@ pipchipsMarketsRouter.get("/market/:id", async (req: Request, res: Response) => 
 });
 
 /**
- * POST /api/pipchips/bet - Place PIPChips bet
+ * POST /api/pipchips/participate - Place PIPChips participation
  */
 pipchipsMarketsRouter.post("/bet", async (req: Request, res: Response) => {
   try {
@@ -479,9 +478,9 @@ pipchipsMarketsRouter.get("/user/balance", async (req: Request, res: Response) =
 });
 
 /**
- * GET /api/pipchips/user/bets - User's PIPChips betting history
+ * GET /api/pipchips/user/participations - User's PIPChips participation history
  */
-pipchipsMarketsRouter.get("/user/bets", async (req: Request, res: Response) => {
+pipchipsMarketsRouter.get("/user/participations", async (req: Request, res: Response) => {
   try {
     const currentUser = getCurrentUser(req);
     if (!currentUser) {
@@ -496,11 +495,11 @@ pipchipsMarketsRouter.get("/user/bets", async (req: Request, res: Response) => {
     const limitNum = Math.min(parseInt(limit as string) || 20, 100);
     const offsetNum = parseInt(offset as string) || 0;
 
-    // Get user's PIPChips bets
-    const bets = await prisma.predictionBet.findMany({
+    // Get user's PIPChips participations
+    const participations = await prisma.predictionParticipation.findMany({
       where: {
         userId: currentUser.discordId,
-        tokenSymbol: 'PIPCHIPS' // Only PIPChips bets
+        tokenSymbol: 'PIPCHIPS' // Only PIPChips participations
       },
       include: {
         market: {
@@ -523,37 +522,37 @@ pipchipsMarketsRouter.get("/user/bets", async (req: Request, res: Response) => {
       skip: offsetNum
     });
 
-    // Format bets with results
-    const formattedBets = bets.map(bet => {
-      const market = bet.market;
+    // Format participations with results
+    const formattedParticipations = participations.map(participation => {
+      const market = participation.market;
       let result = null;
       let actualPayout = 0;
 
       if (market.status === 'RESOLVED' && market.winningOutcome) {
-        const won = bet.side === market.winningOutcome;
+        const won = participation.side === market.winningOutcome;
         if (won) {
           // For PIPChips: payout is shares * 1000 PIPChips per share
-          actualPayout = Math.floor(bet.sharesPurchased * 1000);
+          actualPayout = Math.floor(participation.sharesPurchased * 1000);
         }
         result = won ? 'won' : 'lost';
       } else if (market.status === 'CANCELLED') {
         result = 'refunded';
-        actualPayout = bet.amount; // Full refund
+        actualPayout = participation.amount; // Full refund
       } else {
         result = 'pending';
       }
 
       return {
-        id: bet.id,
-        marketId: bet.marketId,
+        id: participation.id,
+        marketId: participation.marketId,
         marketTitle: market.title,
         marketDescription: market.description,
-        outcome: bet.side,
-        pipchipsAmount: bet.amount,
-        sharesPurchased: bet.sharesPurchased,
-        potentialPayout: bet.potentialPayout,
+        outcome: participation.side,
+        pipchipsAmount: participation.amount,
+        sharesPurchased: participation.sharesPurchased,
+        potentialPayout: participation.potentialPayout,
         actualPayout,
-        placedAt: bet.createdAt.toISOString(),
+        placedAt: participation.createdAt.toISOString(),
         result,
         market: {
           status: market.status,
@@ -575,7 +574,7 @@ pipchipsMarketsRouter.get("/user/bets", async (req: Request, res: Response) => {
         return true;
       });
 
-    const total = await prisma.predictionBet.count({
+    const total = await prisma.predictionParticipation.count({
       where: {
         userId: currentUser.discordId,
         tokenSymbol: 'PIPCHIPS'
@@ -626,19 +625,19 @@ pipchipsMarketsRouter.get("/stats", async (req: Request, res: Response) => {
       pipchipsStats
     ] = await Promise.all([
       prisma.predictionMarket.count({
-        where: { currency: 'PIPCHIPS' }
-      }),
-      prisma.predictionMarket.count({
-        where: { currency: 'PIPCHIPS', status: 'ACTIVE' }
-      }),
-      prisma.predictionBet.count({
         where: { tokenSymbol: 'PIPCHIPS' }
       }),
-      prisma.predictionBet.aggregate({
+      prisma.predictionMarket.count({
+        where: { tokenSymbol: 'PIPCHIPS', status: 'ACTIVE' }
+      }),
+      prisma.predictionParticipation.count({
+        where: { tokenSymbol: 'PIPCHIPS' }
+      }),
+      prisma.predictionParticipation.aggregate({
         where: { tokenSymbol: 'PIPCHIPS' },
         _sum: { amount: true }
       }),
-      prisma.predictionBet.findMany({
+      prisma.predictionParticipation.findMany({
         where: { tokenSymbol: 'PIPCHIPS' },
         select: { userId: true },
         distinct: ['userId']

@@ -17,7 +17,7 @@ const redisConfig = {
 
   // Connection pool settings
   family: 4,
-  keepAlive: true,
+  keepAlive: 30000,
   maxLoadingTimeout: 10000,
 
   // Reconnection strategy

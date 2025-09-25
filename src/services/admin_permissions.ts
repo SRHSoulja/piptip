@@ -54,7 +54,7 @@ export class AdminPermissionService {
       return user.isAdmin || user.isSuperUser || user.adminLevel >= AdminLevel.ADMIN;
 
     } catch (error) {
-      logger.error('Error checking admin status', { discordId, error });
+      logger.error({ discordId, error }, 'Error checking admin status');
       return false;
     }
   }
@@ -73,7 +73,7 @@ export class AdminPermissionService {
       return user.isSuperUser || user.adminLevel >= AdminLevel.SUPER_USER;
 
     } catch (error) {
-      logger.error('Error checking super user status', { discordId, error });
+      logger.error({ discordId, error }, 'Error checking super user status');
       return false;
     }
   }
@@ -104,7 +104,7 @@ export class AdminPermissionService {
       return user.canCreateMarkets;
 
     } catch (error) {
-      logger.error('Error checking market creation permission', { discordId, error });
+      logger.error({ discordId, error }, 'Error checking market creation permission');
       return false;
     }
   }
@@ -161,7 +161,7 @@ export class AdminPermissionService {
       };
 
     } catch (error) {
-      logger.error('Error getting admin profile', { discordId, error });
+      logger.error({ discordId, error }, 'Error getting admin profile');
       return null;
     }
   }
@@ -203,21 +203,17 @@ export class AdminPermissionService {
         }
       });
 
-      logger.info('User promoted to admin', {
-        targetDiscordId,
-        promoterDiscordId,
-        level
-      });
+      logger.info(`User promoted to admin: ${targetDiscordId} by ${promoterDiscordId} to level ${level}`);
 
       return { success: true };
 
     } catch (error) {
-      logger.error('Error promoting user to admin', {
+      logger.error({
         targetDiscordId,
         promoterDiscordId,
         level,
         error
-      });
+      }, 'Error promoting user to admin');
       return { success: false, error: 'Failed to promote user' };
     }
   }
@@ -249,19 +245,16 @@ export class AdminPermissionService {
         }
       });
 
-      logger.info('User demoted from admin', {
-        targetDiscordId,
-        demoterDiscordId
-      });
+      logger.info(`User demoted from admin: ${targetDiscordId} by ${demoterDiscordId}`);
 
       return { success: true };
 
     } catch (error) {
-      logger.error('Error demoting user from admin', {
+      logger.error({
         targetDiscordId,
         demoterDiscordId,
         error
-      });
+      }, 'Error demoting user from admin');
       return { success: false, error: 'Failed to demote user' };
     }
   }
@@ -282,7 +275,7 @@ export class AdminPermissionService {
       }
 
     } catch (error) {
-      logger.error('Error initializing default admin', error);
+      logger.error({ error }, 'Error initializing default admin');
     }
   }
 
@@ -305,7 +298,7 @@ export class AdminPermissionService {
       };
 
     } catch (error) {
-      logger.error('Error getting admin stats', error);
+      logger.error({ error }, 'Error getting admin stats');
       return null;
     }
   }

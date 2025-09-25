@@ -4,7 +4,7 @@ import { responsibleGaming } from "./responsible_gaming.js";
 import { pipchipsService } from "./pipchips_service.js";
 import { LMSRMarketMaker } from "./lmsr_market_maker.js";
 import { getUserActiveTierForMarkets } from "./tiers.js";
-import Decimal from 'decimal.js';
+import { Decimal } from 'decimal.js';
 /**
  * Core prediction market service handling parimutuel betting
  * The house NEVER bets - only facilitates and collects rake
@@ -160,8 +160,8 @@ export class PredictionMarketService {
                     const costCalc = lmsr.calculateBuyCost(currentShares, side, new Decimal(amount));
                     sharesPurchased = costCalc.sharesPurchased;
                 }
-                // Create bet record
-                await tx.predictionBet.create({
+                // Create participation record
+                await tx.predictionParticipation.create({
                     data: {
                         marketId,
                         userId,
@@ -251,7 +251,7 @@ export class PredictionMarketService {
             const market = await prisma.predictionMarket.findUnique({
                 where: { id: marketId },
                 include: {
-                    bets: true
+                    participations: true
                 }
             });
             if (!market) {
@@ -274,12 +274,12 @@ export class PredictionMarketService {
             // Check if this is an LMSR market (has lmsrShares data)
             if (market.lmsrShares) {
                 // LMSR payout: winning shares pay 1 PIPChip each, losing shares pay 0
-                for (const bet of market.bets) {
-                    if (bet.side === outcome && bet.sharesPurchased) {
+                for (const participation of market.participations) {
+                    if (participation.side === outcome && participation.sharesPurchased) {
                         // Winner gets 1 PIPChip per share owned
-                        const shareCount = parseFloat(bet.sharesPurchased.toString());
+                        const shareCount = parseFloat(participation.sharesPurchased.toString());
                         payouts.push({
-                            userId: bet.userId,
+                            userId: participation.userId,
                             amount: Math.floor(shareCount) // Each share = 1 PIPChip
                         });
                     }
@@ -290,13 +290,13 @@ export class PredictionMarketService {
                 // Legacy parimutuel payout system
                 const houseRake = totalPool * (market.rakePercentage / 100);
                 const prizePool = totalPool - houseRake;
-                const winningBets = market.bets.filter(bet => bet.side === outcome);
+                const winningParticipations = market.participations.filter(participation => participation.side === outcome);
                 const winningPool = outcome === 'YES' ? market.totalYesBets : market.totalNoBets;
-                for (const bet of winningBets) {
-                    const winShare = bet.amount / winningPool;
+                for (const participation of winningParticipations) {
+                    const winShare = participation.amount / winningPool;
                     const payout = winShare * prizePool;
                     payouts.push({
-                        userId: bet.userId,
+                        userId: participation.userId,
                         amount: Math.floor(payout)
                     });
                 }
@@ -345,7 +345,7 @@ export class PredictionMarketService {
         try {
             const market = await prisma.predictionMarket.findUnique({
                 where: { id: marketId },
-                include: { bets: true }
+                include: { participations: true }
             });
             if (!market) {
                 return { success: false, error: "Market not found" };
@@ -359,22 +359,22 @@ export class PredictionMarketService {
                     data: { status: 'CANCELLED' }
                 });
                 // Process refunds using PIPChips
-                for (const bet of market.bets) {
-                    // Refund the original bet amount in PIPChips
+                for (const participation of market.participations) {
+                    // Refund the original participation amount in PIPChips
                     await pipchipsService.processTransaction({
-                        userId: bet.userId,
-                        amount: BigInt(bet.amount),
+                        userId: participation.userId,
+                        amount: BigInt(participation.amount),
                         type: 'PREDICTION_REFUND',
                         referenceId: marketId,
-                        description: `Refund ${bet.amount} PIPChips from cancelled market: ${market.title}`
+                        description: `Refund ${participation.amount} PIPChips from cancelled market: ${market.title}`
                     });
                     refunds.push({
-                        userId: bet.userId,
-                        amount: bet.amount
+                        userId: participation.userId,
+                        amount: participation.amount
                     });
                 }
             });
-            console.log(`Market ${marketId} cancelled. Refunded ${refunds.length} bets.`);
+            console.log(`Market ${marketId} cancelled. Refunded ${refunds.length} participations.`);
             return { success: true, payouts: refunds };
         }
         catch (error) {
@@ -445,20 +445,20 @@ export class PredictionMarketService {
         return manualAdminMarkets.map(m => this.mapDbMarket(m));
     }
     /**
-     * Get user's bets for a market
+     * Get user's participations for a market
      */
-    async getUserBets(marketId, userId) {
-        const bets = await prisma.predictionBet.findMany({
+    async getUserParticipations(marketId, userId) {
+        const participations = await prisma.predictionParticipation.findMany({
             where: { marketId, userId },
             orderBy: { createdAt: 'desc' }
         });
-        return bets.map(bet => ({
-            id: bet.id,
-            marketId: bet.marketId,
-            userId: bet.userId,
-            side: bet.side,
-            amount: bet.amount,
-            timestamp: bet.createdAt
+        return participations.map(participation => ({
+            id: participation.id,
+            marketId: participation.marketId,
+            userId: participation.userId,
+            side: participation.side,
+            amount: participation.amount,
+            timestamp: participation.createdAt
         }));
     }
     /**

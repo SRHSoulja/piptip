@@ -69,7 +69,7 @@ marketsApiRouter.get("/markets", async (req: Request, res: Response) => {
       skip: offsetNum,
       include: {
         _count: {
-          select: { bets: true }
+          select: { participations: true }
         }
       }
     });
@@ -93,7 +93,7 @@ marketsApiRouter.get("/markets", async (req: Request, res: Response) => {
 
         // Betting info
         totalPool,
-        totalBets: market._count.bets,
+        totalBets: market._count.participations,
         yesPool: market.totalYesBets,
         noPool: market.totalNoBets,
         minBet: market.minBet,
@@ -149,9 +149,9 @@ marketsApiRouter.get("/market/:id", async (req: Request, res: Response) => {
     const market = await prisma.predictionMarket.findUnique({
       where: { id },
       include: {
-        bets: include_bets === "true" ? {
+        participations: include_bets === "true" ? {
           orderBy: { createdAt: 'desc' },
-          take: 50, // Latest 50 bets
+          take: 50, // Latest 50 participations
           select: {
             id: true,
             side: true,
@@ -161,7 +161,7 @@ marketsApiRouter.get("/market/:id", async (req: Request, res: Response) => {
           }
         } : false,
         _count: {
-          select: { bets: true }
+          select: { participations: true }
         }
       }
     });
@@ -186,14 +186,14 @@ marketsApiRouter.get("/market/:id", async (req: Request, res: Response) => {
     const totalPool = market.totalYesBets + market.totalNoBets;
     const timeLeft = market.resolveAt.getTime() - Date.now();
 
-    // Format betting history (anonymize user IDs)
-    const bettingHistory = include_bets === "true" && market.bets ?
-      market.bets.map(bet => ({
-        id: bet.id,
-        side: bet.side,
-        amount: bet.amount,
-        timestamp: bet.createdAt.toISOString(),
-        userId: bet.userId.slice(0, 8) + '...' // Anonymize for privacy
+    // Format participation history (anonymize user IDs)
+    const participationHistory = include_bets === "true" && market.participations ?
+      market.participations.map(participation => ({
+        id: participation.id,
+        side: participation.side,
+        amount: participation.amount,
+        timestamp: participation.createdAt.toISOString(),
+        userId: participation.userId.slice(0, 8) + '...' // Anonymize for privacy
       })) : [];
 
     res.json({
@@ -210,7 +210,7 @@ marketsApiRouter.get("/market/:id", async (req: Request, res: Response) => {
 
         // Detailed betting info
         totalPool,
-        totalBets: market._count.bets,
+        totalBets: market._count.participations,
         yesPool: market.totalYesBets,
         noPool: market.totalNoBets,
         minBet: market.minBet,
@@ -228,8 +228,8 @@ marketsApiRouter.get("/market/:id", async (req: Request, res: Response) => {
         // Market-specific data
         marketData: market.marketData,
 
-        // Recent betting activity
-        recentBets: bettingHistory,
+        // Recent participation activity
+        recentParticipations: participationHistory,
 
         // Meta
         createdAt: market.createdAt.toISOString(),
@@ -248,7 +248,7 @@ marketsApiRouter.get("/market/:id", async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/bet - Place bet directly from website
+ * POST /api/participate - Place participation directly from website
  * Requires Discord OAuth session with req.user.discordId
  */
 marketsApiRouter.post("/bet", async (req: Request, res: Response) => {
@@ -289,7 +289,7 @@ marketsApiRouter.post("/bet", async (req: Request, res: Response) => {
       });
     }
 
-    // Place the bet using the existing service
+    // Place the participation using the existing service
     const result = await predictionMarkets.placeBet({
       marketId,
       userId: discordId,
@@ -310,8 +310,8 @@ marketsApiRouter.post("/bet", async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Bet placed successfully',
-      bet: {
+      message: 'Participation placed successfully',
+      participation: {
         marketId,
         side,
         amount: betAmount,
@@ -342,9 +342,9 @@ marketsApiRouter.post("/bet", async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/user/bets - User's betting history for their profile page
+ * GET /api/user/participations - User's participation history for their profile page
  */
-marketsApiRouter.get("/user/bets", async (req: Request, res: Response) => {
+marketsApiRouter.get("/user/participations", async (req: Request, res: Response) => {
   try {
     const discordId = (req as any).user?.discordId || (req as any).session?.discordId;
 
@@ -360,8 +360,8 @@ marketsApiRouter.get("/user/bets", async (req: Request, res: Response) => {
     const limitNum = Math.min(parseInt(limit as string) || 20, 100);
     const offsetNum = parseInt(offset as string) || 0;
 
-    // Get user's bets with market details
-    const bets = await prisma.predictionBet.findMany({
+    // Get user's participations with market details
+    const participations = await prisma.predictionParticipation.findMany({
       where: { userId: discordId },
       include: {
         market: {
@@ -439,7 +439,7 @@ marketsApiRouter.get("/user/bets", async (req: Request, res: Response) => {
         return true;
       });
 
-    const total = await prisma.predictionBet.count({
+    const total = await prisma.predictionParticipation.count({
       where: { userId: discordId }
     });
 
@@ -545,24 +545,24 @@ marketsApiRouter.get("/stats", async (req: Request, res: Response) => {
     const [
       totalMarkets,
       activeMarkets,
-      totalBets,
+      totalParticipations,
       totalVolume,
-      uniqueBettors
+      uniqueParticipants
     ] = await Promise.all([
       prisma.predictionMarket.count(),
       prisma.predictionMarket.count({ where: { status: 'ACTIVE' } }),
-      prisma.predictionBet.count(),
-      prisma.predictionBet.aggregate({
+      prisma.predictionParticipation.count(),
+      prisma.predictionParticipation.aggregate({
         _sum: { amount: true }
       }),
-      prisma.predictionBet.findMany({
+      prisma.predictionParticipation.findMany({
         select: { userId: true },
         distinct: ['userId']
       })
     ]);
 
     // Get popular tokens
-    const tokenStats = await prisma.predictionBet.groupBy({
+    const tokenStats = await prisma.predictionParticipation.groupBy({
       by: ['tokenSymbol'],
       _count: { tokenSymbol: true },
       _sum: { amount: true },
@@ -578,10 +578,10 @@ marketsApiRouter.get("/stats", async (req: Request, res: Response) => {
           active: activeMarkets,
           resolved: totalMarkets - activeMarkets
         },
-        betting: {
-          totalBets,
+        participation: {
+          totalParticipations,
           totalVolume: totalVolume._sum.amount || 0,
-          uniqueBettors: uniqueBettors.length
+          uniqueParticipants: uniqueParticipants.length
         },
         popularTokens: tokenStats.map(stat => ({
           symbol: stat.tokenSymbol,
