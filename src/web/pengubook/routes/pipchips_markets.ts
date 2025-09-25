@@ -278,8 +278,8 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
           </div>
         </div>
         <div class="balance-actions">
-          <a href="discord://pip_daily" class="btn btn-primary">📅 Claim Daily</a>
-          <a href="discord://pip_buy_chips" class="btn btn-secondary">💰 Buy More</a>
+          <button onclick="claimDailyBonus()" class="btn btn-primary">📅 Claim Daily</button>
+          <button onclick="showBuyChipsModal()" class="btn btn-secondary">💰 Buy More</button>
         </div>
       </div>
 
@@ -464,6 +464,115 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
         margin-bottom: 8px;
       }
     </style>
+
+    <script>
+      // JavaScript functions for button functionality
+      async function claimDailyBonus() {
+        try {
+          const response = await fetch('/pengubook/api/claim-daily', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            alert(\`Daily bonus claimed! You received \${result.data.bonusAmount} PIPChips. Current streak: \${result.data.newStreak} days.\`);
+            location.reload(); // Refresh to update balance display
+          } else {
+            if (result.data && result.data.timeUntilNext) {
+              const hours = Math.floor(result.data.timeUntilNext / (1000 * 60 * 60));
+              const minutes = Math.floor((result.data.timeUntilNext % (1000 * 60 * 60)) / (1000 * 60));
+              alert(\`Daily bonus already claimed! Next claim available in \${hours}h \${minutes}m.\`);
+            } else {
+              alert('Error: ' + result.error);
+            }
+          }
+        } catch (error) {
+          console.error('Daily claim error:', error);
+          alert('Network error claiming daily bonus');
+        }
+      }
+
+      async function showBuyChipsModal() {
+        try {
+          const response = await fetch('/pengubook/api/buy-chips-options');
+          const result = await response.json();
+
+          if (result.success) {
+            const options = result.data.options;
+            let modalContent = '<div style="text-align: left;"><h3>Buy PIPChips</h3>';
+
+            options.forEach(option => {
+              modalContent += \`
+                <div style="border: 1px solid #ccc; padding: 12px; margin: 8px 0; border-radius: 8px; cursor: pointer;" onclick="purchaseChips('\${option.tokenId}', \${option.pipchipsAmount})">
+                  <strong>\${option.pipchipsAmount.toLocaleString()} PIPChips</strong><br>
+                  <span style="color: #666;">Cost: \${option.cost} \${option.tokenSymbol}</span><br>
+                  <small style="color: #888;">Your balance: \${option.userBalance.toLocaleString()} \${option.tokenSymbol}</small>
+                </div>
+              \`;
+            });
+
+            modalContent += '</div>';
+
+            // Create modal
+            const modal = document.createElement('div');
+            modal.style.cssText = \`
+              position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+              background: rgba(0,0,0,0.8); z-index: 10000; padding: 20px;
+              display: flex; align-items: center; justify-content: center;
+            \`;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.style.cssText = \`
+              background: white; border-radius: 12px; padding: 24px;
+              max-width: 400px; width: 100%;
+            \`;
+
+            modalDiv.innerHTML = modalContent + \`
+              <div style="text-align: center; margin-top: 16px;">
+                <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Close</button>
+              </div>
+            \`;
+
+            modal.appendChild(modalDiv);
+            document.body.appendChild(modal);
+
+          } else {
+            alert('Error loading purchase options: ' + result.error);
+          }
+        } catch (error) {
+          console.error('Buy chips error:', error);
+          alert('Network error loading purchase options');
+        }
+      }
+
+      async function purchaseChips(tokenId, pipchipsAmount) {
+        if (!confirm(\`Purchase \${pipchipsAmount.toLocaleString()} PIPChips?\`)) return;
+
+        try {
+          const response = await fetch('/api/buy-pipchips', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tokenId, pipchipsAmount })
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            alert(\`Successfully purchased \${pipchipsAmount.toLocaleString()} PIPChips!\`);
+            // Close modal and reload
+            document.querySelector('div[style*="position: fixed"]')?.remove();
+            location.reload();
+          } else {
+            alert('Purchase failed: ' + result.error);
+          }
+        } catch (error) {
+          console.error('Purchase error:', error);
+          alert('Network error processing purchase');
+        }
+      }
+    </script>
   `;
 }
 

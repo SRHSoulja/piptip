@@ -60,6 +60,8 @@ pengubookModularRouter.post("/api/follow", apiHandlers.follow);
 pengubookModularRouter.get("/api/social-data/:discordId", apiHandlers.socialData);
 pengubookModularRouter.get("/api/activity-feed", apiHandlers.activityFeed);
 pengubookModularRouter.get("/api/search-users", apiHandlers.searchUsers);
+pengubookModularRouter.post("/api/claim-daily", apiHandlers.claimDaily);
+pengubookModularRouter.get("/api/buy-chips-options", apiHandlers.buyChipsOptions);
 
 // Export template function for use in routes
 export { generateBaseHTML };

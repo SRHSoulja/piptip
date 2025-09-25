@@ -7,6 +7,8 @@ import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { prisma } from "../../../services/db.js";
 import { priceAPI } from "../../../services/price_api.js";
 import { queueNotice } from "../../../services/notifier.js";
+import { pipchipsService } from "../../../services/pipchips_service.js";
+import { ensureUser } from "../../../services/balances.js";
 
 export const apiHandlers = {
   // GET /pengubook/api/unread-count
@@ -1085,6 +1087,103 @@ export const apiHandlers = {
     } catch (error) {
       console.error("User search API error:", error);
       res.status(500).json({ success: false, error: "Failed to search users" });
+    }
+  },
+
+  // POST /pengubook/api/claim-daily - Claim daily PIPChips
+  async claimDaily(req: Request, res: Response) {
+    try {
+      const currentUser = getCurrentUser(req);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: "Not authenticated" });
+      }
+
+      // Ensure user exists in database
+      await ensureUser(currentUser.discordId);
+
+      // Check if user can claim daily bonus
+      const streakInfo = await pipchipsService.getStreakInfo(currentUser.discordId);
+
+      if (!streakInfo.canClaim) {
+        const hours = Math.floor(streakInfo.hoursUntilNext);
+        const minutes = Math.floor((streakInfo.hoursUntilNext - hours) * 60);
+
+        return res.json({
+          success: false,
+          error: "Daily bonus already claimed",
+          data: {
+            currentStreak: streakInfo.currentStreak,
+            streakMultiplier: streakInfo.streakMultiplier,
+            hoursUntilNext: hours,
+            minutesUntilNext: minutes,
+            nextClaimTime: `${hours}h ${minutes}m`
+          }
+        });
+      }
+
+      // Claim the daily bonus
+      const result = await pipchipsService.claimDailyBonus(currentUser.discordId);
+
+      return res.json({
+        success: true,
+        message: "Daily bonus claimed successfully!",
+        data: {
+          bonusAmount: Number(result.amount),
+          newBalance: Number(result.newBalance),
+          newStreak: result.newStreak,
+          streakMultiplier: result.streakMultiplier
+        }
+      });
+
+    } catch (error) {
+      console.error("Claim daily API error:", error);
+      res.status(500).json({ success: false, error: "Failed to claim daily bonus" });
+    }
+  },
+
+  // GET /pengubook/api/buy-chips-options - Get available PIPChips packages
+  async buyChipsOptions(req: Request, res: Response) {
+    try {
+      const currentUser = getCurrentUser(req);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: "Not authenticated" });
+      }
+
+      // Get available PIPChips packages from database
+      const packages = await prisma.pipchipsPackage.findMany({
+        where: {
+          isActive: true
+        },
+        orderBy: [
+          { tokenSymbol: 'asc' },
+          { pipchipsAmount: 'asc' }
+        ]
+      });
+
+      // Group packages by token
+      const packagesByToken: Record<string, any[]> = {};
+      packages.forEach(pkg => {
+        if (!packagesByToken[pkg.tokenSymbol]) {
+          packagesByToken[pkg.tokenSymbol] = [];
+        }
+        packagesByToken[pkg.tokenSymbol].push({
+          id: pkg.id,
+          pipchipsAmount: Number(pkg.pipchipsAmount),
+          tokenCost: Number(pkg.tokenCost),
+          tokenSymbol: pkg.tokenSymbol,
+          description: `${Number(pkg.pipchipsAmount).toLocaleString()} PIPChips for ${Number(pkg.tokenCost)} ${pkg.tokenSymbol}`
+        });
+      });
+
+      return res.json({
+        success: true,
+        packages: packagesByToken,
+        availableTokens: Object.keys(packagesByToken)
+      });
+
+    } catch (error) {
+      console.error("Buy chips options API error:", error);
+      res.status(500).json({ success: false, error: "Failed to get chip packages" });
     }
   }
 };
