@@ -28,3 +28,33 @@ export async function marketDetailHandler(req, res) {
         res.status(500).send('Error redirecting to PIPChips market');
     }
 }
+// Legacy market creation handler - redirect to PIPChips markets
+export async function createMarketHandler(req, res) {
+    try {
+        const currentUser = getCurrentUser(req);
+        if (!currentUser) {
+            return res.redirect("/auth/discord");
+        }
+        // Redirect to PIPChips markets main page
+        return res.redirect("/pengubook/pipchips-markets");
+    }
+    catch (error) {
+        console.error('Legacy create market redirect error:', error);
+        res.status(500).send('Error redirecting to PIPChips markets');
+    }
+}
+// Legacy bet placement handler - redirect to PIPChips markets
+export async function placeBetHandler(req, res) {
+    try {
+        const currentUser = getCurrentUser(req);
+        if (!currentUser) {
+            return res.redirect("/auth/discord");
+        }
+        // Redirect to PIPChips markets main page
+        return res.redirect("/pengubook/pipchips-markets");
+    }
+    catch (error) {
+        console.error('Legacy place bet redirect error:', error);
+        res.status(500).send('Error redirecting to PIPChips markets');
+    }
+}
