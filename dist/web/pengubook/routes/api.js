@@ -856,19 +856,28 @@ export const apiHandlers = {
             });
             // Enhance with Discord usernames and filter by name too
             const client = getDiscordClient();
+            console.log(`[Search API] Discord client available: ${!!client}, ready: ${client?.isReady()}`);
             const enhancedUsers = await Promise.all(users.map(async (user) => {
                 let displayName = `Player ${user.discordId.slice(-4)}`;
                 let avatarURL = `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png`;
                 if (client && client.isReady()) {
                     try {
-                        const discordUser = await client.users.fetch(user.discordId);
-                        displayName = discordUser.displayName || discordUser.username || displayName;
+                        // Add timeout to Discord API call
+                        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Discord fetch timeout')), 2000));
+                        const fetchPromise = client.users.fetch(user.discordId);
+                        const discordUser = await Promise.race([fetchPromise, timeoutPromise]);
+                        const newDisplayName = discordUser.displayName || discordUser.username || displayName;
+                        console.log(`[Search API] Fetched ${user.discordId}: ${newDisplayName}`);
+                        displayName = newDisplayName;
                         avatarURL = discordUser.displayAvatarURL({ size: 64 });
                     }
                     catch (error) {
                         // Keep fallback values
-                        console.log(`Failed to fetch Discord user ${user.discordId}, using fallback`);
+                        console.log(`[Search API] Failed to fetch Discord user ${user.discordId}: ${error.message}`);
                     }
+                }
+                else {
+                    console.log(`[Search API] Discord client not available for ${user.discordId}`);
                 }
                 return {
                     discordId: user.discordId,
@@ -883,8 +892,20 @@ export const apiHandlers = {
             // Filter by username after fetching Discord names
             const filteredUsers = enhancedUsers.filter(user => {
                 const lowerQuery = query.toLowerCase();
-                return user.discordId.toLowerCase().includes(lowerQuery) ||
-                    user.rawDisplayName.toLowerCase().includes(lowerQuery);
+                // Search by Discord ID
+                if (user.discordId.toLowerCase().includes(lowerQuery)) {
+                    return true;
+                }
+                // Search by display name (if we got it from Discord)
+                if (user.rawDisplayName && !user.rawDisplayName.startsWith('Player ') &&
+                    user.rawDisplayName.toLowerCase().includes(lowerQuery)) {
+                    return true;
+                }
+                // Search in bio text
+                if (user.bioText && user.bioText.toLowerCase().includes(lowerQuery)) {
+                    return true;
+                }
+                return false;
             });
             return res.json({
                 success: true,
