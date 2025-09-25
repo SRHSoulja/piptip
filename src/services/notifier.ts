@@ -12,8 +12,8 @@ function toHuman(atomic: string, decimals = 18) {
 }
 
 export async function queueNotice(
-  userId: number, 
-  type: "deposit" | "withdraw_success" | "withdraw_error", 
+  userId: number,
+  type: "deposit" | "withdraw_success" | "withdraw_error" | "pengubook_message",
   payload: any
 ) {
   try {
@@ -51,6 +51,10 @@ export async function flushNoticesEphemeral(i: ChatInputCommandInteraction) {
       } else if (n.type === "withdraw_error") {
         const p = n.payload as { reason: string };
         lines.push(`⚠️ **Withdrawal failed**\n• ${p.reason}`);
+      } else if (n.type === "pengubook_message") {
+        const p = n.payload as { senderName: string; message: string; messageId: number };
+        const truncatedMessage = p.message.length > 100 ? p.message.substring(0, 100) + "..." : p.message;
+        lines.push(`📨 **New PenguBook message** from ${p.senderName}:\n"${truncatedMessage}"`);
       }
     } catch (error) {
       console.error("Error formatting notification:", error);

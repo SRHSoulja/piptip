@@ -6,6 +6,7 @@ import { getDiscordClient } from "../../../services/discord_users.js";
 import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { prisma } from "../../../services/db.js";
 import { priceAPI } from "../../../services/price_api.js";
+import { queueNotice } from "../../../services/notifier.js";
 
 export const apiHandlers = {
   // GET /pengubook/api/unread-count
@@ -443,7 +444,7 @@ export const apiHandlers = {
       }
 
       // Create the PenguBook message
-      await prisma.penguBookMessage.create({
+      const newMessage = await prisma.penguBookMessage.create({
         data: {
           fromUserId: fromUser.id,
           toUserId: targetUser.id,
@@ -451,6 +452,25 @@ export const apiHandlers = {
           tipId: null, // This is a standalone message, not a tip
           read: false
         }
+      });
+
+      // Get sender's Discord username for notification
+      let senderName = `Player ${currentUser.discordId.slice(-4)}`;
+      const client = getDiscordClient();
+      if (client && client.isReady()) {
+        try {
+          const discordUser = await client.users.fetch(currentUser.discordId);
+          senderName = discordUser.displayName || discordUser.username || senderName;
+        } catch (error) {
+          // Keep fallback name
+        }
+      }
+
+      // Queue notification for the recipient
+      await queueNotice(targetUser.id, "pengubook_message", {
+        senderName: senderName,
+        message: message.trim(),
+        messageId: newMessage.id
       });
 
       return res.json({

@@ -47,6 +47,11 @@ export async function flushNoticesEphemeral(i) {
                 const p = n.payload;
                 lines.push(`⚠️ **Withdrawal failed**\n• ${p.reason}`);
             }
+            else if (n.type === "pengubook_message") {
+                const p = n.payload;
+                const truncatedMessage = p.message.length > 100 ? p.message.substring(0, 100) + "..." : p.message;
+                lines.push(`📨 **New PenguBook message** from ${p.senderName}:\n"${truncatedMessage}"`);
+            }
         }
         catch (error) {
             console.error("Error formatting notification:", error);

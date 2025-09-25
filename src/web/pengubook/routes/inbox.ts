@@ -5,6 +5,7 @@ import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { getUnreadMessageCount } from "../../../interactions/buttons/pengubook.js";
 import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
+import { getDiscordClient } from "../../../services/discord_users.js";
 
 // HTML escaping function to prevent XSS
 function escapeHtml(unsafe: string): string {
@@ -39,6 +40,37 @@ export async function inboxHandler(req: Request, res: Response) {
       take: 50
     });
 
+    // Enhance messages with Discord usernames
+    const client = getDiscordClient();
+    const enhancedMessages = await Promise.all(
+      messages.map(async (msg: any) => {
+        let senderName = 'Unknown User';
+
+        if (msg.from?.discordId) {
+          if (msg.from.discordId === msg.from.id) {
+            senderName = 'System';
+          } else {
+            senderName = `Player ${msg.from.discordId.slice(-4)}`;
+
+            // Try to get real Discord username
+            if (client && client.isReady()) {
+              try {
+                const discordUser = await client.users.fetch(msg.from.discordId);
+                senderName = discordUser.displayName || discordUser.username || senderName;
+              } catch (error) {
+                // Keep fallback name
+              }
+            }
+          }
+        }
+
+        return {
+          ...msg,
+          senderName
+        };
+      })
+    );
+
     // Mark messages as read
     await prisma.penguBookMessage.updateMany({
       where: { toUserId: user.id, read: false },
@@ -65,11 +97,11 @@ export async function inboxHandler(req: Request, res: Response) {
                 <a href="/pengubook/browse" class="pg-btn pg-btn--primary">Browse Users</a>
             </div>
         </div>
-        ` : messages.map((msg: any) => `
+        ` : enhancedMessages.map((msg: any) => `
         <div class="pg-message ${msg.tip ? 'pg-message--tip' : ''}">
             <div class="pg-message-header">
                 <span class="pg-message-sender">
-                    ${msg.from && msg.from.discordId ? (msg.from.discordId === msg.from.id ? 'System' : `User#${msg.from.discordId.slice(-4)}`) : 'Unknown User'}
+                    ${msg.senderName}
                 </span>
                 <span class="pg-message-time">
                     ${new Date(msg.createdAt).toLocaleString()}
