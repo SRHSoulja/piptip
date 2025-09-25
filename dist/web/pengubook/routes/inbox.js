@@ -101,7 +101,7 @@ export async function inboxHandler(req, res) {
                         <div class="pg-form-group" style="position: relative;">
                             <label for="recipientDiscordId">Recipient (Discord ID)</label>
                             <input type="text" id="recipientDiscordId" placeholder="Start typing to search users..." required autocomplete="off">
-                            <div id="userAutocomplete" style="position: absolute; top: calc(100% - 20px); left: 0; right: 0; background: var(--pg-dark-300); border: 1px solid var(--pg-dark-500); border-radius: 8px; max-height: 200px; overflow-y: auto; display: none; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
+                            <div id="userAutocomplete" style="position: absolute; top: calc(100% + 5px); left: 0; right: 0; background: var(--pg-dark-300, #2a2a2a); border: 1px solid var(--pg-dark-500, #444); border-radius: 8px; max-height: 200px; overflow-y: auto; display: none; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
                             <small class="pg-form-hint">Start typing to search for users by name or Discord ID</small>
                         </div>
 
@@ -308,23 +308,34 @@ export async function inboxHandler(req, res) {
             let selectedIndex = -1;
 
             input.addEventListener('input', async function() {
+                console.log('Input event triggered, value:', this.value);
                 clearTimeout(searchTimeout);
                 const query = this.value.trim();
 
                 if (query.length < 2) {
+                    console.log('Query too short, hiding autocomplete');
                     autocompleteDiv.style.display = 'none';
                     return;
                 }
 
+                console.log('Starting search for query:', query);
+
                 // Debounce the search
                 searchTimeout = setTimeout(async () => {
                     try {
-                        const response = await fetch('/pengubook/api/search-users?q=' + encodeURIComponent(query));
+                        const url = '/pengubook/api/search-users?q=' + encodeURIComponent(query);
+                        console.log('Fetching:', url);
+                        const response = await fetch(url);
+                        console.log('Response status:', response.status);
+
                         const data = await response.json();
+                        console.log('Search results:', data);
 
                         if (data.success && data.users.length > 0) {
+                            console.log('Displaying', data.users.length, 'results');
                             displayAutocompleteResults(data.users);
                         } else {
+                            console.log('No results found or error');
                             autocompleteDiv.style.display = 'none';
                         }
                     } catch (error) {
@@ -335,6 +346,7 @@ export async function inboxHandler(req, res) {
             });
 
             function displayAutocompleteResults(users) {
+                console.log('displayAutocompleteResults called with', users.length, 'users');
                 selectedIndex = -1;
                 autocompleteDiv.innerHTML = users.map((user, index) => {
                     const bioHtml = user.bioText ? '<div style="font-size: 12px; color: var(--pg-accent-secondary); opacity: 0.6; margin-top: 4px;">' + user.bioText + '</div>' : '';
@@ -348,7 +360,9 @@ export async function inboxHandler(req, res) {
                            '</div>';
                 }).join('');
 
+                console.log('Setting autocomplete display to block, HTML length:', autocompleteDiv.innerHTML.length);
                 autocompleteDiv.style.display = 'block';
+                console.log('Autocomplete div visible:', autocompleteDiv.offsetHeight > 0);
 
                 // Add click handlers
                 const items = autocompleteDiv.querySelectorAll('.autocomplete-item');
