@@ -174,25 +174,43 @@ export async function browseHandler(req: Request, res: Response) {
     </div>
 
     <script>
-        // Load Discord usernames and avatars with error handling
-        ${users.map((user: any) => `
-        fetch('/pengubook/api/discord-user/${user.discordId}')
-            .then(res => res.ok ? res.json() : Promise.reject('Failed to load'))
-            .then(data => {
-                if (data.success) {
-                    const usernameEl = document.getElementById('username-${user.discordId}');
-                    const avatarEl = document.getElementById('avatar-${user.discordId}');
-                    const podiumUsernameEl = document.getElementById('podium-username-${user.discordId}');
+        // Batch load Discord usernames and avatars to avoid N+1 queries
+        async function loadDiscordUserData() {
+            const discordIds = [${users.map((user: any) => `'${user.discordId}'`).join(', ')}];
 
-                    if (usernameEl) usernameEl.textContent = data.username;
-                    if (avatarEl) avatarEl.src = data.avatarURL;
-                    if (podiumUsernameEl) podiumUsernameEl.textContent = data.username;
+            if (discordIds.length === 0) return;
+
+            try {
+                const response = await fetch('/pengubook/api/discord-users-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ discordIds })
+                });
+
+                if (!response.ok) throw new Error('Batch fetch failed');
+
+                const data = await response.json();
+
+                if (data.success && data.users) {
+                    // Update all user elements with batched data
+                    Object.entries(data.users).forEach(([discordId, userData]) => {
+                        const usernameEl = document.getElementById('username-' + discordId);
+                        const avatarEl = document.getElementById('avatar-' + discordId);
+                        const podiumUsernameEl = document.getElementById('podium-username-' + discordId);
+
+                        if (usernameEl) usernameEl.textContent = userData.username;
+                        if (avatarEl) avatarEl.src = userData.avatarURL;
+                        if (podiumUsernameEl) podiumUsernameEl.textContent = userData.username;
+                    });
                 }
-            })
-            .catch(() => {
-                // Silently fail with fallback already in place
-            });
-        `).join('')}
+            } catch (error) {
+                console.warn('Failed to load Discord user data:', error);
+                // Fallback names are already in place
+            }
+        }
+
+        // Load Discord data on page load
+        loadDiscordUserData();
 
         // Add sparkle effects to podium on load
         document.addEventListener('DOMContentLoaded', () => {

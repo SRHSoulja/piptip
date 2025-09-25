@@ -33,33 +33,47 @@ export async function inboxHandler(req, res) {
             orderBy: { createdAt: 'desc' },
             take: 50
         });
-        // Enhance messages with Discord usernames
+        // Batch fetch Discord usernames to avoid N+1 queries
         const client = getDiscordClient();
-        const enhancedMessages = await Promise.all(messages.map(async (msg) => {
+        // Get unique Discord IDs that need fetching (excluding system messages)
+        const discordIdsToFetch = messages
+            .filter(msg => msg.from?.discordId && msg.from.discordId !== msg.from.id.toString())
+            .map(msg => msg.from.discordId);
+        const uniqueDiscordIds = [...new Set(discordIdsToFetch)];
+        // Batch fetch Discord users
+        const discordUserMap = new Map();
+        if (client && client.isReady() && uniqueDiscordIds.length > 0) {
+            await Promise.allSettled(uniqueDiscordIds.map(async (discordId) => {
+                try {
+                    const discordUser = await client.users.fetch(discordId);
+                    const displayName = discordUser.displayName || discordUser.username;
+                    if (displayName) {
+                        discordUserMap.set(discordId, displayName);
+                    }
+                }
+                catch (error) {
+                    // Individual user fetch failed, use fallback
+                    discordUserMap.set(discordId, `Player ${discordId.slice(-4)}`);
+                }
+            }));
+        }
+        // Enhance messages with batched Discord usernames
+        const enhancedMessages = messages.map((msg) => {
             let senderName = 'Unknown User';
             if (msg.from?.discordId) {
-                if (msg.from.discordId === msg.from.id) {
+                if (msg.from.discordId === msg.from.id.toString()) {
                     senderName = 'System';
                 }
                 else {
-                    senderName = `Player ${msg.from.discordId.slice(-4)}`;
-                    // Try to get real Discord username
-                    if (client && client.isReady()) {
-                        try {
-                            const discordUser = await client.users.fetch(msg.from.discordId);
-                            senderName = discordUser.displayName || discordUser.username || senderName;
-                        }
-                        catch (error) {
-                            // Keep fallback name
-                        }
-                    }
+                    // Use batched Discord data or fallback
+                    senderName = discordUserMap.get(msg.from.discordId) || `Player ${msg.from.discordId.slice(-4)}`;
                 }
             }
             return {
                 ...msg,
                 senderName
             };
-        }));
+        });
         // Mark messages as read
         await prisma.penguBookMessage.updateMany({
             where: { toUserId: user.id, read: false },

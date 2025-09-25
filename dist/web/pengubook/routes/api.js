@@ -5,6 +5,8 @@ import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { prisma } from "../../../services/db.js";
 import { priceAPI } from "../../../services/price_api.js";
 import { queueNotice } from "../../../services/notifier.js";
+import { pipchipsService } from "../../../services/pipchips_service.js";
+import { ensureUser } from "../../../services/balances.js";
 export const apiHandlers = {
     // GET /pengubook/api/unread-count
     async unreadCount(req, res) {
@@ -102,6 +104,54 @@ export const apiHandlers = {
         }
         catch (error) {
             console.error("Discord user fetch error:", error);
+            res.status(500).json({ success: false, error: "Failed to fetch user info" });
+        }
+    },
+    // GET /pengubook/api/discord-users-batch (POST with Discord IDs in body)
+    async discordUsersBatch(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser)
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            const { discordIds } = req.body;
+            if (!Array.isArray(discordIds) || discordIds.length === 0) {
+                return res.status(400).json({ success: false, error: "discordIds array required" });
+            }
+            // Limit batch size to prevent abuse
+            if (discordIds.length > 100) {
+                return res.status(400).json({ success: false, error: "Maximum 100 Discord IDs per batch" });
+            }
+            const client = getDiscordClient();
+            const results = {};
+            // Get fallback data for all users first
+            discordIds.forEach((discordId) => {
+                results[discordId] = {
+                    username: `User#${discordId.slice(-4)}`,
+                    avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+                };
+            });
+            // Batch fetch Discord data if client is available
+            if (client && client.isReady()) {
+                await Promise.allSettled(discordIds.map(async (discordId) => {
+                    try {
+                        const user = await client.users.fetch(discordId);
+                        results[discordId] = {
+                            username: user.displayName || user.username || `User#${discordId.slice(-4)}`,
+                            avatarURL: user.displayAvatarURL({ size: 256, extension: 'png' })
+                        };
+                    }
+                    catch (error) {
+                        // Keep fallback data for this user
+                    }
+                }));
+            }
+            res.json({
+                success: true,
+                users: results
+            });
+        }
+        catch (error) {
+            console.error("Batch Discord user fetch error:", error);
             res.status(500).json({ success: false, error: "Failed to fetch user info" });
         }
     },
@@ -720,39 +770,43 @@ export const apiHandlers = {
                 orderBy: { createdAt: 'desc' },
                 take: 20
             });
-            // Helper function to get Discord username with fallback to stored data
-            const getDiscordUsername = async (discordId, storedHandle) => {
-                // If we have a stored handle and it's not a fallback format, use it
-                if (storedHandle && !storedHandle.startsWith('User#')) {
-                    return storedHandle;
-                }
-                try {
-                    const client = getDiscordClient();
-                    if (client) {
+            // Batch fetch Discord usernames to avoid N+1 queries
+            const discordIdsNeedingFetch = activities
+                .filter(activity => {
+                const data = activity.data;
+                return !data.userHandle || data.userHandle.startsWith('User#');
+            })
+                .map(activity => activity.user.discordId);
+            // Remove duplicates
+            const uniqueDiscordIds = [...new Set(discordIdsNeedingFetch)];
+            // Batch fetch Discord users
+            const discordUserMap = new Map();
+            const client = getDiscordClient();
+            if (client && client.isReady() && uniqueDiscordIds.length > 0) {
+                // Batch fetch with error handling for individual users
+                await Promise.allSettled(uniqueDiscordIds.map(async (discordId) => {
+                    try {
                         const user = await client.users.fetch(discordId);
-                        return user.displayName || user.username || storedHandle || `User#${discordId.slice(-4)}`;
+                        const displayName = user.displayName || user.username;
+                        if (displayName) {
+                            discordUserMap.set(discordId, displayName);
+                        }
                     }
-                }
-                catch (error) {
-                    // Fallback to stored handle or default format
-                }
-                return storedHandle || `User#${discordId.slice(-4)}`;
-            };
-            // Format activities for display with enhanced data
-            const formattedActivities = await Promise.all(activities.map(async (activity) => {
+                    catch (error) {
+                        // Individual user fetch failed, use fallback
+                        discordUserMap.set(discordId, `Player ${discordId.slice(-4)}`);
+                    }
+                }));
+            }
+            // Format activities for display with batched Discord data
+            const formattedActivities = activities.map(activity => {
                 const data = activity.data;
                 let text = '';
                 let icon = '📝';
-                // Get proper username using stored data when available
-                // For new activities, data.userHandle should be available
-                // For old activities, we need to fetch from Discord or use fallback
+                // Get proper username using stored data or batched Discord data
                 let username = data.userHandle;
-                if (!username) {
-                    username = await getDiscordUsername(activity.user.discordId, undefined);
-                    // If still no username, provide a better fallback
-                    if (username.startsWith('User#')) {
-                        username = `Player ${activity.user.discordId.slice(-4)}`;
-                    }
+                if (!username || username.startsWith('User#')) {
+                    username = discordUserMap.get(activity.user.discordId) || `Player ${activity.user.discordId.slice(-4)}`;
                 }
                 switch (activity.type) {
                     case 'reaction':
@@ -824,7 +878,7 @@ export const apiHandlers = {
                     type: activity.type,
                     userId: activity.user.discordId
                 };
-            }));
+            });
             return res.json({
                 success: true,
                 activities: formattedActivities
@@ -895,31 +949,47 @@ export const apiHandlers = {
                     ]
                 });
             }
-            // Enhance with Discord usernames and filter by name too
+            // Batch fetch Discord usernames to avoid N+1 queries
             const client = getDiscordClient();
             console.log(`[Search API] Discord client available: ${!!client}, ready: ${client?.isReady()}`);
-            const enhancedUsers = await Promise.all(users.map(async (user) => {
-                let displayName = `Player ${user.discordId.slice(-4)}`;
-                let avatarURL = `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png`;
-                if (client && client.isReady()) {
+            // Get unique Discord IDs for batching
+            const uniqueDiscordIds = [...new Set(users.map(user => user.discordId))];
+            // Batch fetch Discord users with timeout handling
+            const discordUserMap = new Map();
+            if (client && client.isReady() && uniqueDiscordIds.length > 0) {
+                console.log(`[Search API] Batch fetching ${uniqueDiscordIds.length} Discord users`);
+                // Use Promise.allSettled to avoid one failure breaking all fetches
+                const results = await Promise.allSettled(uniqueDiscordIds.map(async (discordId) => {
                     try {
-                        // Add timeout to Discord API call
+                        // Add timeout to individual Discord API calls
                         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Discord fetch timeout')), 2000));
-                        const fetchPromise = client.users.fetch(user.discordId);
+                        const fetchPromise = client.users.fetch(discordId);
                         const discordUser = await Promise.race([fetchPromise, timeoutPromise]);
-                        const newDisplayName = discordUser.displayName || discordUser.username || displayName;
-                        console.log(`[Search API] Fetched ${user.discordId}: ${newDisplayName}`);
-                        displayName = newDisplayName;
-                        avatarURL = discordUser.displayAvatarURL({ size: 64 });
+                        const displayName = discordUser.displayName || discordUser.username;
+                        const avatarURL = discordUser.displayAvatarURL({ size: 64 });
+                        if (displayName) {
+                            discordUserMap.set(discordId, { displayName, avatarURL });
+                            console.log(`[Search API] Fetched ${discordId}: ${displayName}`);
+                        }
                     }
                     catch (error) {
-                        // Keep fallback values
-                        console.log(`[Search API] Failed to fetch Discord user ${user.discordId}: ${error.message}`);
+                        console.log(`[Search API] Failed to fetch Discord user ${discordId}: ${error.message}`);
+                        // Set fallback in map for consistent handling
+                        discordUserMap.set(discordId, {
+                            displayName: `Player ${discordId.slice(-4)}`,
+                            avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+                        });
                     }
-                }
-                else {
-                    console.log(`[Search API] Discord client not available for ${user.discordId}`);
-                }
+                }));
+            }
+            // Enhance users with batched Discord data
+            const enhancedUsers = users.map(user => {
+                const defaultDisplayName = `Player ${user.discordId.slice(-4)}`;
+                const defaultAvatarURL = `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png`;
+                // Use batched data or fallback
+                const discordData = discordUserMap.get(user.discordId);
+                const displayName = discordData?.displayName || defaultDisplayName;
+                const avatarURL = discordData?.avatarURL || defaultAvatarURL;
                 return {
                     discordId: user.discordId,
                     displayName: displayName + (user.showInPenguBook ? ' 📖' : ''),
@@ -929,7 +999,7 @@ export const apiHandlers = {
                     inPenguBook: user.showInPenguBook,
                     rawDisplayName: displayName
                 };
-            }));
+            });
             // Filter by username after fetching Discord names
             const filteredUsers = enhancedUsers.filter(user => {
                 const lowerQuery = query.toLowerCase();
@@ -966,6 +1036,180 @@ export const apiHandlers = {
         catch (error) {
             console.error("User search API error:", error);
             res.status(500).json({ success: false, error: "Failed to search users" });
+        }
+    },
+    // POST /pengubook/api/claim-daily - Claim daily PIPChips
+    async claimDaily(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            // Ensure user exists in database
+            await ensureUser(currentUser.discordId);
+            // Check if user can claim daily bonus
+            const streakInfo = await pipchipsService.getStreakInfo(currentUser.discordId);
+            if (!streakInfo.canClaim) {
+                const hours = Math.floor(streakInfo.hoursUntilNext);
+                const minutes = Math.floor((streakInfo.hoursUntilNext - hours) * 60);
+                return res.json({
+                    success: false,
+                    error: "Daily bonus already claimed",
+                    data: {
+                        currentStreak: streakInfo.currentStreak,
+                        streakMultiplier: streakInfo.streakMultiplier,
+                        hoursUntilNext: hours,
+                        minutesUntilNext: minutes,
+                        nextClaimTime: `${hours}h ${minutes}m`
+                    }
+                });
+            }
+            // Claim the daily bonus
+            const result = await pipchipsService.claimDailyBonus(currentUser.discordId);
+            return res.json({
+                success: true,
+                message: "Daily bonus claimed successfully!",
+                data: {
+                    bonusAmount: Number(result.amount),
+                    newBalance: Number(result.newBalance),
+                    newStreak: result.newStreak,
+                    streakMultiplier: result.streakMultiplier
+                }
+            });
+        }
+        catch (error) {
+            console.error("Claim daily API error:", error);
+            res.status(500).json({ success: false, error: "Failed to claim daily bonus" });
+        }
+    },
+    // GET /pengubook/api/buy-chips-options - Get available PIPChips packages
+    async buyChipsOptions(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            // Get available PIPChips packages from database
+            const packages = await prisma.pipchipsPackage.findMany({
+                where: {
+                    isActive: true
+                },
+                orderBy: [
+                    { tokenSymbol: 'asc' },
+                    { pipchipsAmount: 'asc' }
+                ]
+            });
+            // Group packages by token
+            const packagesByToken = {};
+            packages.forEach(pkg => {
+                if (!packagesByToken[pkg.tokenSymbol]) {
+                    packagesByToken[pkg.tokenSymbol] = [];
+                }
+                packagesByToken[pkg.tokenSymbol].push({
+                    id: pkg.id,
+                    pipchipsAmount: Number(pkg.pipchipsAmount),
+                    tokenCost: Number(pkg.tokenCost),
+                    tokenSymbol: pkg.tokenSymbol,
+                    description: `${Number(pkg.pipchipsAmount).toLocaleString()} PIPChips for ${Number(pkg.tokenCost)} ${pkg.tokenSymbol}`
+                });
+            });
+            return res.json({
+                success: true,
+                packages: packagesByToken,
+                availableTokens: Object.keys(packagesByToken)
+            });
+        }
+        catch (error) {
+            console.error("Buy chips options API error:", error);
+            res.status(500).json({ success: false, error: "Failed to get chip packages" });
+        }
+    },
+    // POST /pengubook/api/create-market - Create new PIPChips prediction market
+    async createMarket(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            // Ensure user exists in database
+            await ensureUser(currentUser.discordId);
+            const { title, description, resolveAt, marketType = 'YES_NO' } = req.body;
+            // Validate required fields
+            if (!title || !description || !resolveAt) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: title, description, resolveAt"
+                });
+            }
+            // Validate resolve date
+            const resolveDate = new Date(resolveAt);
+            const now = new Date();
+            if (resolveDate <= now) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Market must resolve in the future"
+                });
+            }
+            // Minimum resolve time (1 hour)
+            const minResolveTime = new Date(now.getTime() + 60 * 60 * 1000);
+            if (resolveDate < minResolveTime) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Market must resolve at least 1 hour from now"
+                });
+            }
+            // Check user permissions with tier system
+            const { checkMarketCreationPermission } = await import('../../../services/tiers.js');
+            const tierPerms = await checkMarketCreationPermission(currentUser.discordId);
+            if (!tierPerms.allowed || !tierPerms.permissions?.canCreateMarkets) {
+                return res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to create markets. Consider upgrading your tier."
+                });
+            }
+            // Create market using the prediction markets service
+            const { predictionMarkets } = await import('../../../services/prediction_markets.js');
+            const marketParams = {
+                title: title.trim(),
+                description: description.trim(),
+                resolveAt: resolveDate,
+                creatorId: currentUser.discordId,
+                guildId: 'web', // Special identifier for web-created markets
+                channelId: 'pengubook',
+                tokenSymbol: 'PIPCHIPS',
+                marketType: marketType,
+                marketData: {
+                    source: 'pengubook',
+                    createdVia: 'web'
+                },
+                rakePercentage: tierPerms.permissions?.customRakePercent || 3.0
+            };
+            const market = await predictionMarkets.createMarket(marketParams);
+            // Return success with market details
+            return res.json({
+                success: true,
+                message: "Market created successfully!",
+                market: {
+                    id: market.id,
+                    title: market.title,
+                    description: market.description,
+                    resolveAt: market.resolveAt,
+                    marketType: market.marketType,
+                    outcomes: ['YES', 'NO'], // Standard binary market outcomes
+                    liquidity: Number(market.liquidity),
+                    creator: currentUser.discordId,
+                    tierName: tierPerms.tierName,
+                    liquidityBonus: 0, // Will be calculated by the prediction markets service
+                    marketFee: tierPerms.permissions?.customRakePercent || 3
+                }
+            });
+        }
+        catch (error) {
+            console.error("Create market API error:", error);
+            res.status(500).json({
+                success: false,
+                error: error?.message || "Failed to create market"
+            });
         }
     }
 };

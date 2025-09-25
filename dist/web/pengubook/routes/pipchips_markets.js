@@ -27,7 +27,7 @@ export async function pipchipsMarketsHandler(req, res) {
         }
         // Ensure user exists in database
         const dbUser = await findOrCreateUser(currentUser.discordId);
-        const [markets, totalMarkets, userBalance] = await Promise.all([
+        const [markets, totalMarkets, userBalance, tierPerms] = await Promise.all([
             prisma.predictionMarket.findMany({
                 where,
                 orderBy: [
@@ -43,7 +43,9 @@ export async function pipchipsMarketsHandler(req, res) {
                 }
             }),
             prisma.predictionMarket.count({ where }),
-            pipchipsService.getUserBalance(currentUser.discordId)
+            pipchipsService.getUserBalance(currentUser.discordId),
+            // Get user tier permissions for market creation
+            import('../../../services/tiers.js').then(mod => mod.checkMarketCreationPermission(currentUser.discordId))
         ]);
         // Calculate live LMSR prices for each market
         const marketsWithPrices = markets.map(market => {
@@ -94,6 +96,7 @@ export async function pipchipsMarketsHandler(req, res) {
                 hasMore: offsetNum + limitNum < totalMarkets
             },
             userBalance: Number(userBalance.balance),
+            tierPerms,
             currentUser
         });
         const html = generateBaseHTML(content, "PIPChips Predictions - PenguBook", "pipchips-markets", { user: currentUser });
@@ -147,10 +150,12 @@ export async function pipchipsMarketDetailHandler(req, res) {
             orderBy: { createdAt: 'desc' },
             take: 20
         });
-        // Get user balance and streak info
-        const [userBalance, streakInfo] = await Promise.all([
+        // Get user balance, streak info, and tier permissions
+        const [userBalance, streakInfo, tierPerms] = await Promise.all([
             pipchipsService.getUserBalance(currentUser.discordId),
-            pipchipsService.getStreakInfo(currentUser.discordId)
+            pipchipsService.getStreakInfo(currentUser.discordId),
+            // Import tiers service to check market creation permissions
+            import('../../../services/tiers.js').then(mod => mod.checkMarketCreationPermission(currentUser.discordId))
         ]);
         // Initialize LMSR for pricing
         const lmsr = new PIPChipsLMSR(Number(market.liquidity) || 1000, market.marketOutcomes);
@@ -218,6 +223,7 @@ export async function pipchipsMarketDetailHandler(req, res) {
             userBalance: Number(userBalance.balance),
             streakInfo,
             potentialBets,
+            tierPerms,
             currentUser
         });
         const html = generateBaseHTML(content, `${market.title} - PIPChips Market`, "pipchips-market-detail", { user: currentUser });
@@ -230,7 +236,7 @@ export async function pipchipsMarketDetailHandler(req, res) {
 }
 // HTML content generators
 function generatePIPChipsMarketsPageContent(markets, options) {
-    const { currentFilter, pagination, userBalance, currentUser } = options;
+    const { currentFilter, pagination, userBalance, tierPerms, currentUser } = options;
     return `
     <div class="pipchips-markets-page">
       <!-- PIPChips Balance Header -->
@@ -243,10 +249,71 @@ function generatePIPChipsMarketsPageContent(markets, options) {
           </div>
         </div>
         <div class="balance-actions">
-          <a href="discord://pip_daily" class="btn btn-primary">📅 Claim Daily</a>
-          <a href="discord://pip_buy_chips" class="btn btn-secondary">💰 Buy More</a>
+          <button onclick="claimDailyBonus()" class="btn btn-primary">📅 Claim Daily</button>
+          <button onclick="showBuyChipsModal()" class="btn btn-secondary">💰 Buy More</button>
         </div>
       </div>
+
+      <!-- Create Market Section (for users with permissions) -->
+      ${tierPerms.allowed && tierPerms.permissions.canCreateMarkets ? `
+        <div class="create-market-section">
+          <div class="create-market-header">
+            <h2>🎯 Create Prediction Market</h2>
+            <p>Tier: <strong>${tierPerms.tierName || 'Free'}</strong></p>
+            <button onclick="toggleCreateMarketForm()" class="btn btn-primary" id="createMarketToggle">+ Create Market</button>
+          </div>
+
+          <div id="createMarketForm" class="create-market-form" style="display: none;">
+            <form onsubmit="createMarket(event)">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="marketTitle">Market Title:</label>
+                  <input type="text" id="marketTitle" name="title" required maxlength="200"
+                         placeholder="Will Bitcoin reach $100k by end of year?">
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="marketDescription">Description:</label>
+                  <textarea id="marketDescription" name="description" required maxlength="500" rows="3"
+                            placeholder="Provide details about the market conditions and resolution criteria..."></textarea>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="marketResolveAt">Resolve Date:</label>
+                  <input type="datetime-local" id="marketResolveAt" name="resolveAt" required>
+                </div>
+                <div class="form-group">
+                  <label for="marketType">Market Type:</label>
+                  <select id="marketType" name="marketType" required>
+                    <option value="YES_NO">Yes/No</option>
+                    <option value="BINARY">Binary</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="market-preview">
+                <h4>Market Preview:</h4>
+                <p><strong>Base Liquidity:</strong> 1,000+ PIPChips (tier bonus applied)</p>
+                <p><strong>Market Fee:</strong> ${tierPerms.permissions?.customRakePercent || 3}%</p>
+                <p><strong>Daily Limit:</strong> ${tierPerms.permissions?.dailyMarketLimit === 0 ? 'Unlimited' : tierPerms.permissions?.dailyMarketLimit || 1} markets</p>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-success">Create Market</button>
+                <button type="button" onclick="toggleCreateMarketForm()" class="btn btn-secondary">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ` : tierPerms.allowed ? `
+        <div class="create-market-disabled">
+          <p>💡 <strong>Want to create prediction markets?</strong> Upgrade your tier to unlock market creation with liquidity bonuses!</p>
+        </div>
+      ` : ''}
 
       <!-- Market Filters -->
       <div class="market-filters">
@@ -428,7 +495,309 @@ function generatePIPChipsMarketsPageContent(markets, options) {
       .pipchips-info-box li {
         margin-bottom: 8px;
       }
+
+      /* Create Market Styles */
+      .create-market-section {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+      }
+
+      .create-market-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .create-market-header h2 {
+        margin: 0;
+        color: #1f2937;
+      }
+
+      .create-market-header p {
+        margin: 4px 0 0;
+        color: #6b7280;
+        font-size: 14px;
+      }
+
+      .create-market-form {
+        border-top: 1px solid #e5e7eb;
+        padding-top: 20px;
+      }
+
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .form-row.two-cols {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #374151;
+      }
+
+      .form-group input, .form-group textarea, .form-group select {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 16px;
+        font-family: inherit;
+      }
+
+      .form-group textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+
+      .market-preview {
+        background: #f3f4f6;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .market-preview h4 {
+        margin: 0 0 12px 0;
+        color: #1f2937;
+      }
+
+      .market-preview p {
+        margin: 8px 0;
+        color: #4b5563;
+      }
+
+      .form-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .btn-success {
+        background: #10b981;
+        color: white;
+      }
+
+      .btn-success:hover {
+        background: #059669;
+      }
+
+      .create-market-disabled {
+        background: #fef3cd;
+        border: 1px solid #facc15;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        text-align: center;
+      }
+
+      @media (min-width: 768px) {
+        .form-row {
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+
+        .form-row.single {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
+
+    <script>
+      // JavaScript functions for button functionality
+      async function claimDailyBonus() {
+        try {
+          const response = await fetch('/pengubook/api/claim-daily', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            alert(\`Daily bonus claimed! You received \${result.data.bonusAmount} PIPChips. Current streak: \${result.data.newStreak} days.\`);
+            location.reload(); // Refresh to update balance display
+          } else {
+            if (result.data && result.data.timeUntilNext) {
+              const hours = Math.floor(result.data.timeUntilNext / (1000 * 60 * 60));
+              const minutes = Math.floor((result.data.timeUntilNext % (1000 * 60 * 60)) / (1000 * 60));
+              alert(\`Daily bonus already claimed! Next claim available in \${hours}h \${minutes}m.\`);
+            } else {
+              alert('Error: ' + result.error);
+            }
+          }
+        } catch (error) {
+          console.error('Daily claim error:', error);
+          alert('Network error claiming daily bonus');
+        }
+      }
+
+      async function showBuyChipsModal() {
+        try {
+          const response = await fetch('/pengubook/api/buy-chips-options');
+          const result = await response.json();
+
+          if (result.success) {
+            const options = result.data.options;
+            let modalContent = '<div style="text-align: left;"><h3>Buy PIPChips</h3>';
+
+            options.forEach(option => {
+              modalContent += \`
+                <div style="border: 1px solid #ccc; padding: 12px; margin: 8px 0; border-radius: 8px; cursor: pointer;" onclick="purchaseChips('\${option.tokenId}', \${option.pipchipsAmount})">
+                  <strong>\${option.pipchipsAmount.toLocaleString()} PIPChips</strong><br>
+                  <span style="color: #666;">Cost: \${option.cost} \${option.tokenSymbol}</span><br>
+                  <small style="color: #888;">Your balance: \${option.userBalance.toLocaleString()} \${option.tokenSymbol}</small>
+                </div>
+              \`;
+            });
+
+            modalContent += '</div>';
+
+            // Create modal
+            const modal = document.createElement('div');
+            modal.style.cssText = \`
+              position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+              background: rgba(0,0,0,0.8); z-index: 10000; padding: 20px;
+              display: flex; align-items: center; justify-content: center;
+            \`;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.style.cssText = \`
+              background: white; border-radius: 12px; padding: 24px;
+              max-width: 400px; width: 100%;
+            \`;
+
+            modalDiv.innerHTML = modalContent + \`
+              <div style="text-align: center; margin-top: 16px;">
+                <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Close</button>
+              </div>
+            \`;
+
+            modal.appendChild(modalDiv);
+            document.body.appendChild(modal);
+
+          } else {
+            alert('Error loading purchase options: ' + result.error);
+          }
+        } catch (error) {
+          console.error('Buy chips error:', error);
+          alert('Network error loading purchase options');
+        }
+      }
+
+      async function purchaseChips(tokenId, pipchipsAmount) {
+        if (!confirm(\`Purchase \${pipchipsAmount.toLocaleString()} PIPChips?\`)) return;
+
+        try {
+          const response = await fetch('/api/buy-pipchips', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tokenId, pipchipsAmount })
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            alert(\`Successfully purchased \${pipchipsAmount.toLocaleString()} PIPChips!\`);
+            // Close modal and reload
+            document.querySelector('div[style*="position: fixed"]')?.remove();
+            location.reload();
+          } else {
+            alert('Purchase failed: ' + result.error);
+          }
+        } catch (error) {
+          console.error('Purchase error:', error);
+          alert('Network error processing purchase');
+        }
+      }
+
+      // Create Market Functions
+      function toggleCreateMarketForm() {
+        const form = document.getElementById('createMarketForm');
+        const button = document.getElementById('createMarketToggle');
+
+        if (form.style.display === 'none') {
+          form.style.display = 'block';
+          button.textContent = '- Cancel';
+          button.classList.remove('btn-primary');
+          button.classList.add('btn-secondary');
+        } else {
+          form.style.display = 'none';
+          button.textContent = '+ Create Market';
+          button.classList.remove('btn-secondary');
+          button.classList.add('btn-primary');
+        }
+      }
+
+      async function createMarket(event) {
+        event.preventDefault();
+
+        const formData = new FormData(event.target);
+        const marketData = {
+          title: formData.get('title'),
+          description: formData.get('description'),
+          resolveAt: formData.get('resolveAt'),
+          marketType: formData.get('marketType')
+        };
+
+        // Basic validation
+        if (!marketData.title || !marketData.description || !marketData.resolveAt) {
+          alert('Please fill in all required fields');
+          return;
+        }
+
+        const resolveDate = new Date(marketData.resolveAt);
+        const now = new Date();
+        if (resolveDate <= now) {
+          alert('Resolve date must be in the future');
+          return;
+        }
+
+        // Minimum time validation (1 hour)
+        const minTime = new Date(now.getTime() + 60 * 60 * 1000);
+        if (resolveDate < minTime) {
+          alert('Market must resolve at least 1 hour from now');
+          return;
+        }
+
+        try {
+          const response = await fetch('/pengubook/api/create-market', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(marketData)
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            alert(\`Market created successfully! Market ID: \${result.market.id}\`);
+            // Reset form
+            event.target.reset();
+            toggleCreateMarketForm();
+            // Optionally refresh the page to show the new market
+            setTimeout(() => location.reload(), 1000);
+          } else {
+            alert('Error creating market: ' + result.error);
+          }
+        } catch (error) {
+          console.error('Market creation error:', error);
+          alert('Network error creating market');
+        }
+      }
+    </script>
   `;
 }
 function generateMarketCard(market) {

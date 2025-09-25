@@ -49,6 +49,7 @@ pengubookModularRouter.get("/pipchips/market/:marketId", pipchipsMarketDetailHan
 pengubookModularRouter.get("/api/unread-count", apiHandlers.unreadCount);
 pengubookModularRouter.get("/api/token-price/:tokenSymbol", apiHandlers.tokenPrice);
 pengubookModularRouter.get("/api/discord-user/:discordId", apiHandlers.discordUser);
+pengubookModularRouter.post("/api/discord-users-batch", apiHandlers.discordUsersBatch);
 pengubookModularRouter.get("/api/user-data", apiHandlers.userData);
 pengubookModularRouter.post("/api/tip", apiHandlers.tip);
 pengubookModularRouter.post("/api/profile", apiHandlers.profile);
@@ -62,6 +63,7 @@ pengubookModularRouter.get("/api/activity-feed", apiHandlers.activityFeed);
 pengubookModularRouter.get("/api/search-users", apiHandlers.searchUsers);
 pengubookModularRouter.post("/api/claim-daily", apiHandlers.claimDaily);
 pengubookModularRouter.get("/api/buy-chips-options", apiHandlers.buyChipsOptions);
+pengubookModularRouter.post("/api/create-market", apiHandlers.createMarket);
 
 // Export template function for use in routes
 export { generateBaseHTML };

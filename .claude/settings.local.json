@@ -43,7 +43,9 @@
       "Bash(npm install:*)",
       "Read(//tmp/**)",
       "WebFetch(domain:docs.dexscreener.com)",
-      "Bash(NODE_ENV=test npx tsx test/run_all_tests.ts)"
+      "Bash(NODE_ENV=test npx tsx test/run_all_tests.ts)",
+      "Bash(npx prisma db pull:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": []

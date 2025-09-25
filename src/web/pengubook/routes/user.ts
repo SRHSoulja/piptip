@@ -174,20 +174,34 @@ export async function userHandler(req: Request, res: Response) {
     </div>
 
     <script>
-        // Load Discord username and avatar
-        fetch('/pengubook/api/discord-user/${targetUser.discordId}')
-            .then(res => res.ok ? res.json() : Promise.reject('Failed to load'))
-            .then(data => {
-                if (data.success) {
+        // Load Discord username and avatar using batch endpoint for consistency
+        async function loadUserDiscordData() {
+            try {
+                const response = await fetch('/pengubook/api/discord-users-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ discordIds: ['${targetUser.discordId}'] })
+                });
+
+                if (!response.ok) throw new Error('Batch fetch failed');
+
+                const data = await response.json();
+
+                if (data.success && data.users && data.users['${targetUser.discordId}']) {
+                    const userData = data.users['${targetUser.discordId}'];
                     const usernameEl = document.getElementById('user-username');
                     const avatarEl = document.getElementById('user-avatar');
-                    if (usernameEl) usernameEl.textContent = data.username;
-                    if (avatarEl) avatarEl.src = data.avatarURL;
+
+                    if (usernameEl) usernameEl.textContent = userData.username;
+                    if (avatarEl) avatarEl.src = userData.avatarURL;
                 }
-            })
-            .catch(() => {
-                // Silently fail with fallback already in place
-            });
+            } catch (error) {
+                console.warn('Failed to load Discord user data:', error);
+                // Fallback data is already in place
+            }
+        }
+
+        loadUserDiscordData();
 
         let userTokens = [];
         let userBalances = {};
