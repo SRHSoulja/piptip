@@ -474,11 +474,11 @@ export const apiHandlers = {
                     }
                 });
                 added = true;
-                // Get proper display names for both users
-                let targetUserHandle = `User#${targetDiscordId.slice(-4)}`;
-                let userHandle = `User#${currentUser.discordId.slice(-4)}`;
+                // Get proper display names for both users with better fallbacks
+                let targetUserHandle = `Player ${targetDiscordId.slice(-4)}`;
+                let userHandle = `Player ${currentUser.discordId.slice(-4)}`;
                 const client = getDiscordClient();
-                if (client) {
+                if (client && client.isReady()) {
                     try {
                         // Fetch target user
                         const targetDiscordUser = await client.users.fetch(targetDiscordId);
@@ -488,8 +488,12 @@ export const apiHandlers = {
                         userHandle = currentDiscordUser.displayName || currentDiscordUser.username || userHandle;
                     }
                     catch (error) {
+                        console.log('Discord API fetch failed, using fallback names');
                         // Keep fallback values
                     }
+                }
+                else {
+                    console.log('Discord client not available, using fallback names');
                 }
                 // Create activity feed item with both user handles
                 await prisma.activityFeedItem.create({
@@ -566,11 +570,11 @@ export const apiHandlers = {
                     }
                 });
                 following = true;
-                // Get proper display names for both users
-                let targetUserHandle = `User#${targetDiscordId.slice(-4)}`;
-                let userHandle = `User#${currentUser.discordId.slice(-4)}`;
+                // Get proper display names for both users with better fallbacks
+                let targetUserHandle = `Player ${targetDiscordId.slice(-4)}`;
+                let userHandle = `Player ${currentUser.discordId.slice(-4)}`;
                 const client = getDiscordClient();
-                if (client) {
+                if (client && client.isReady()) {
                     try {
                         // Fetch target user
                         const targetDiscordUser = await client.users.fetch(targetDiscordId);
@@ -580,8 +584,12 @@ export const apiHandlers = {
                         userHandle = currentDiscordUser.displayName || currentDiscordUser.username || userHandle;
                     }
                     catch (error) {
+                        console.log('Discord API fetch failed, using fallback names');
                         // Keep fallback values
                     }
+                }
+                else {
+                    console.log('Discord client not available, using fallback names');
                 }
                 // Create activity feed item with both user handles
                 await prisma.activityFeedItem.create({
@@ -722,6 +730,10 @@ export const apiHandlers = {
                 let username = data.userHandle;
                 if (!username) {
                     username = await getDiscordUsername(activity.user.discordId, undefined);
+                    // If still no username, provide a better fallback
+                    if (username.startsWith('User#')) {
+                        username = `Player ${activity.user.discordId.slice(-4)}`;
+                    }
                 }
                 switch (activity.type) {
                     case 'reaction':
@@ -845,9 +857,9 @@ export const apiHandlers = {
             // Enhance with Discord usernames and filter by name too
             const client = getDiscordClient();
             const enhancedUsers = await Promise.all(users.map(async (user) => {
-                let displayName = `User#${user.discordId.slice(-4)}`;
+                let displayName = `Player ${user.discordId.slice(-4)}`;
                 let avatarURL = `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png`;
-                if (client) {
+                if (client && client.isReady()) {
                     try {
                         const discordUser = await client.users.fetch(user.discordId);
                         displayName = discordUser.displayName || discordUser.username || displayName;
@@ -855,6 +867,7 @@ export const apiHandlers = {
                     }
                     catch (error) {
                         // Keep fallback values
+                        console.log(`Failed to fetch Discord user ${user.discordId}, using fallback`);
                     }
                 }
                 return {
