@@ -803,7 +803,12 @@ export const apiHandlers = {
         let icon = '📝';
 
         // Get proper username using stored data when available
-        const username = await getDiscordUsername(activity.user.discordId, data.userHandle);
+        // For new activities, data.userHandle should be available
+        // For old activities, we need to fetch from Discord or use fallback
+        let username = data.userHandle;
+        if (!username) {
+          username = await getDiscordUsername(activity.user.discordId, undefined);
+        }
 
         switch (activity.type) {
           case 'reaction':
@@ -912,16 +917,15 @@ export const apiHandlers = {
         return res.json({ success: true, users: [] });
       }
 
-      // Search PenguBook users by Discord handle/username
+      // Search all users (not just PenguBook users) for messaging
       const users = await prisma.user.findMany({
         where: {
           AND: [
-            { showInPenguBook: true },
             { discordId: { not: currentUser.discordId } }, // Exclude self
             {
               OR: [
                 { discordId: { contains: query, mode: 'insensitive' } },
-                // You could add more search fields here if you store usernames
+                // Search by Discord ID partial match
               ]
             }
           ]
@@ -930,16 +934,18 @@ export const apiHandlers = {
           discordId: true,
           createdAt: true,
           wins: true,
-          bio: true
+          bio: true,
+          showInPenguBook: true
         },
-        take: 10,
+        take: 15,
         orderBy: [
+          { showInPenguBook: 'desc' }, // PenguBook users first
           { wins: 'desc' }, // Popular users first
           { createdAt: 'desc' }
         ]
       });
 
-      // Enhance with Discord usernames
+      // Enhance with Discord usernames and filter by name too
       const client = getDiscordClient();
       const enhancedUsers = await Promise.all(
         users.map(async user => {
@@ -949,7 +955,7 @@ export const apiHandlers = {
           if (client) {
             try {
               const discordUser = await client.users.fetch(user.discordId);
-              displayName = discordUser.displayName || discordUser.username;
+              displayName = discordUser.displayName || discordUser.username || displayName;
               avatarURL = discordUser.displayAvatarURL({ size: 64 });
             } catch (error) {
               // Keep fallback values
@@ -958,17 +964,26 @@ export const apiHandlers = {
 
           return {
             discordId: user.discordId,
-            displayName,
+            displayName: displayName + (user.showInPenguBook ? ' 📖' : ''),
             avatarURL,
             wins: user.wins,
-            bioText: user.bio?.substring(0, 100) || ''
+            bioText: user.bio?.substring(0, 100) || '',
+            inPenguBook: user.showInPenguBook,
+            rawDisplayName: displayName
           };
         })
       );
 
+      // Filter by username after fetching Discord names
+      const filteredUsers = enhancedUsers.filter(user => {
+        const lowerQuery = query.toLowerCase();
+        return user.discordId.toLowerCase().includes(lowerQuery) ||
+               user.rawDisplayName.toLowerCase().includes(lowerQuery);
+      });
+
       return res.json({
         success: true,
-        users: enhancedUsers
+        users: filteredUsers.slice(0, 10) // Limit to top 10 results
       });
 
     } catch (error) {
