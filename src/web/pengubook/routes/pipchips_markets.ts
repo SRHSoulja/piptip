@@ -582,7 +582,7 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
 
       .create-market-header p {
         margin: 4px 0 0;
-        color: #6b7280;
+        color: #4b5563;
         font-size: 14px;
       }
 
@@ -722,7 +722,7 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
                 <div style="border: 1px solid #ccc; padding: 12px; margin: 8px 0; border-radius: 8px; cursor: pointer;" onclick="purchaseChips('\${option.tokenId}', \${option.pipchipsAmount})">
                   <strong>\${option.pipchipsAmount.toLocaleString()} PIPChips</strong><br>
                   <span style="color: #666;">Cost: \${option.cost} \${option.tokenSymbol}</span><br>
-                  <small style="color: #888;">Your balance: \${option.userBalance.toLocaleString()} \${option.tokenSymbol}</small>
+                  <small style="color: #4b5563;">Your balance: \${option.userBalance.toLocaleString()} \${option.tokenSymbol}</small>
                 </div>
               \`;
             });
@@ -876,19 +876,81 @@ function generateMarketCard(market: any) {
   const timeLeft = market.timeLeftMs;
   const hours = Math.floor(timeLeft / (1000 * 60 * 60));
   const days = Math.floor(hours / 24);
-  const timeText = days > 0 ? `${days} days` : `${hours} hours`;
+  const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+
+  // Better time formatting
+  let timeText = '';
+  if (market.bettingClosed) {
+    timeText = 'Betting Closed';
+  } else if (days > 0) {
+    timeText = `${days}d ${hours % 24}h`;
+  } else if (hours > 0) {
+    timeText = `${hours}h ${minutes}m`;
+  } else {
+    timeText = `${minutes}m`;
+  }
+
+  // Calculate betting cutoff time (20% before resolution or from marketData)
+  const bettingCutoffTime = market.marketData?.bettingCutoffTime ||
+                            market.marketData?.bettingClosesAt ||
+                            new Date(market.resolveAt).getTime() - (timeLeft * 0.2);
+  const bettingTimeLeft = bettingCutoffTime - Date.now();
+  const bettingClosed = bettingTimeLeft <= 0;
+
+  let bettingStatus = '';
+  if (bettingClosed) {
+    bettingStatus = '<span style="color: #dc2626;">🔒 Betting closed</span>';
+  } else {
+    const bettingHours = Math.floor(bettingTimeLeft / (1000 * 60 * 60));
+    const bettingMins = Math.floor((bettingTimeLeft % (1000 * 60 * 60)) / (1000 * 60));
+    if (bettingHours > 0) {
+      bettingStatus = `<span style="color: #059669;">✅ Betting closes in ${bettingHours}h ${bettingMins}m</span>`;
+    } else {
+      bettingStatus = `<span style="color: #ea580c;">⚠️ Betting closes in ${bettingMins}m</span>`;
+    }
+  }
+
+  // Calculate how long ago market was created
+  const createdAt = new Date(market.createdAt);
+  const marketAge = Date.now() - createdAt.getTime();
+  const ageHours = Math.floor(marketAge / (1000 * 60 * 60));
+  const ageDays = Math.floor(ageHours / 24);
+
+  let ageText = '';
+  if (ageDays > 0) {
+    ageText = `${ageDays}d ago`;
+  } else if (ageHours > 0) {
+    ageText = `${ageHours}h ago`;
+  } else {
+    const ageMins = Math.floor(marketAge / (1000 * 60));
+    ageText = `${ageMins}m ago`;
+  }
+
+  // Market type badge
+  const marketTypeBadge = market.marketData?.templateBased ?
+    '<span class="market-badge" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">AUTO</span>' : '';
 
   return `
     <div class="market-card">
       <div class="market-header">
         <h3><a href="/pengubook/pipchips/market/${market.id}">${market.title}</a></h3>
         <div class="market-meta">
-          <span class="pipchips-volume">💰 ${market.totalVolume.toLocaleString()} PIPChips</span>
-          <span class="time-left">⏰ ${market.bettingClosed ? 'Ended' : timeText}</span>
+          <span class="created-time" style="color: #4b5563; font-size: 12px;">📅 Created ${ageText}</span>
+          ${marketTypeBadge}
         </div>
       </div>
 
       <p class="market-description">${market.description}</p>
+
+      <div class="market-timing" style="background: #f3f4f6; padding: 12px; border-radius: 8px; margin: 12px 0;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span>⏰ Resolution: <strong>${timeText}</strong></span>
+          <span>💰 Volume: <strong>${market.totalVolume.toLocaleString()} PIPChips</strong></span>
+        </div>
+        <div style="font-size: 14px;">
+          ${bettingStatus}
+        </div>
+      </div>
 
       <div class="market-outcomes">
         ${market.outcomes.map((outcome: string) => `
@@ -899,9 +961,10 @@ function generateMarketCard(market: any) {
         `).join('')}
       </div>
 
-      <div class="market-stats">
-        <span>${market.totalBets} bets</span>
-        <span>Liquidity: ${market.liquidityParameter || 1000}</span>
+      <div class="market-stats" style="display: flex; justify-content: space-between; color: #4b5563; font-size: 14px;">
+        <span>👥 ${market.totalBets} bet${market.totalBets !== 1 ? 's' : ''}</span>
+        <span>💧 Liquidity: ${market.liquidityParameter || 1000}</span>
+        <span>📊 LMSR Market</span>
       </div>
     </div>
   `;
@@ -911,6 +974,215 @@ function generatePIPChipsMarketDetailContent(data: any) {
   const { market, userParticipations, userBalance, streakInfo, potentialBets } = data;
 
   return `
+    <style>
+      .pipchips-market-detail {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .market-header {
+        border-bottom: 2px solid #e5e7eb;
+        padding-bottom: 20px;
+        margin-bottom: 30px;
+      }
+
+      .market-header h1 {
+        margin: 0 0 10px 0;
+        color: #1f2937;
+        font-size: 24px;
+      }
+
+      .market-status {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .market-status.active {
+        background: #d1fae5;
+        color: #065f46;
+      }
+
+      .market-status.closed {
+        background: #fecaca;
+        color: #991b1b;
+      }
+
+      .market-info .description {
+        color: #374151;
+        font-size: 16px;
+        line-height: 1.6;
+        margin-bottom: 20px;
+      }
+
+      .market-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 20px;
+        background: #f3f4f6;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+      }
+
+      .market-stats .stat {
+        text-align: center;
+      }
+
+      .market-stats .label {
+        display: block;
+        color: #6b7280;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+
+      .market-stats .value {
+        display: block;
+        color: #1f2937;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .user-balance {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #fef3cd;
+        border: 1px solid #f59e0b;
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+      }
+
+      .pipchips-logo-small {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .betting-section {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 30px;
+      }
+
+      .betting-section h3 {
+        margin: 0 0 20px 0;
+        color: #1f2937;
+      }
+
+      .outcome-betting {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+      }
+
+      .outcome-bet-card {
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 20px;
+        background: #fafafa;
+      }
+
+      .outcome-bet-card h4 {
+        margin: 0 0 12px 0;
+        color: #1f2937;
+        font-size: 18px;
+      }
+
+      .current-price {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+
+      .probability {
+        display: block;
+        font-size: 24px;
+        font-weight: bold;
+        color: #3b82f6;
+      }
+
+      .price-label {
+        display: block;
+        color: #6b7280;
+        font-size: 14px;
+      }
+
+      .bet-amounts {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .bet-amount-btn {
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background 0.2s;
+      }
+
+      .bet-amount-btn:hover:not(:disabled) {
+        background: #059669;
+      }
+
+      .bet-amount-btn:disabled {
+        background: #d1d5db;
+        color: #9ca3af;
+        cursor: not-allowed;
+      }
+
+      .user-participations-section {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+      }
+
+      .user-participations-section h3 {
+        margin: 0 0 20px 0;
+        color: #1f2937;
+      }
+
+      .user-participation {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid #f3f4f6;
+      }
+
+      .participation-outcome {
+        background: #e5e7eb;
+        color: #374151;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .participation-amount,
+      .potential-payout {
+        font-weight: 600;
+        color: #1f2937;
+      }
+
+      .participation-date {
+        color: #6b7280;
+        font-size: 14px;
+      }
+    </style>
+
     <div class="pipchips-market-detail">
       <div class="market-header">
         <h1>${market.title}</h1>
