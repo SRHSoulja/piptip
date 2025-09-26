@@ -111,7 +111,8 @@ const corsOptions = cors({
     const allowedOrigins = [
       'https://piptip.app',
       'https://www.piptip.app',
-      'https://admin.piptip.app'
+      'https://admin.piptip.app',
+      'https://piptip-production.up.railway.app'
     ];
 
     // Development mode - allow localhost and common dev ports

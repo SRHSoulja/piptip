@@ -16,6 +16,7 @@ const setCorsHeaders = (req: Request, res: Response, next: any) => {
     'http://localhost:3001',
     'https://piptip.gg',
     'https://www.piptip.gg',
+    'https://piptip-production.up.railway.app',
     process.env.WEB_URL
   ].filter(Boolean);
 
