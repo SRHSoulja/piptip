@@ -669,6 +669,27 @@ async function main() {
     app.use("/api", marketsApiRouter);
     app.use("/api/pipchips", pipchipsMarketsRouter);
 
+    // Add security dashboard routes
+    try {
+      const { securityDashboardRouter } = await import("./web/security_dashboard.js");
+      const { twoFactorRouter } = await import("./web/2fa_setup.js");
+      const { passwordStrengthRouter } = await import("./web/password_strength.js");
+      app.use("/security/dashboard", securityDashboardRouter);
+      app.use("/security", twoFactorRouter);
+      app.use("/security", passwordStrengthRouter);
+      console.log("🛡️ Security dashboard routes configured");
+    } catch (error) {
+      console.error("Failed to load security dashboard routes:", error);
+    }
+
+    // Initialize incident notification system
+    try {
+      const { incidentNotification } = await import("./services/incident_notification.js");
+      console.log("🚨 Incident notification system initialized");
+    } catch (error) {
+      console.error("Failed to initialize incident notification system:", error);
+    }
+
     // Add redirect for common mistyped URL
     app.get("/pipchips", (req, res) => {
       res.redirect("/pengubook/pipchips");

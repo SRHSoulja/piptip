@@ -47,13 +47,6 @@ export async function handleGroupTipContributeModal(i: ModalSubmitInteraction, g
     // No conversion needed - addGroupTipContribution expects human-readable amount
     // The function will handle the internal conversion to atomic units as needed
 
-    console.log('DEBUG: Modal contribution conversion', {
-      userInput: amountInput,
-      sanitizedInput,
-      contributionAmount,
-      tokenSymbol: groupTip.Token.symbol,
-      tokenDecimals: groupTip.Token.decimals
-    });
 
     // Calculate and show exact tax before processing
     const { getConfig } = await import("../config.js");

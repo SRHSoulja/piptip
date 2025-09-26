@@ -20,7 +20,7 @@ import { systemRouter } from "./admin/system.js";
 // import { backupRouter } from "./admin/backup.js"; // Disabled due to environment issues
 import { statsRouter } from "./admin/stats.js";
 import { pengubookRouter } from "./admin/pengubook.js";
-import achievementAdminRouter from "./admin/index.js";
+import achievementAdminRouter from "./admin/achievements.js";
 import roleTaxRouter from "./admin/role_tax_management.js";
 import roleRakeRouter from "./admin/role_rake_management.js";
 import { resourcesRouter } from "./admin/resources.js";
@@ -886,6 +886,7 @@ adminRouter.use(serverApplicationsRouter);
 adminRouter.use(channelsRouter);
 adminRouter.use(adsRouter);
 adminRouter.use(tiersRouter);
+adminRouter.use("/achievements", achievementAdminRouter);
 adminRouter.use(usersRouter);
 adminRouter.use(transactionsRouter);
 adminRouter.use(groupTipsRouter);
@@ -893,7 +894,6 @@ adminRouter.use(systemRouter);
 // adminRouter.use(backupRouter); // Disabled due to environment issues
 adminRouter.use(statsRouter);
 adminRouter.use(pengubookRouter);
-adminRouter.use("/achievements", achievementAdminRouter);
 adminRouter.use("/role-tax", roleTaxRouter);
 adminRouter.use("/role-rake", roleRakeRouter);
 adminRouter.use("/resources", resourcesRouter);

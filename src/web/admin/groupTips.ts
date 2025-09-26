@@ -2,32 +2,35 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../../services/db.js";
 
+console.log("🚀 GroupTips router module loaded!");
 export const groupTipsRouter = Router();
 
 groupTipsRouter.get("/group-tips", async (req: Request, res: Response) => {
   try {
-    const { status } = req.query;
+    const status = req.query.status ? String(req.query.status) : undefined;
+
     const where: any = {};
     if (status) where.status = status;
 
     const groupTips = await prisma.groupTip.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
       take: 100,
+      orderBy: { createdAt: "desc" },
       include: {
-        Token: true,
-        Creator: true,
+        Creator: { select: { discordId: true } },
+        Token: { select: { symbol: true } },
         _count: { select: { claims: true } }
       }
     });
 
-    const formattedTips = groupTips.map(gt => ({
+    const enrichedTips = groupTips.map(gt => ({
       ...gt,
       claimCount: gt._count.claims
     }));
 
-    res.json({ ok: true, groupTips: formattedTips });
-  } catch {
+    res.json({ ok: true, groupTips: enrichedTips });
+  } catch (error) {
+    console.error("Failed to load group tips:", error);
     res.status(500).json({ ok: false, error: "Failed to load group tips" });
   }
 });

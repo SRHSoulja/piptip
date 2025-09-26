@@ -155,94 +155,37 @@ usersRouter.get("/users/search", async (req: Request, res: Response) => {
 
 usersRouter.get("/users/top", async (req: Request, res: Response) => {
   try {
-    console.log("🔍 Loading top users...");
+
+    // Simplified query first to isolate the issue
     const users = await prisma.user.findMany({
-      take: 100,
-      include: {
-        balances: { include: { Token: true } },
-        tierMemberships: {
-          where: { status: 'ACTIVE', expiresAt: { gt: new Date() } },
-          include: { tier: true }
-        }
+      take: 10, // Start with just 10 users
+      select: {
+        id: true,
+        discordId: true,
+        agwAddress: true,
+        createdAt: true,
+        updatedAt: true
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    console.log(`📊 Found ${users.length} users in database`);
-
-    // Get tip statistics and last activity for each user
-    const usersWithStats = await Promise.all(
-      users.map(async (user) => {
-        const [tipsSent, tipsReceived, lastTip, lastMatch] = await Promise.all([
-          prisma.tip.aggregate({
-            where: { fromUserId: user.id, status: 'COMPLETED' },
-            _count: { id: true },
-            _sum: { amountAtomic: true }
-          }),
-          prisma.tip.aggregate({
-            where: { toUserId: user.id, status: 'COMPLETED' },
-            _count: { id: true },
-            _sum: { amountAtomic: true }
-          }),
-          prisma.tip.findFirst({
-            where: { OR: [{ fromUserId: user.id }, { toUserId: user.id }] },
-            orderBy: { createdAt: 'desc' },
-            select: { createdAt: true }
-          }),
-          prisma.match.findFirst({
-            where: { OR: [{ challengerId: user.id }, { joinerId: user.id }] },
-            orderBy: { createdAt: 'desc' },
-            select: { createdAt: true }
-          })
-        ]);
-
-        // Determine last activity from most recent tip or match
-        const lastActivity = [lastTip?.createdAt, lastMatch?.createdAt, user.updatedAt]
-          .filter((date): date is Date => date !== null && date !== undefined)
-          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-
-        return {
-          ...user,
-          lastActivity,
-          totalTipsSent: tipsSent._count.id || 0,
-          totalTipsReceived: tipsReceived._count.id || 0,
-          totalAmountSent: tipsSent._sum.amountAtomic?.toString() || "0",
-          totalAmountReceived: tipsReceived._sum.amountAtomic?.toString() || "0"
-        };
-      })
-    );
-
-    // Fetch Discord usernames
-    const discordIds = users.map(u => u.discordId);
-    let usernames = new Map();
-    try {
-      const client = getDiscordClient();
-      if (client && discordIds.length > 0) {
-        usernames = await fetchMultipleUsernames(client, discordIds);
-      }
-    } catch (error) {
-      console.warn("Failed to fetch usernames:", error);
-    }
-
-    const formattedUsers = usersWithStats.map(user => ({
+    const formattedUsers = users.map(user => ({
       ...user,
-      username: usernames.get(user.discordId) || `User ${user.discordId.slice(0, 8)}...`,
-      balances: user.balances?.map((b: any) => ({
-        amount: Number(b.amount),
-        tokenSymbol: b.Token.symbol
-      })) || [],
-      membershipDetails: user.tierMemberships?.map((m: any) => ({
-        tierName: m.tier.name,
-        status: m.status,
-        expiresAt: m.expiresAt
-      })) || []
+      username: `User ${user.discordId.slice(0, 8)}...`,
+      balances: [],
+      membershipDetails: [],
+      lastActivity: user.updatedAt,
+      totalTipsSent: 0,
+      totalTipsReceived: 0,
+      totalAmountSent: "0",
+      totalAmountReceived: "0"
     }));
-
-    console.log(`✅ Returning ${formattedUsers.length} formatted users to client`);
     res.json({ ok: true, users: formattedUsers });
   } catch (error) {
     console.error("❌ Failed to load top users:", error);
-    res.status(500).json({ ok: false, error: "Failed to load users" });
+    console.error("❌ Error details:", error instanceof Error ? error.message : String(error));
+    console.error("❌ Stack trace:", error instanceof Error ? error.stack : 'No stack trace');
+    res.status(500).json({ ok: false, error: "Failed to load users", details: error instanceof Error ? error.message : String(error) });
   }
 });
 

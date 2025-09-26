@@ -1,12 +1,15 @@
 // src/services/referrals.ts - Referral system with tax reduction benefits
 import { prisma } from "./db.js";
 import { findOrCreateUser } from "./user_helpers.js";
+import { getConfig } from "../config.js";
+import crypto from "crypto";
 // Generate unique referral code
 export function generateReferralCode(userId) {
-    // Create a unique code using user ID and random string
+    // Create a unique code using user ID and cryptographically secure random string
     const timestamp = Date.now().toString(36);
     const userHash = userId.slice(-4);
-    const random = Math.random().toString(36).substring(2, 6);
+    const randomBytes = crypto.randomBytes(3);
+    const random = randomBytes.toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4);
     return `PIP${userHash}${timestamp}${random}`.toUpperCase();
 }
 // Create referral code for a user
@@ -74,7 +77,7 @@ export async function processReferralSignup(referralCode, newUserDiscordId) {
     }
 }
 // Update referral progress when user tips
-export async function updateReferralProgress(userDiscordId, tipAmount) {
+export async function updateReferralProgress(userDiscordId, tipAmount, tokenId) {
     try {
         const user = await findOrCreateUser(userDiscordId);
         // Find if this user was referred
@@ -83,14 +86,23 @@ export async function updateReferralProgress(userDiscordId, tipAmount) {
         });
         if (!referral)
             return; // User wasn't referred or already verified
+        const config = await getConfig();
+        // Grant welcome bonus on first tip if configured and not already granted
+        if (!referral.welcomeBonusGranted && Number(config.referralWelcomeBonus) > 0 && tokenId) {
+            await grantWelcomeBonus(user.id, tokenId, Number(config.referralWelcomeBonus));
+            await prisma.referral.update({
+                where: { id: referral.id },
+                data: { welcomeBonusGranted: true }
+            });
+        }
         // Update total tipped amount
         const newTotal = Number(referral.totalTipped) + tipAmount;
         await prisma.referral.update({
             where: { id: referral.id },
             data: { totalTipped: newTotal }
         });
-        // Check if they've reached verification threshold (20 tokens)
-        if (newTotal >= 20 && !referral.isVerified) {
+        // Check if they've reached verification threshold
+        if (newTotal >= Number(config.referralVerificationThreshold) && !referral.isVerified) {
             await verifyReferral(referral.id);
         }
     }
@@ -120,12 +132,42 @@ async function verifyReferral(referralId) {
             isVerified: true
         }
     });
-    // Grant 1-week tax-free membership for every 10 verified referrals
-    if (verifiedCount > 0 && verifiedCount % 10 === 0) {
+    // Grant 1-week tax-free membership based on config
+    const config = await getConfig();
+    const rewardInterval = config.referralRewardInterval;
+    if (verifiedCount > 0 && verifiedCount % rewardInterval === 0) {
         await grantTaxFreeWeek(referral.referrerId);
     }
     // Create achievement for referral milestone
     await createAchievement(referral.referrerId, "referral_count", Math.floor(verifiedCount / 5) + 1);
+}
+// Grant welcome bonus to referred user
+async function grantWelcomeBonus(userId, tokenId, bonusAmount) {
+    try {
+        // Add balance to user's account
+        await prisma.userBalance.upsert({
+            where: {
+                userId_tokenId: {
+                    userId: userId,
+                    tokenId: tokenId
+                }
+            },
+            update: {
+                amount: {
+                    increment: bonusAmount // Amount is already in correct decimal format
+                }
+            },
+            create: {
+                userId: userId,
+                tokenId: tokenId,
+                amount: bonusAmount
+            }
+        });
+        console.log(`Granted welcome bonus of ${bonusAmount} tokens (ID: ${tokenId}) to user ${userId}`);
+    }
+    catch (error) {
+        console.error("Error granting welcome bonus:", error);
+    }
 }
 // Grant 1 week tax-free membership
 async function grantTaxFreeWeek(userId) {
@@ -191,6 +233,38 @@ export async function getReferralStats(discordId) {
         referralsUntilTaxFree,
         taxFreeWeeksEarned: Math.floor(verifiedReferrals / 10)
     };
+}
+// Use referral code (for new users)
+export async function useReferralCode(discordId, code) {
+    const user = await findOrCreateUser(discordId);
+    // Check if user already used a referral code
+    const existingReferral = await prisma.referral.findFirst({
+        where: { referredId: user.id, isVerified: false }
+    });
+    if (existingReferral) {
+        return { success: false, message: "You have already used a referral code" };
+    }
+    // Find the referral code
+    const referralEntry = await prisma.referral.findFirst({
+        where: {
+            referralCode: code.toUpperCase(),
+            referrer: { discordId: { not: discordId } } // Can't refer yourself
+        },
+        include: { referrer: true }
+    });
+    if (!referralEntry) {
+        return { success: false, message: "Invalid or expired referral code" };
+    }
+    // Create referral relationship
+    await prisma.referral.create({
+        data: {
+            referrerId: referralEntry.referrerId,
+            referredId: user.id,
+            referralCode: code.toUpperCase(),
+            isVerified: false
+        }
+    });
+    return { success: true, message: "Referral code applied successfully!" };
 }
 // Create achievement
 async function createAchievement(userId, type, level, data) {

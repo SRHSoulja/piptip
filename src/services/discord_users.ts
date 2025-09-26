@@ -53,7 +53,7 @@ export async function fetchDiscordUserData(client: Client, discordId: string): P
     console.error(`Failed to fetch user data for ${discordId}:`, error);
     return { 
       username: `User#${discordId.slice(-4)}`,
-      avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png` // Default Discord avatar
+      avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1), 10) % 6}.png` // Default Discord avatar
     };
   }
 }
@@ -82,7 +82,7 @@ export async function fetchMultipleUserData(client: Client, discordIds: string[]
         // Fallback for failed requests
         results.set(discordId, { 
           username: `User#${discordId.slice(-4)}`,
-          avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+          avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1), 10) % 6}.png`
         });
       }
     });

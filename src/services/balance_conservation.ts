@@ -25,7 +25,7 @@ class BalanceConservationService {
   // SECURITY: Validate system-wide balance conservation
   static async validateSystemBalance(): Promise<BalanceConservationResult> {
     try {
-      // Get total user balances across all tokens
+      // Get total user balances across all tokens (stored as decimal strings)
       const userBalanceTotals = await prisma.userBalance.groupBy({
         by: ['tokenId'],
         _sum: {
@@ -33,7 +33,7 @@ class BalanceConservationService {
         }
       });
 
-      // Get total transaction amounts (credits - debits)
+      // Get total transaction amounts (also stored as decimal strings)
       const transactionTotals = await prisma.transaction.groupBy({
         by: ['tokenId'],
         _sum: {
@@ -44,19 +44,16 @@ class BalanceConservationService {
       let totalUserBalance = 0;
       let totalTransactionAmount = 0;
 
-      // Calculate totals across all tokens
+      // Calculate totals across all tokens - BOTH are stored as decimal strings
       for (const balance of userBalanceTotals) {
         totalUserBalance += Number(balance._sum.amount || 0);
       }
 
       for (const transaction of transactionTotals) {
-        // Only count deposits (positive) and subtract withdrawals (negative)
+        // FIXED: Both user balances and transaction amounts are stored as decimal strings
+        // No need for atomic conversion - they're in the same format
         const amount = Number(transaction._sum.amount || 0);
-        if (amount > 0) {
-          totalTransactionAmount += amount; // Deposits add to system
-        } else {
-          totalTransactionAmount += amount; // Withdrawals subtract from system
-        }
+        totalTransactionAmount += amount; // All transactions contribute to conservation check
       }
 
       const difference = Math.abs(totalUserBalance - totalTransactionAmount);
@@ -95,18 +92,19 @@ class BalanceConservationService {
         throw new Error(`Token ${tokenId} not found`);
       }
 
-      // Sum all user balances for this token
+      // Sum all user balances for this token (stored as decimal strings)
       const userBalanceSum = await prisma.userBalance.aggregate({
         where: { tokenId },
         _sum: { amount: true }
       });
 
-      // Sum all transactions for this token (deposits positive, withdrawals negative)
+      // Sum all transactions for this token (also stored as decimal strings)
       const transactionSum = await prisma.transaction.aggregate({
         where: { tokenId },
         _sum: { amount: true }
       });
 
+      // FIXED: Both are decimal strings, no atomic conversion needed
       const userTotal = Number(userBalanceSum._sum.amount || 0);
       const transactionTotal = Number(transactionSum._sum.amount || 0);
       const difference = Math.abs(userTotal - transactionTotal);
@@ -235,11 +233,13 @@ class BalanceConservationService {
         return false;
       }
 
-      // Convert to atomic for comparison
+      // Get token info for atomic conversion
       const token = await prisma.token.findUnique({ where: { id: tokenId } });
       if (!token) return false;
 
-      const balanceAtomic = BigInt(userBalance.amount.toString()) * BigInt(10 ** token.decimals);
+      // Convert stored decimal balance to atomic units for comparison
+      const balanceDecimal = Number(userBalance.amount.toString());
+      const balanceAtomic = BigInt(Math.floor(balanceDecimal * (10 ** token.decimals)));
 
       if (balanceAtomic < amount) {
         console.warn(`⚠️ Insufficient balance: User ${userId} has ${balanceAtomic} but needs ${amount}`);

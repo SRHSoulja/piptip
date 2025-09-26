@@ -1,5 +1,8 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { getConfig } from "../config.js";
 export default async function pipHelp(i) {
+    // Load current config for dynamic referral info
+    const config = await getConfig();
     const embed = new EmbedBuilder()
         .setTitle("🐧🧊🪨 PIPTip Bot Help")
         .setDescription("**Welcome to PIPTip!** Your Discord bot for tipping Abstract Chain tokens (Penguin, Ice, Pebble)")
@@ -12,7 +15,35 @@ export default async function pipHelp(i) {
             "4️⃣ **Add Funds**: `/pip_deposit token:PENGUIN` - Get deposit instructions\n" +
             "5️⃣ **Start Playing**: `/pip_tip amount:10 user:@friend` - Send tips or `/pip_game` to challenge friends!",
         inline: false
-    }, {
+    }, ...(config.referralEnabled ? [{
+            name: "🔗 Referral Rewards",
+            value: (() => {
+                const taxReduction = (config.referralTaxReductionBps / 100).toFixed(1);
+                const rakeReduction = (config.referralRakeReductionBps / 100).toFixed(1);
+                const threshold = Number(config.referralVerificationThreshold);
+                const rewardInterval = config.referralRewardInterval;
+                const welcomeBonus = Number(config.referralWelcomeBonus);
+                let benefits = "**New User Benefits:**\n";
+                if (Number(taxReduction) > 0) {
+                    benefits += `💰 ${taxReduction}% tip fee reduction for your first ${threshold} tokens\n`;
+                }
+                if (Number(rakeReduction) > 0) {
+                    benefits += `🎮 ${rakeReduction}% game rake reduction for your first ${threshold} tokens\n`;
+                }
+                if (welcomeBonus > 0) {
+                    benefits += `🎁 ${welcomeBonus} token welcome bonus on first tip\n`;
+                }
+                benefits += `\n**Referrer Rewards:**\n`;
+                benefits += `🏆 1-week tax-free membership every ${rewardInterval} verified referrals\n`;
+                benefits += `🏅 Achievement badges for referral milestones\n\n`;
+                benefits += `**Commands:**\n`;
+                benefits += `\`/pip_referral code\` - Get your referral code to share\n`;
+                benefits += `\`/pip_referral use CODE123\` - Use a friend's referral code\n`;
+                benefits += `\`/pip_referral stats\` - View your referral statistics`;
+                return benefits;
+            })(),
+            inline: false
+        }] : []), {
         name: "💸 Tipping Commands",
         value: "**Direct Tips**: `/pip_tip amount:10 user:@someone` - Send tokens to a specific user\n" +
             "**Group Tips**: `/pip_tip amount:10` - Create a tip everyone can claim (leave user empty)\n" +
@@ -81,6 +112,7 @@ export default async function pipHelp(i) {
             "`/pip_achievements` - View unlocked achievements\n" +
             "`/pip_leaderboard` - See community leaderboards\n" +
             "`/pip_stats` - Detailed transaction analytics\n" +
+            (config.referralEnabled ? "`/pip_referral` - Referral system and rewards\n" : "") +
             "`/pip_help` - Show this guide",
         inline: false
     })

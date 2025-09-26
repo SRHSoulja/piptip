@@ -65,14 +65,6 @@ export async function addGroupTipContribution(groupTipId, contributorDiscordId, 
             // 5. CONTRIBUTION LIMITS
             const originalAmountAtomic = decToBigDirect(Number(groupTip.totalAmount), groupTip.Token.decimals);
             const maxContributionAtomic = originalAmountAtomic * BigInt(MAX_CONTRIBUTION_RATIO);
-            console.log('DEBUG: Contribution validation', {
-                contributionAmount,
-                contributionAmountBigInt: BigInt(contributionAmount),
-                originalAmountAtomic: originalAmountAtomic.toString(),
-                maxContributionAtomic: maxContributionAtomic.toString(),
-                MAX_CONTRIBUTION_RATIO,
-                isValid: BigInt(contributionAmount) <= maxContributionAtomic
-            });
             if (BigInt(contributionAmount) > maxContributionAtomic) {
                 throw new Error(`Maximum contribution is ${formatAmount(maxContributionAtomic, groupTip.Token)}`);
             }
@@ -127,18 +119,6 @@ export async function addGroupTipContribution(groupTipId, contributorDiscordId, 
             const feeAtomic = (atomic * feeBps) / 10000n;
             const taxAmount = Number(bigToDecDirect(feeAtomic, groupTip.Token.decimals));
             const totalCost = contributionAmount + taxAmount;
-            console.log('DEBUG: Group tip contribution tax calculation', {
-                contributionAmount,
-                atomic: atomic.toString(),
-                feeBpsNum,
-                taxAmount,
-                totalCost,
-                hasTaxFreeTier: feeBpsNum === 0,
-                bestTaxBenefit: bestTaxBenefit ? {
-                    source: bestTaxBenefit.source,
-                    exemptionRate: bestTaxBenefit.exemptionRate
-                } : null
-            });
             // 9. BALANCE VALIDATION
             const userBalance = await tx.userBalance.findUnique({
                 where: {

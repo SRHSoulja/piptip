@@ -150,15 +150,6 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
           });
           const balanceAtomic = currentBalance ? decToBigDirect(currentBalance.amount, token.decimals) : 0n;
 
-          // DEBUG: Log the actual values for direct tips
-          console.log('DEBUG Direct Tip Balance Check:', {
-            currentBalance: currentBalance?.amount.toString(),
-            balanceAtomic: balanceAtomic.toString(),
-            atomic: atomic.toString(),
-            feeAtomic: feeAtomic.toString(),
-            totalNeeded: totalNeeded.toString(),
-            hasEnough: balanceAtomic >= totalNeeded
-          });
 
           if (balanceAtomic < totalNeeded) {
             throw new Error(`Insufficient balance: You need ${formatAmount(totalNeeded, token)} but only have ${formatAmount(balanceAtomic, token)}.`);
@@ -399,15 +390,6 @@ export async function processTip(data: TipData, client: Client): Promise<TipResu
         });
         const balanceAtomic = currentBalance ? decToBigDirect(currentBalance.amount, token.decimals) : 0n;
 
-        // DEBUG: Log the actual values
-        console.log('DEBUG Balance Check:', {
-          currentBalance: currentBalance?.amount.toString(),
-          balanceAtomic: balanceAtomic.toString(),
-          atomic: atomic.toString(),
-          feeAtomic: feeAtomic.toString(),
-          totalNeeded: (atomic + feeAtomic).toString(),
-          hasEnough: balanceAtomic >= (atomic + feeAtomic)
-        });
 
         if (balanceAtomic < atomic + feeAtomic) {
           throw new Error(`Insufficient balance: You don't have enough ${data.amount} tokens + fees for this group tip.`);

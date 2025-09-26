@@ -1,5 +1,6 @@
 // Redis Caching Service for Performance Optimization
-// TODO: Install ioredis dependency: npm install ioredis @types/ioredis
+// Note: Redis is optional - falls back to in-memory cache if not available
+// To enable Redis: npm install ioredis @types/ioredis and set REDIS_URL
 // import Redis from 'ioredis';
 
 interface CacheConfig {

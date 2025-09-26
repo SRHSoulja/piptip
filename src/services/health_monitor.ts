@@ -39,7 +39,7 @@ class HealthMonitor {
       components: {
         database: await this.checkDatabase(),
         discord: this.checkDiscord(),
-        timers: this.checkTimers(),
+        timers: await this.checkTimers(),
         memory: this.checkMemory()
       },
       uptime: Math.floor((now - this.startTime) / 1000)
@@ -115,10 +115,10 @@ class HealthMonitor {
     return { status: 'healthy' };
   }
 
-  private checkTimers(): ComponentHealth {
+  private async checkTimers(): Promise<ComponentHealth> {
     // Check if timer restoration service is working
     try {
-      const { getTimerStatus } = require('../features/group_tip_expiry.js');
+      const { getTimerStatus } = await import('../features/group_tip_expiry.js');
       const timerStats = getTimerStatus();
 
       return {

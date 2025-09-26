@@ -28,6 +28,7 @@ import pipBalance from "./commands/pip_balance.js";
 import pipDaily from "./commands/pip_daily.js";
 import pipBuyChips from "./commands/pip_buy_chips.js";
 import pipAutomationStatus from "./commands/pip_automation_status.js";
+import pipReferral from "./commands/pip_referral.js";
 import { withAutoChannelCheck } from "./middleware/channel_check.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
@@ -357,6 +358,7 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i) => {
             case "pip_daily": return withAutoChannelCheck(i, pipDaily);
             case "pip_buy_chips": return withAutoChannelCheck(i, pipBuyChips);
             case "pip_automation_status": return withAutoChannelCheck(i, pipAutomationStatus);
+            case "pip_referral": return withAutoChannelCheck(i, pipReferral);
             default:
                 console.warn("Unknown command:", i.commandName);
         }
@@ -486,7 +488,13 @@ async function main() {
         console.log("✅ PostgreSQL session store configured");
         sessionMiddleware = session({
             store: sessionStore,
-            secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-this",
+            secret: process.env.SESSION_SECRET || (() => {
+                if (process.env.NODE_ENV === 'production') {
+                    throw new Error('SESSION_SECRET environment variable is required in production');
+                }
+                console.warn('⚠️ Using fallback session secret in development mode');
+                return "fallback-dev-secret-change-this";
+            })(),
             resave: false,
             saveUninitialized: false,
             name: 'piptip-session', // Explicit session name

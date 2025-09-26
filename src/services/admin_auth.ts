@@ -4,6 +4,7 @@
 import { prisma } from './db.js';
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
+import { getSecureAdminSecret } from './secure_key.js';
 
 // Environment detection for tiered authentication
 const isReplitEnvironment = () => {
@@ -25,7 +26,7 @@ export const AUTH_TIERS = {
 
 export function getAuthTier(operationType?: string): string {
   // Always force secure auth for critical financial operations regardless of environment
-  const criticalOps = ['withdrawal', 'deposit', 'balance_edit', 'user_ban', 'emergency', 'grand_reset'];
+  const criticalOps = ['withdrawal', 'deposit', 'balance_edit', 'user_ban', 'emergency', 'grand_reset', 'treasury_management', 'config_update', 'user_balance_modification'];
   if (operationType && criticalOps.includes(operationType)) {
     return AUTH_TIERS.SECURE;
   }
@@ -107,8 +108,10 @@ class AdminAuthSystem {
     }
 
     // Validate bearer token (timing-safe comparison)
-    const expectedToken = process.env.ADMIN_SECRET;
-    if (!expectedToken) {
+    let expectedToken: string;
+    try {
+      expectedToken = getSecureAdminSecret();
+    } catch (error) {
       return { success: false, error: 'Admin authentication not configured' };
     }
 
@@ -164,8 +167,9 @@ class AdminAuthSystem {
       return { success: false, error: 'Invalid session' };
     }
 
-    // Generate random 6-digit code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate cryptographically secure 6-digit code
+    const randomBytes = crypto.randomBytes(4);
+    const code = (100000 + (randomBytes.readUInt32BE(0) % 900000)).toString();
     const challengeId = crypto.randomBytes(16).toString('hex');
 
     const challenge: MFAChallenge = {
@@ -179,8 +183,10 @@ class AdminAuthSystem {
     this.mfaChallenges.set(challengeId, challenge);
 
     // In production, send code via email/SMS
-    // For now, log it (REMOVE IN PRODUCTION!)
-    console.log(`🔐 MFA Code for admin session ${sessionId}: ${code}`);
+    // For now, log it (development only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔐 MFA Code for admin session ${sessionId}: ${code}`);
+    }
 
     return { success: true, challengeId };
   }
@@ -321,9 +327,11 @@ class AdminAuthSystem {
    */
   private handleBearerAuth(req: Request, res: Response, next: NextFunction, requiredPermissions: string[] = []) {
     const authHeader = req.headers.authorization;
-    const expectedToken = process.env.ADMIN_SECRET;
 
-    if (!expectedToken) {
+    let expectedToken: string;
+    try {
+      expectedToken = getSecureAdminSecret();
+    } catch (error) {
       return res.status(500).json({
         error: 'Admin authentication not configured',
         authTier: 'demo'
@@ -520,9 +528,11 @@ export const criticalAdminMiddleware = (permissions: string[] = []) =>
 // Simple bearer auth check function for legacy compatibility
 export function checkBearerAuth(req: Request): { valid: boolean; error?: string } {
   const authHeader = req.headers.authorization;
-  const expectedToken = process.env.ADMIN_SECRET;
 
-  if (!expectedToken) {
+  let expectedToken: string;
+  try {
+    expectedToken = getSecureAdminSecret();
+  } catch (error) {
     return { valid: false, error: 'Admin authentication not configured' };
   }
 

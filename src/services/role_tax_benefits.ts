@@ -3,6 +3,7 @@
 import { prisma } from './db.js';
 import { getDiscordClient } from './discord_users.js';
 import { startTimer, endTimer } from './performance.js';
+import { getConfig } from '../config.js';
 
 interface RoleTaxBenefit {
   exemptionRate: number; // 0-100% tax reduction
@@ -33,8 +34,11 @@ export class RoleTaxBenefitService {
       // 2. Check role-based benefits (new system)
       const roleBenefit = await this.getRoleTaxBenefit(discordUserId, guildId);
 
+      // 3. Check referral benefits (new referral system)
+      const referralBenefit = await this.getReferralTaxBenefit(userId);
+
       // Return the best benefit available
-      const allBenefits = [tierBenefit, roleBenefit].filter(Boolean);
+      const allBenefits = [tierBenefit, roleBenefit, referralBenefit].filter(Boolean);
       const bestBenefit = allBenefits.reduce((best, current) => {
         if (!best || !current) return best || current;
         return current.exemptionRate > best.exemptionRate ? current : best;
@@ -227,6 +231,46 @@ export class RoleTaxBenefitService {
 
     } catch (error) {
       console.error('Error checking tier benefits:', error);
+      return null;
+    }
+  }
+
+  // Get referral tax benefits (new referral system)
+  private static async getReferralTaxBenefit(userId: number): Promise<RoleTaxBenefit | null> {
+    try {
+      const config = await getConfig();
+
+      // Skip if referral system is disabled
+      if (!config.referralEnabled) return null;
+
+      // Check for active referral benefits (unverified referrals still within threshold)
+      const activeReferral = await prisma.referral.findFirst({
+        where: {
+          referredId: userId,
+          isVerified: false,
+          totalTipped: { lt: config.referralVerificationThreshold }
+        }
+      });
+
+      if (!activeReferral) return null;
+
+      // Calculate the best available referral benefit
+      const taxReductionBps = Number(config.referralTaxReductionBps) || 0;
+      const rakeReductionBps = Number(config.referralRakeReductionBps) || 0;
+
+      // Return the higher of tax or rake reduction as the primary benefit
+      const bestRate = Math.max(taxReductionBps, rakeReductionBps) / 100; // Convert BPS to percentage
+
+      if (bestRate <= 0) return null;
+
+      return {
+        exemptionRate: bestRate,
+        source: `referral:${activeReferral.id}`,
+        label: 'Referral Bonus'
+      };
+
+    } catch (error) {
+      console.error('Error checking referral tax benefits:', error);
       return null;
     }
   }

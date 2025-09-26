@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { prisma } from "../../services/db.js";
 import { getConfig } from "../../config.js";
+import { safeAmountToNumber, safeToNumber, ValidationError } from "../../utils/safe_conversions.js";
 export const configRouter = Router();
 configRouter.get("/ping", (_req, res) => {
     res.json({ ok: true, message: "Admin authenticated" });
@@ -17,26 +18,46 @@ configRouter.get("/config", async (_req, res) => {
 });
 configRouter.put("/config", async (req, res) => {
     try {
-        const { minDeposit, minWithdraw, withdrawMaxPerTx, withdrawDailyCap } = req.body;
+        const { minDeposit, minWithdraw, withdrawMaxPerTx, withdrawDailyCap, referralEnabled, referralTaxReductionBps, referralRakeReductionBps, referralVerificationThreshold, referralRewardInterval, referralWelcomeBonus } = req.body;
+        // SECURITY FIX: Use safe conversion functions to prevent overflow attacks
+        const updateData = {
+            minDeposit: minDeposit != null ? safeAmountToNumber(minDeposit, "minDeposit") : 50,
+            minWithdraw: minWithdraw != null ? safeAmountToNumber(minWithdraw, "minWithdraw") : 50,
+            withdrawMaxPerTx: withdrawMaxPerTx != null ? safeAmountToNumber(withdrawMaxPerTx, "withdrawMaxPerTx") : 50,
+            withdrawDailyCap: withdrawDailyCap != null ? safeAmountToNumber(withdrawDailyCap, "withdrawDailyCap") : 500,
+            referralEnabled: referralEnabled !== undefined ? Boolean(referralEnabled) : true,
+            // Basis points must be 0-10000 (0% to 100%)
+            referralTaxReductionBps: referralTaxReductionBps != null ?
+                safeToNumber(referralTaxReductionBps, { min: 0, max: 10000, allowZero: true, label: "referralTaxReductionBps" }) : 50,
+            referralRakeReductionBps: referralRakeReductionBps != null ?
+                safeToNumber(referralRakeReductionBps, { min: 0, max: 10000, allowZero: true, label: "referralRakeReductionBps" }) : 50,
+            referralVerificationThreshold: referralVerificationThreshold != null ?
+                safeAmountToNumber(referralVerificationThreshold, "referralVerificationThreshold") : 20,
+            // Referral reward interval in days/hours, reasonable limits
+            referralRewardInterval: referralRewardInterval != null ?
+                safeToNumber(referralRewardInterval, { min: 1, max: 168, label: "referralRewardInterval" }) : 10,
+            // Welcome bonus is a financial amount - use safeToNumber with allowZero for optional bonus
+            referralWelcomeBonus: referralWelcomeBonus != null ?
+                safeToNumber(referralWelcomeBonus, { min: 0, max: 100000, allowZero: true, label: "referralWelcomeBonus" }) : 0
+        };
         await prisma.appConfig.upsert({
             where: { id: 1 },
-            update: {
-                minDeposit: Number(minDeposit) || 50,
-                minWithdraw: Number(minWithdraw) || 50,
-                withdrawMaxPerTx: Number(withdrawMaxPerTx) || 50,
-                withdrawDailyCap: Number(withdrawDailyCap) || 500
-            },
-            create: {
-                id: 1,
-                minDeposit: Number(minDeposit) || 50,
-                minWithdraw: Number(minWithdraw) || 50,
-                withdrawMaxPerTx: Number(withdrawMaxPerTx) || 50,
-                withdrawDailyCap: Number(withdrawDailyCap) || 500
-            }
+            update: updateData,
+            create: { id: 1, ...updateData }
         });
         res.json({ ok: true, message: "Configuration updated" });
     }
-    catch {
+    catch (error) {
+        console.error("Config update error:", error);
+        // Handle validation errors with specific messages for security issues
+        if (error instanceof ValidationError) {
+            return res.status(400).json({
+                ok: false,
+                error: `Invalid parameter: ${error.message}`,
+                field: error.message.split(' ')[0] // Extract field name from message
+            });
+        }
+        // Handle other errors generically
         res.status(500).json({ ok: false, error: "Failed to update config" });
     }
 });

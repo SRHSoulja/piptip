@@ -1,25 +1,24 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model Notification {
   id        String    @id @default(cuid())
   userId    Int
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      String
   payload   Json
   createdAt DateTime  @default(now())
   sentAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, sentAt])
 }
 
-// Session storage for OAuth authentication
 model Session {
   sid    String   @id
   sess   Json
@@ -30,164 +29,105 @@ model Session {
 }
 
 model User {
-  id         Int      @id @default(autoincrement())
-  discordId  String   @unique
-  agwAddress String?  @unique // SECURITY: Prevent multiple Discord users linking same wallet
-  wins       Int      @default(0) // SECURITY: Prevent negative values
-  losses     Int      @default(0) // SECURITY: Prevent negative values
-  ties       Int      @default(0) // SECURITY: Prevent negative values
-  totalXP    Int      @default(0) // Penguin XP progression system
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // PIPChips virtual currency system
-  pipchipsBalance      BigInt    @default(10000) // Starting balance: 10,000 PIPChips
-  pipchipsEarnedTotal  BigInt    @default(0) // Total PIPChips earned from all sources
-  pipchipsSpentTotal   BigInt    @default(0) // Total PIPChips spent on predictions
-  pipchipsBoughtTotal  BigInt    @default(0) // Total PIPChips purchased with real tokens
-  lastPipchipsDaily    DateTime? // Last time user claimed daily bonus
-  dailyStreak          Int       @default(0) // Consecutive days of claiming bonus
-  longestDailyStreak   Int       @default(0) // Best streak achieved
-
-  // SECURITY: Database constraints to prevent impossible states (enforced at DB level)
-
-  // Gaming relations
-  challenger Match[] @relation("Challenger")
-  joiner     Match[] @relation("Joiner")
-
-  // Tipping relations
-  tipsSent     Tip[] @relation("TipFrom")
-  tipsReceived Tip[] @relation("TipTo")
-
-  // Group tipping relations
-  groupTipsCreated     GroupTip[]             @relation("GroupTipCreator")
-  groupTipsClaimed     GroupTipClaim[]        @relation("GroupTipClaims")
-  groupTipContributions GroupTipContribution[] @relation("GroupTipContributions")
-
-  // Balances
-  balances UserBalance[]
-
-  // Memberships (BACK-RELATION added)
-  tierMemberships TierMembership[]
-
-  // Notifications
-  notifications Notification[]
-
-  // Security: Withdrawal attempt tracking
-  withdrawalAttempts WithdrawalAttempt[]
-
-  // PenguBook profile fields
-  bio               String?   @db.Text
-  bioLastUpdated    DateTime?
-  bioViewCount      Int       @default(0)
-  xUsername         String?   // X/Twitter handle (without @)
-  socials           String?   @db.Text // JSON string for social links
-  allowTipsFromBook Boolean   @default(true)
-  showInPenguBook   Boolean   @default(true)
-
-  // Ban system fields
-  isBanned          Boolean   @default(false)
-  bannedAt          DateTime?
-  bannedReason      String?
-  bannedByAdminId   String?
-
-  // Admin permission system
-  isAdmin           Boolean   @default(false) // Admin privileges for all systems
-  isSuperUser       Boolean   @default(false) // Super user with unlimited access
-  adminLevel        Int       @default(0) // 0=user, 1=moderator, 2=admin, 3=super
-  canCreateMarkets  Boolean   @default(false) // Can create prediction markets
-  adminPromotedAt   DateTime? // When admin status was granted
-  adminPromotedBy   String? // Who granted admin status
-
-  // PenguBook browsing relations
-  profileViewsGiven    BioBrowse[] @relation("BioBrowseViewer")
-  profileViewsReceived BioBrowse[] @relation("BioBrowseProfile")
-
-  // PenguBook messaging relations
-  penguBookMessagesSent     PenguBookMessage[] @relation("PenguBookMessageSender")
-  penguBookMessagesReceived PenguBookMessage[] @relation("PenguBookMessageReceiver")
-
-  // Referral system relations
-  referralsMade     Referral[] @relation("UserReferrals")
-  referredBy        Referral[] @relation("UserReferred")
-
-  // XP tracking relations
-  xpTransactions XpTransaction[]
-
-  // Streak and achievement relations
-  streak       UserStreak? @relation("UserStreaks")
-
-  // Dynamic achievement system
-  unlockedAchievements UserAchievement[] @relation("UserAchievements")
-  achievementProgress  UserAchievementProgress[] @relation("UserProgressTracking")
-
-  // Legacy achievements (deprecated)
-  legacyAchievements Achievement[] @relation("LegacyAchievements")
-
-  stats        UserStats? @relation("UserToStats")
-
-  // Social gaming features
-  reactionsGiven    ProfileReaction[] @relation("ReactionGiver")
-  reactionsReceived ProfileReaction[] @relation("ReactionReceiver")
-  following         UserFollow[]      @relation("Follower")
-  followers         UserFollow[]      @relation("Following")
-  activityItems     ActivityFeedItem[] @relation("ActivityUser")
-
-  // Responsible gaming protection fields
-  predictionSelfExcluded      Boolean   @default(false)
-  predictionSelfExclusionEnd  DateTime?
-  predictionDailyLossLimit    Int?      // Custom daily loss limit (atomic units)
-  predictionDailyCountLimit   Int?      // Custom daily prediction count limit
-  predictionLimitsLastReset   DateTime? // Last time daily limits were reset
-  lastAgeReminderShown        DateTime? // Last time age verification reminder was shown
+  id                         Int                       @id @default(autoincrement())
+  discordId                  String                    @unique
+  agwAddress                 String?                   @unique
+  wins                       Int                       @default(0)
+  losses                     Int                       @default(0)
+  ties                       Int                       @default(0)
+  totalXP                    Int                       @default(0)
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  bio                        String?
+  bioLastUpdated             DateTime?
+  bioViewCount               Int                       @default(0)
+  xUsername                  String?
+  socials                    String?
+  allowTipsFromBook          Boolean                   @default(true)
+  showInPenguBook            Boolean                   @default(true)
+  isBanned                   Boolean                   @default(false)
+  bannedAt                   DateTime?
+  bannedReason               String?
+  bannedByAdminId            String?
+  lastAgeReminderShown       DateTime?
+  predictionDailyCountLimit  Int?
+  predictionDailyLossLimit   Int?
+  predictionLimitsLastReset  DateTime?
+  predictionSelfExcluded     Boolean                   @default(false)
+  predictionSelfExclusionEnd DateTime?
+  dailyStreak                Int                       @default(0)
+  lastPipchipsDaily          DateTime?
+  longestDailyStreak         Int                       @default(0)
+  pipchipsBalance            BigInt                    @default(10000)
+  pipchipsBoughtTotal        BigInt                    @default(0)
+  pipchipsEarnedTotal        BigInt                    @default(0)
+  pipchipsSpentTotal         BigInt                    @default(0)
+  adminLevel                 Int                       @default(0)
+  adminPromotedAt            DateTime?
+  adminPromotedBy            String?
+  canCreateMarkets           Boolean                   @default(false)
+  isAdmin                    Boolean                   @default(false)
+  isSuperUser                Boolean                   @default(false)
+  activeTournamentId         String?
+  inTournamentMode           Boolean                   @default(false)
+  legacyAchievements         Achievement[]             @relation("LegacyAchievements")
+  activityItems              ActivityFeedItem[]        @relation("ActivityUser")
+  profileViewsReceived       BioBrowse[]               @relation("BioBrowseProfile")
+  profileViewsGiven          BioBrowse[]               @relation("BioBrowseViewer")
+  groupTipsCreated           GroupTip[]                @relation("GroupTipCreator")
+  groupTipsClaimed           GroupTipClaim[]           @relation("GroupTipClaims")
+  groupTipContributions      GroupTipContribution[]    @relation("GroupTipContributions")
+  challenger                 Match[]                   @relation("Challenger")
+  joiner                     Match[]                   @relation("Joiner")
+  notifications              Notification[]
+  penguBookMessagesSent      PenguBookMessage[]        @relation("PenguBookMessageSender")
+  penguBookMessagesReceived  PenguBookMessage[]        @relation("PenguBookMessageReceiver")
+  pipchipsPurchases          PipchipsPurchase[]
+  pipchipsTransactions       PipchipsTransaction[]
+  reactionsGiven             ProfileReaction[]         @relation("ReactionGiver")
+  reactionsReceived          ProfileReaction[]         @relation("ReactionReceiver")
+  referredBy                 Referral[]                @relation("UserReferred")
+  referralsMade              Referral[]                @relation("UserReferrals")
+  tierMemberships            TierMembership[]
+  tipsSent                   Tip[]                     @relation("TipFrom")
+  tipsReceived               Tip[]                     @relation("TipTo")
+  tournamentParticipants     TournamentParticipant[]
+  unlockedAchievements       UserAchievement[]         @relation("UserAchievements")
+  achievementProgress        UserAchievementProgress[] @relation("UserProgressTracking")
+  balances                   UserBalance[]
+  following                  UserFollow[]              @relation("Follower")
+  followers                  UserFollow[]              @relation("Following")
+  stats                      UserStats?                @relation("UserToStats")
+  streak                     UserStreak?               @relation("UserStreaks")
+  withdrawalAttempts         WithdrawalAttempt[]
+  xpTransactions             XpTransaction[]
 
   @@index([agwAddress])
   @@index([createdAt])
   @@index([showInPenguBook, bioLastUpdated])
-  @@index([predictionSelfExcluded, predictionSelfExclusionEnd]) // Efficient exclusion checks
-
-  // Tournament mode tracking
-  inTournamentMode     Boolean @default(false)
-  activeTournamentId   String?
-
-  // PIPChips relations
-  pipchipsTransactions PipchipsTransaction[]
-  pipchipsPurchases   PipchipsPurchase[]
-
-  // Tournament participation
-  tournamentParticipants TournamentParticipant[]
+  @@index([predictionSelfExcluded, predictionSelfExclusionEnd])
 }
 
 model Tier {
-  id           Int      @id @default(autoincrement())
-  name         String
-  description  String?  @db.Text
-  priceAmount  Decimal? // legacy/optional
-  durationDays Int
-
-  // Flexible benefit system (replaces tipTaxFree boolean)
-  tipTaxFree   Boolean  @default(false) // DEPRECATED - keep for backward compatibility
-  taxReductionBps Int   @default(0)     // NEW: 0-10000 basis points (100% = 10000)
-  rakeReductionBps Int  @default(0)     // NEW: 0-10000 basis points (100% = 10000)
-
-  // Prediction market permissions and settings
-  canCreateMarkets     Boolean  @default(false) // Whether users with this tier can create prediction markets
-  dailyMarketLimit     Int      @default(0)     // Maximum markets per day (0 = no limit)
-  customRakePercent    Decimal? // Override default rake percentage for PIP games (null = use system default)
-  marketCooldownMinutes Int     @default(0)     // Minutes between market creations (0 = no cooldown)
-
-  // NEW: Direct market rake percentage and liquidity bonuses
-  marketRakePercent    Decimal? @default(3.0)   // Direct percentage for prediction markets (null = use system default)
-  systemLiquidityBonus Int      @default(0)     // Extra liquidity bonus for created markets
-
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  memberships TierMembership[]
-
-  // ✅ back-relation to TierPrice
-  prices TierPrice[] @relation("TierToPrices")
+  id                    Int              @id @default(autoincrement())
+  name                  String
+  description           String?
+  priceAmount           Decimal?
+  durationDays          Int
+  tipTaxFree            Boolean          @default(false)
+  taxReductionBps       Int              @default(0)
+  rakeReductionBps      Int              @default(0)
+  active                Boolean          @default(true)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  canCreateMarkets      Boolean          @default(false)
+  customRakePercent     Decimal?
+  dailyMarketLimit      Int              @default(0)
+  marketCooldownMinutes Int              @default(0)
+  marketRakePercent     Decimal?         @default(3.0)
+  systemLiquidityBonus  Int              @default(0)
+  memberships           TierMembership[]
+  prices                TierPrice[]      @relation("TierToPrices")
 
   @@index([active])
 }
@@ -199,19 +139,11 @@ model TierPrice {
   amount    Decimal
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // ✅ name both sides of the relation
-  tier  Tier  @relation("TierToPrices", fields: [tierId], references: [id], onDelete: Cascade)
-  token Token @relation("TokenToTierPrices", fields: [tokenId], references: [id], onDelete: Restrict)
+  tier      Tier     @relation("TierToPrices", fields: [tierId], references: [id], onDelete: Cascade)
+  token     Token    @relation("TokenToTierPrices", fields: [tokenId], references: [id])
 
   @@unique([tierId, tokenId])
   @@index([tokenId])
-}
-
-enum TierMembershipStatus {
-  ACTIVE
-  EXPIRED
-  REVOKED
 }
 
 model TierMembership {
@@ -223,46 +155,40 @@ model TierMembership {
   txHash    String?              @unique
   status    TierMembershipStatus @default(ACTIVE)
   createdAt DateTime             @default(now())
+  tier      Tier                 @relation(fields: [tierId], references: [id])
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // BACK-RELATIONS now have opposites on User and Tier
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tier Tier @relation(fields: [tierId], references: [id], onDelete: Restrict)
-
-  @@unique([userId, tierId, status], map: "uniq_user_tier_status") // one ACTIVE membership per (user,tier)
+  @@unique([userId, tierId, status], map: "uniq_user_tier_status")
   @@index([userId, tierId, expiresAt])
   @@index([userId, status, expiresAt])
-  // SECURITY: Prevent impossible date relationships (enforced at DB level)
 }
 
 model Match {
-  id             Int       @id @default(autoincrement())
-  status         String
-  wagerAtomic    Decimal   @default(0)
-  potAtomic      Decimal   @default(0)
-  tokenId        Int
-  challengerId   Int?
-  joinerId       Int?
-  challengerMove String?
-  joinerMove     String?
-  result         String?
-  rakeAtomic     Decimal   @default(0)
-  winnerUserId   Int?
-  messageId      String?
-  channelId      String?
-  offerDeadline  DateTime?
-  createdAt      DateTime  @default(now())
-
-  // Role analytics tracking
-  guildId              String? // Server where match occurred
-  challengerRoleBenefit String? // Role that gave challenger tax benefits
-  joinerRoleBenefit    String? // Role that gave joiner tax benefits
-  challengerRakeReduction String? // Role that gave challenger rake benefits
-  joinerRakeReduction  String? // Role that gave joiner rake benefits
-  rakeSavedAtomic      Decimal @default(0) // Total rake saved due to role benefits
-
-  Challenger User? @relation("Challenger", fields: [challengerId], references: [id])
-  Joiner     User? @relation("Joiner", fields: [joinerId], references: [id])
-  Token      Token @relation(fields: [tokenId], references: [id])
+  id                      Int       @id @default(autoincrement())
+  status                  String
+  wagerAtomic             Decimal   @default(0)
+  potAtomic               Decimal   @default(0)
+  tokenId                 Int
+  challengerId            Int?
+  joinerId                Int?
+  challengerMove          String?
+  joinerMove              String?
+  result                  String?
+  rakeAtomic              Decimal   @default(0)
+  winnerUserId            Int?
+  messageId               String?
+  channelId               String?
+  offerDeadline           DateTime?
+  createdAt               DateTime  @default(now())
+  guildId                 String?
+  challengerRoleBenefit   String?
+  joinerRoleBenefit       String?
+  challengerRakeReduction String?
+  joinerRakeReduction     String?
+  rakeSavedAtomic         Decimal   @default(0)
+  Challenger              User?     @relation("Challenger", fields: [challengerId], references: [id])
+  Joiner                  User?     @relation("Joiner", fields: [joinerId], references: [id])
+  Token                   Token     @relation(fields: [tokenId], references: [id])
 
   @@index([status, offerDeadline])
   @@index([createdAt])
@@ -270,81 +196,59 @@ model Match {
   @@index([joinerId])
 }
 
-enum TipStatus {
-  PENDING
-  COMPLETED
-  REFUNDED
-}
-
 model Tip {
-  id           Int       @id @default(autoincrement())
-  fromUserId   Int?
-  toUserId     Int?
-  tokenId      Int
-  amountAtomic Decimal   @default(0)
-  feeAtomic    Decimal   @default(0)
-  taxAtomic    Decimal   @default(0) // exact tax amount debited at creation
-  note         String?
-  status       TipStatus @default(PENDING)
-  refundedAt   DateTime?
-  createdAt    DateTime  @default(now())
-
-  // Role analytics tracking
-  roleBenefitUsed String? // Label of role that provided tax benefit
-  taxSavedAtomic  Decimal @default(0) // Amount saved due to role benefit
-  guildId         String? // Server where tip occurred (for role context)
-
-  // Tax transparency fields (NEW)
-  taxRateAppliedBps Int   @default(0)   // Actual tax rate used (BPS) - preserves historical rates
-  exemptionRateBps  Int   @default(0)   // Percentage reduction applied (BPS) - 0-10000
-  totalDeductedAtomic Decimal @default(0) // Total amount deducted from sender (amount + tax)
-
-  From  User?  @relation("TipFrom", fields: [fromUserId], references: [id])
-  To    User?  @relation("TipTo", fields: [toUserId], references: [id])
-  Token Token @relation(fields: [tokenId], references: [id])
-
-  // PenguBook message relation
-  penguBookMessages PenguBookMessage[] @relation("PenguBookTipMessage")
+  id                  Int                @id @default(autoincrement())
+  fromUserId          Int?
+  toUserId            Int?
+  tokenId             Int
+  amountAtomic        Decimal            @default(0)
+  feeAtomic           Decimal            @default(0)
+  taxAtomic           Decimal            @default(0)
+  note                String?
+  status              TipStatus          @default(PENDING)
+  refundedAt          DateTime?
+  createdAt           DateTime           @default(now())
+  roleBenefitUsed     String?
+  taxSavedAtomic      Decimal            @default(0)
+  guildId             String?
+  taxRateAppliedBps   Int                @default(0)
+  exemptionRateBps    Int                @default(0)
+  totalDeductedAtomic Decimal            @default(0)
+  penguBookMessages   PenguBookMessage[] @relation("PenguBookTipMessage")
+  From                User?              @relation("TipFrom", fields: [fromUserId], references: [id])
+  To                  User?              @relation("TipTo", fields: [toUserId], references: [id])
+  Token               Token              @relation(fields: [tokenId], references: [id])
 
   @@index([createdAt])
   @@index([status])
   @@index([fromUserId])
   @@index([toUserId])
-  @@index([fromUserId, status]) // For tip counting queries in achievements
-  @@index([toUserId, status]) // For received tip queries
-  @@index([fromUserId, toUserId, status]) // For unique recipient queries
-  @@index([status, createdAt]) // For completed tips with date sorting
-}
-
-enum GroupTipStatus {
-  PENDING
-  ACTIVE
-  EXPIRED
-  REFUNDED
-  FAILED
+  @@index([fromUserId, status])
+  @@index([toUserId, status])
+  @@index([fromUserId, toUserId, status])
+  @@index([status, createdAt])
 }
 
 model GroupTip {
-  id          Int      @id @default(autoincrement())
-  creatorId   Int?
-  tokenId     Int
+  id                 Int                    @id @default(autoincrement())
+  creatorId          Int?
+  tokenId            Int
   totalAmount        Decimal
-  taxAtomic          Decimal  @default(0) // exact tax amount debited at creation
-  contributionsTotal Decimal  @default(0) // total amount contributed by others
-  contributorsCount  Int      @default(0) // number of contributors
+  taxAtomic          Decimal                @default(0)
+  contributionsTotal Decimal                @default(0)
+  contributorsCount  Int                    @default(0)
   duration           Int
-  messageId   String?
-  channelId   String?
-  guildId     String?
-  status      String   // Keep as String for backward compatibility
-  expiresAt   DateTime
-  refundedAt  DateTime?
-  createdAt   DateTime @default(now())
-
-  Creator       User?                   @relation("GroupTipCreator", fields: [creatorId], references: [id])
-  Token         Token                   @relation(fields: [tokenId], references: [id])
-  claims        GroupTipClaim[]
-  contributions GroupTipContribution[]
+  messageId          String?
+  channelId          String?
+  guildId            String?
+  status             String
+  expiresAt          DateTime
+  refundedAt         DateTime?
+  createdAt          DateTime               @default(now())
+  Creator            User?                  @relation("GroupTipCreator", fields: [creatorId], references: [id])
+  Token              Token                  @relation(fields: [tokenId], references: [id])
+  claims             GroupTipClaim[]
+  contributions      GroupTipContribution[]
 
   @@index([status, expiresAt])
   @@index([createdAt])
@@ -352,23 +256,16 @@ model GroupTip {
   @@index([guildId])
 }
 
-enum GroupContributionStatus {
-  PENDING
-  CLAIMED
-  REFUNDED
-}
-
 model GroupTipClaim {
-  id         Int                      @id @default(autoincrement())
+  id         Int                     @id @default(autoincrement())
   groupTipId Int
   userId     Int?
-  status     GroupContributionStatus  @default(PENDING)
+  status     GroupContributionStatus @default(PENDING)
   claimedAt  DateTime?
   refundedAt DateTime?
-  createdAt  DateTime                 @default(now())
-
-  GroupTip GroupTip @relation(fields: [groupTipId], references: [id])
-  User     User?    @relation("GroupTipClaims", fields: [userId], references: [id])
+  createdAt  DateTime                @default(now())
+  GroupTip   GroupTip                @relation(fields: [groupTipId], references: [id])
+  User       User?                   @relation("GroupTipClaims", fields: [userId], references: [id])
 
   @@unique([groupTipId, userId])
   @@index([status])
@@ -384,9 +281,8 @@ model GroupTipContribution {
   taxPaid       Decimal  @default(0)
   status        String   @default("COMPLETED")
   createdAt     DateTime @default(now())
-
-  groupTip    GroupTip @relation(fields: [groupTipId], references: [id], onDelete: Cascade)
-  contributor User     @relation("GroupTipContributions", fields: [contributorId], references: [id], onDelete: Cascade)
+  contributor   User     @relation("GroupTipContributions", fields: [contributorId], references: [id], onDelete: Cascade)
+  groupTip      GroupTip @relation(fields: [groupTipId], references: [id], onDelete: Cascade)
 
   @@unique([groupTipId, contributorId])
   @@index([groupTipId])
@@ -395,44 +291,37 @@ model GroupTipContribution {
 }
 
 model Token {
-  id               Int      @id @default(autoincrement())
-  address          String   @unique
-  symbol           String   @unique
-  decimals         Int
-  active           Boolean  @default(true)
-  minDeposit       Decimal  @default(50)
-  minWithdraw      Decimal  @default(50)
-  tipFeeBps        Int?
-  houseFeeBps      Int?
-  withdrawMaxPerTx Decimal?
-  withdrawDailyCap Decimal?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  balances     UserBalance[]
-  matches      Match[]
-  tips         Tip[]
-  groupTips    GroupTip[]
-  transactions Transaction[]
-
-  // Security: Withdrawal attempt tracking
+  id                 Int                 @id @default(autoincrement())
+  address            String              @unique
+  symbol             String              @unique
+  decimals           Int
+  active             Boolean             @default(true)
+  minDeposit         Decimal             @default(50)
+  minWithdraw        Decimal             @default(50)
+  tipFeeBps          Int?
+  houseFeeBps        Int?
+  withdrawMaxPerTx   Decimal?
+  withdrawDailyCap   Decimal?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  groupTips          GroupTip[]
+  matches            Match[]
+  tierPrices         TierPrice[]         @relation("TokenToTierPrices")
+  tips               Tip[]
+  transactions       Transaction[]
+  balances           UserBalance[]
   withdrawalAttempts WithdrawalAttempt[]
-
-  // ✅ back-relation to TierPrice
-  tierPrices TierPrice[] @relation("TokenToTierPrices")
 }
 
 model UserBalance {
   id      Int     @id @default(autoincrement())
   userId  Int
   tokenId Int
-  amount  Decimal @default(0) // SECURITY: Must be non-negative
-
-  User  User  @relation(fields: [userId], references: [id])
-  Token Token @relation(fields: [tokenId], references: [id])
+  amount  Decimal @default(0)
+  Token   Token   @relation(fields: [tokenId], references: [id])
+  User    User    @relation(fields: [userId], references: [id])
 
   @@unique([userId, tokenId])
-  // SECURITY: Prevent negative balances at database level (enforced at DB level)
 }
 
 model ProcessedDeposit {
@@ -447,29 +336,32 @@ model DepositCursor {
 }
 
 model AppConfig {
-  id               Int      @id @default(autoincrement())
-  minDeposit       Decimal  @default(50)
-  minWithdraw      Decimal  @default(50)
-  withdrawMaxPerTx Decimal  @default(50)
-  withdrawDailyCap Decimal  @default(500)
-  houseFeeBps      Int      @default(200)
-  tipFeeBps        Int      @default(100)
-  emergencyMode    Boolean  @default(false)
-  withdrawalsPaused Boolean @default(false)
-  tippingPaused    Boolean  @default(false)
-  achievementsEnabled Boolean @default(true)
-  streakProtectionEnabled Boolean @default(true)
-
-  // Treasury Safety Features
-  treasuryMaxHoldingUSD    Decimal? // Maximum USD value treasury should hold per token
-  treasuryWarningThresholdUSD Decimal? // USD threshold for warnings
-  coldWalletAddress        String? // Address for cold storage transfers
-  treasuryMonitoringEnabled Boolean @default(false) // Enable treasury monitoring
-  autoTransferEnabled      Boolean @default(false) // Enable automatic cold wallet transfers
-  treasuryCheckIntervalMins Int     @default(60) // How often to check treasury balances
-
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                            Int      @id @default(autoincrement())
+  minDeposit                    Decimal  @default(50)
+  minWithdraw                   Decimal  @default(50)
+  withdrawMaxPerTx              Decimal  @default(50)
+  withdrawDailyCap              Decimal  @default(500)
+  houseFeeBps                   Int      @default(200)
+  tipFeeBps                     Int      @default(100)
+  emergencyMode                 Boolean  @default(false)
+  withdrawalsPaused             Boolean  @default(false)
+  tippingPaused                 Boolean  @default(false)
+  achievementsEnabled           Boolean  @default(true)
+  streakProtectionEnabled       Boolean  @default(true)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  autoTransferEnabled           Boolean  @default(false)
+  coldWalletAddress             String?
+  treasuryCheckIntervalMins     Int      @default(60)
+  treasuryMaxHoldingUSD         Decimal?
+  treasuryMonitoringEnabled     Boolean  @default(false)
+  treasuryWarningThresholdUSD   Decimal?
+  referralEnabled               Boolean  @default(true)
+  referralRakeReductionBps      Int      @default(50)
+  referralRewardInterval        Int      @default(10)
+  referralTaxReductionBps       Int      @default(50)
+  referralVerificationThreshold Decimal  @default(20)
+  referralWelcomeBonus          Decimal  @default(0)
 }
 
 model ApprovedServer {
@@ -482,19 +374,19 @@ model ApprovedServer {
 }
 
 model GuildSettings {
-  id               Int      @id @default(autoincrement())
-  guildId          String   @unique
-  channelMode      String   @default("ALLOW_ALL") // ALLOW_ALL, WHITELIST, BLACKLIST
-  allowedChannels  Json?    // Array of channel IDs where commands are allowed
-  blockedChannels  Json?    // Array of channel IDs where commands are blocked
-  tipChannels      Json?    // Specific channels for tip commands
-  gameChannels     Json?    // Specific channels for game commands
-  announcementChannel String? // Single channel for bot announcements
-  perChannelCooldowns Json? // Per-channel cooldown settings
-  featureRestrictions Json? // Feature-specific channel restrictions
-  autoSuggestChannels Boolean @default(true) // Auto-suggest channels on join
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  guildId             String   @unique
+  channelMode         String   @default("ALLOW_ALL")
+  allowedChannels     Json?
+  blockedChannels     Json?
+  tipChannels         Json?
+  gameChannels        Json?
+  announcementChannel String?
+  perChannelCooldowns Json?
+  featureRestrictions Json?
+  autoSuggestChannels Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([guildId])
 }
@@ -503,11 +395,11 @@ model ChannelActivity {
   id          Int      @id @default(autoincrement())
   guildId     String
   channelId   String
-  commandType String   // tip, game, profile, etc.
-  commandName String   // specific command name
+  commandType String
+  commandName String
   userId      String
   timestamp   DateTime @default(now())
-  success     Boolean  @default(true) // Whether command executed successfully
+  success     Boolean  @default(true)
 
   @@index([guildId, channelId])
   @@index([guildId, timestamp])
@@ -515,24 +407,24 @@ model ChannelActivity {
 }
 
 model ServerApplication {
-  id            Int      @id @default(autoincrement())
-  guildId       String   @unique // Discord server ID
-  guildName     String   // Server name at time of application
-  applicantId   String   // Discord user ID of person applying
-  applicantTag  String   // Discord username#discriminator
-  applicantRoles String? // JSON array of applicant's roles in the server
-  applicantPermissions String? // Applicant's key permissions (Administrator, ManageGuild, etc.)
-  isServerOwner Boolean  @default(false) // Whether applicant is the server owner
-  contactInfo   String?  // Email or other contact method
-  serverSize    Int?     // Member count
-  description   String   // What the server is about
-  useCase       String   // How they plan to use PIPTip
-  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  reviewedBy    String?  // Admin who reviewed
-  reviewNote    String?  // Admin review comments
-  rejectionReason String? // If rejected, why
-  submittedAt   DateTime @default(now())
-  reviewedAt    DateTime?
+  id                   Int       @id @default(autoincrement())
+  guildId              String    @unique
+  guildName            String
+  applicantId          String
+  applicantTag         String
+  contactInfo          String?
+  serverSize           Int?
+  description          String
+  useCase              String
+  status               String    @default("PENDING")
+  reviewedBy           String?
+  reviewNote           String?
+  rejectionReason      String?
+  submittedAt          DateTime  @default(now())
+  reviewedAt           DateTime?
+  applicantPermissions String?
+  applicantRoles       String?
+  isServerOwner        Boolean   @default(false)
 
   @@index([status])
   @@index([submittedAt])
@@ -561,14 +453,11 @@ model Transaction {
   txHash      String?
   metadata    String?
   createdAt   DateTime @default(now())
-
-  // USD value tracking for tax reporting and historical context
-  usdValue    Decimal? // USD value of the amount at time of transaction
-  usdFeeValue Decimal? // USD value of the fee at time of transaction
-  usdPrice    Decimal? // Token price in USD at time of transaction
-  priceSource String?  // Source of price data (dexscreener, coingecko, etc.)
-
-  Token Token? @relation(fields: [tokenId], references: [id])
+  priceSource String?
+  usdFeeValue Decimal?
+  usdPrice    Decimal?
+  usdValue    Decimal?
+  Token       Token?   @relation(fields: [tokenId], references: [id])
 
   @@index([createdAt])
   @@index([guildId])
@@ -579,12 +468,11 @@ model Transaction {
 model XpTransaction {
   id        Int      @id @default(autoincrement())
   userId    Int
-  amount    Int      // XP amount (can be negative for penalties)
-  reason    String   // Reason for XP change (e.g., "tip_sent", "achievement_unlocked")
-  metadata  String?  // Additional context as JSON
+  amount    Int
+  reason    String
+  metadata  String?
   createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([createdAt])
@@ -602,112 +490,91 @@ model WebhookEvent {
   @@index([createdAt])
 }
 
-// PenguBook browsing history - track who viewed whose profile
 model BioBrowse {
   id        Int      @id @default(autoincrement())
-  viewerId  Int      // who viewed the profile
-  profileId Int      // whose profile was viewed
+  viewerId  Int
+  profileId Int
   createdAt DateTime @default(now())
-  
-  viewer  User @relation("BioBrowseViewer", fields: [viewerId], references: [id], onDelete: Cascade)
-  profile User @relation("BioBrowseProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  profile   User     @relation("BioBrowseProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  viewer    User     @relation("BioBrowseViewer", fields: [viewerId], references: [id], onDelete: Cascade)
 
-  @@unique([viewerId, profileId]) // prevent duplicate views from same user
-  @@index([profileId, createdAt]) // for getting recent viewers
-  @@index([viewerId, createdAt])  // for user's browsing history
+  @@unique([viewerId, profileId])
+  @@index([profileId, createdAt])
+  @@index([viewerId, createdAt])
 }
 
-// PenguBook messages - direct messages sent with tips from PenguBook
 model PenguBookMessage {
-  id        Int      @id @default(autoincrement())
-  fromUserId Int     // sender
-  toUserId   Int     // recipient  
-  tipId      Int?    // link to tip if it was a tip message
-  message    String  @db.Text
-  read       Boolean @default(false)
+  id         Int      @id @default(autoincrement())
+  fromUserId Int
+  toUserId   Int
+  tipId      Int?
+  message    String
+  read       Boolean  @default(false)
   createdAt  DateTime @default(now())
-  
-  from User @relation("PenguBookMessageSender", fields: [fromUserId], references: [id], onDelete: Cascade)
-  to   User @relation("PenguBookMessageReceiver", fields: [toUserId], references: [id], onDelete: Cascade)
-  tip  Tip? @relation("PenguBookTipMessage", fields: [tipId], references: [id], onDelete: SetNull)
-  
-  @@index([toUserId, read, createdAt]) // for inbox queries
-  @@index([fromUserId, createdAt])     // for sent messages
+  from       User     @relation("PenguBookMessageSender", fields: [fromUserId], references: [id], onDelete: Cascade)
+  tip        Tip?     @relation("PenguBookTipMessage", fields: [tipId], references: [id])
+  to         User     @relation("PenguBookMessageReceiver", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([toUserId, read, createdAt])
+  @@index([fromUserId, createdAt])
 }
 
 model Referral {
-  id            Int      @id @default(autoincrement())
-  referrerId    Int      // User who made the referral
-  referredId    Int      // User who was referred
-  referralCode  String   @unique // Unique code for tracking
-  isVerified    Boolean  @default(false) // True when referred user has tipped >= 20 tokens
-  verifiedAt    DateTime?
-  totalTipped   Decimal  @default(0) // Track total tipped by referred user
-  createdAt     DateTime @default(now())
+  id                  Int       @id @default(autoincrement())
+  referrerId          Int
+  referredId          Int
+  referralCode        String    @unique
+  isVerified          Boolean   @default(false)
+  verifiedAt          DateTime?
+  totalTipped         Decimal   @default(0)
+  createdAt           DateTime  @default(now())
+  welcomeBonusGranted Boolean   @default(false)
+  referred            User      @relation("UserReferred", fields: [referredId], references: [id], onDelete: Cascade)
+  referrer            User      @relation("UserReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
 
-  referrer User @relation("UserReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
-  referred User @relation("UserReferred", fields: [referredId], references: [id], onDelete: Cascade)
-
-  @@unique([referrerId, referredId]) // Prevent duplicate referrals
+  @@unique([referrerId, referredId])
   @@index([referrerId, isVerified])
   @@index([referredId])
   @@index([referralCode])
 }
 
 model UserStreak {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique
-  currentWins  Int      @default(0)
-  longestWins  Int      @default(0)
-  lastGameAt   DateTime?
-  updatedAt    DateTime @updatedAt
-
-  user User @relation("UserStreaks", fields: [userId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  currentWins Int       @default(0)
+  longestWins Int       @default(0)
+  lastGameAt  DateTime?
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation("UserStreaks", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, currentWins])
-  @@index([currentWins, lastGameAt]) // For leaderboard queries
-  @@index([longestWins]) // For longest streak leaderboards
+  @@index([currentWins, lastGameAt])
+  @@index([longestWins])
 }
 
-// Dynamic Achievement System Models
-
 model AchievementDefinition {
-  id                Int      @id @default(autoincrement())
-  name              String   // Display name: "First Win Streak"
-  description       String   // "Win 3 matches in a row"
-  category          String   // "streaks", "tips", "deposits", "referrals"
-
-  // Criteria configuration
-  criteriaType      String   // "count", "sum", "streak", "unique", "custom"
-  criteriaData      Json     // Flexible criteria configuration
-  threshold         Decimal  // Target value to achieve
-
-  // Display properties
-  iconEmoji         String   // "🔥", "💰", "🏆"
-  badgeColor        String   // Hex color for badge
-  rarity           String    // "common", "rare", "epic", "legendary"
-
-  // Configuration
-  isEnabled         Boolean  @default(true)
-  isVisible         Boolean  @default(true)  // Show in UI even if not unlocked
-  isRepeatable      Boolean  @default(false) // Can be earned multiple times
-
-  // Time-gating
-  cooldownHours     Int?     // Hours between unlocks (for repeatable)
-  startDate         DateTime? // When achievement becomes available
-  endDate           DateTime? // When achievement expires
-
-  // Ordering and organization
-  sortOrder         Int      @default(0)
-  tier              Int      @default(1) // Difficulty tier (1-5)
-
-  // Metadata
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  createdBy         String?  // Admin who created it
-  version           Int      @default(1) // For tracking changes
-
-  // Relations
+  id                   Int                       @id @default(autoincrement())
+  name                 String
+  description          String
+  category             String
+  criteriaType         String
+  criteriaData         Json
+  threshold            Decimal
+  iconEmoji            String
+  badgeColor           String
+  rarity               String
+  isEnabled            Boolean                   @default(true)
+  isVisible            Boolean                   @default(true)
+  isRepeatable         Boolean                   @default(false)
+  cooldownHours        Int?
+  startDate            DateTime?
+  endDate              DateTime?
+  sortOrder            Int                       @default(0)
+  tier                 Int                       @default(1)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  createdBy            String?
+  version              Int                       @default(1)
   unlockedAchievements UserAchievement[]
   progressTracking     UserAchievementProgress[]
 
@@ -717,413 +584,333 @@ model AchievementDefinition {
 }
 
 model UserAchievement {
-  id               Int      @id @default(autoincrement())
-  userId           Int
-  definitionId     Int
+  id              Int                   @id @default(autoincrement())
+  userId          Int
+  definitionId    Int
+  currentProgress Decimal               @default(0)
+  targetProgress  Decimal
+  unlockedAt      DateTime              @default(now())
+  data            Json?
+  lastUnlockedAt  DateTime?
+  unlockCount     Int                   @default(1)
+  definition      AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  user            User                  @relation("UserAchievements", fields: [userId], references: [id], onDelete: Cascade)
 
-  // Progress tracking
-  currentProgress  Decimal  @default(0)
-  targetProgress   Decimal  // Snapshot of threshold when unlocked
-
-  // Unlock details
-  unlockedAt       DateTime @default(now())
-  data             Json?    // Extra data about the unlock
-
-  // Time-gating tracking
-  lastUnlockedAt   DateTime? // For repeatable achievements
-  unlockCount      Int      @default(1) // How many times earned
-
-  // Relations
-  user       User @relation("UserAchievements", fields: [userId], references: [id], onDelete: Cascade)
-  definition AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, definitionId]) // One achievement per user (for non-repeatable)
+  @@unique([userId, definitionId])
   @@index([userId, unlockedAt])
   @@index([definitionId, unlockedAt])
-  @@index([lastUnlockedAt]) // For cooldown checks
+  @@index([lastUnlockedAt])
 }
 
 model UserAchievementProgress {
-  id               Int      @id @default(autoincrement())
-  userId           Int
-  definitionId     Int
-
-  // Progress tracking
-  currentProgress  Decimal  @default(0)
-  lastProgressAt   DateTime @default(now())
-
-  // Efficiency fields
-  lastCheckedAt    DateTime @default(now())
-  progressData     Json?    // Store intermediate calculations
-
-  // Relations
-  user       User @relation("UserProgressTracking", fields: [userId], references: [id], onDelete: Cascade)
-  definition AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  id              Int                   @id @default(autoincrement())
+  userId          Int
+  definitionId    Int
+  currentProgress Decimal               @default(0)
+  lastProgressAt  DateTime              @default(now())
+  lastCheckedAt   DateTime              @default(now())
+  progressData    Json?
+  definition      AchievementDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  user            User                  @relation("UserProgressTracking", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, definitionId])
   @@index([userId, lastProgressAt])
   @@index([definitionId, currentProgress])
-  @@index([lastCheckedAt]) // For batch processing
+  @@index([lastCheckedAt])
 }
 
-// Legacy Achievement model (keeping for migration compatibility)
 model Achievement {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  type        String   // "win_streak", "referral_count", "total_tips", etc.
-  level       Int      // Achievement level/tier
-  unlockedAt  DateTime @default(now())
-  data        Json?    // Extra achievement data
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  type       String
+  level      Int
+  unlockedAt DateTime @default(now())
+  data       Json?
+  user       User     @relation("LegacyAchievements", fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation("LegacyAchievements", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, type, level]) // Prevent duplicate achievements
+  @@unique([userId, type, level])
   @@index([userId, type])
-  @@index([type, level]) // For achievement statistics queries
-  @@index([unlockedAt]) // For recent achievements and sorting
-  @@index([userId, unlockedAt]) // For user achievement history
+  @@index([type, level])
+  @@index([unlockedAt])
+  @@index([userId, unlockedAt])
 }
 
-// Aggregate table for user statistics (updated via triggers/background jobs)
 model UserStats {
-  id                    Int      @id @default(autoincrement())
-  userId                Int      @unique
-  totalTipsSent         Int      @default(0)
-  totalTipsReceived     Int      @default(0)
-  totalTipAmountSent    Decimal  @default(0)
-  totalTipAmountReceived Decimal @default(0)
-  uniqueRecipients      Int      @default(0)
-  uniqueSenders         Int      @default(0)
-  totalDeposited        Decimal  @default(0)
-  totalWithdrawn        Decimal  @default(0)
-  matchesWon            Int      @default(0)
-  matchesLost           Int      @default(0)
-  matchesTied           Int      @default(0)
-  achievementCount      Int      @default(0)
-  lastTipAt             DateTime?
-  lastMatchAt           DateTime?
-  lastDepositAt         DateTime?
-  updatedAt             DateTime @updatedAt
-  createdAt             DateTime @default(now())
+  id                     Int       @id @default(autoincrement())
+  userId                 Int       @unique
+  totalTipsSent          Int       @default(0)
+  totalTipsReceived      Int       @default(0)
+  totalTipAmountSent     Decimal   @default(0)
+  totalTipAmountReceived Decimal   @default(0)
+  uniqueRecipients       Int       @default(0)
+  uniqueSenders          Int       @default(0)
+  totalDeposited         Decimal   @default(0)
+  totalWithdrawn         Decimal   @default(0)
+  matchesWon             Int       @default(0)
+  matchesLost            Int       @default(0)
+  matchesTied            Int       @default(0)
+  achievementCount       Int       @default(0)
+  lastTipAt              DateTime?
+  lastMatchAt            DateTime?
+  lastDepositAt          DateTime?
+  updatedAt              DateTime  @updatedAt
+  createdAt              DateTime  @default(now())
+  user                   User      @relation("UserToStats", fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation("UserToStats", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([totalTipsSent, updatedAt]) // For tip leaderboards
-  @@index([matchesWon, updatedAt]) // For match leaderboards
-  @@index([totalDeposited, updatedAt]) // For deposit leaderboards
-  @@index([achievementCount, updatedAt]) // For achievement leaderboards
-  @@index([updatedAt]) // For finding stale records
+  @@index([totalTipsSent, updatedAt])
+  @@index([matchesWon, updatedAt])
+  @@index([totalDeposited, updatedAt])
+  @@index([achievementCount, updatedAt])
+  @@index([updatedAt])
 }
 
-// Daily aggregates for leaderboards and analytics
 model DailyStats {
-  id                 Int      @id @default(autoincrement())
-  date               DateTime @unique @db.Date
-  totalTips          Int      @default(0)
-  totalTipVolume     Decimal  @default(0)
-  totalDeposits      Int      @default(0)
-  totalDepositVolume Decimal  @default(0)
-  totalMatches       Int      @default(0)
-  newUsers           Int      @default(0)
-  activeUsers        Int      @default(0)
-  achievementsUnlocked Int    @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                   Int      @id @default(autoincrement())
+  date                 DateTime @unique @db.Date
+  totalTips            Int      @default(0)
+  totalTipVolume       Decimal  @default(0)
+  totalDeposits        Int      @default(0)
+  totalDepositVolume   Decimal  @default(0)
+  totalMatches         Int      @default(0)
+  newUsers             Int      @default(0)
+  activeUsers          Int      @default(0)
+  achievementsUnlocked Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([date])
 }
 
-// Discord role-based tax exemptions for NFT holders and partners
 model RoleTaxExemption {
-  id            Int      @id @default(autoincrement())
-  roleId        String   // Discord role ID
-  guildId       String   // Discord server ID
-  exemptionRate Decimal  @default(100.0) @db.Decimal(5,2) // 0-100% tax reduction
-  duration      Int?     // Days until expiry (null = permanent)
-  label         String   // "NFT Holder", "VIP", "Partner", etc.
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  expiresAt     DateTime? // Calculated expiry date
-
-  // Admin tracking
-  createdBy     String?  // Admin who created this exemption
-  notes         String?  // Internal notes about partnership
-
-  // Analytics relations
+  id             Int                    @id @default(autoincrement())
+  roleId         String
+  guildId        String
+  exemptionRate  Decimal                @default(100.0) @db.Decimal(5, 2)
+  duration       Int?
+  label          String
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  expiresAt      DateTime?
+  createdBy      String?
+  notes          String?
   dailyAnalytics RoleBenefitAnalytics[] @relation("TaxAnalytics")
 
   @@unique([roleId, guildId])
   @@index([guildId, isActive])
-  // SECURITY: Prevent invalid exemption rates (enforced at DB level)
   @@index([expiresAt])
 }
 
-// Discord role-based rake reductions for gaming benefits
 model RoleRakeReduction {
-  id              Int      @id @default(autoincrement())
-  roleId          String   // Discord role ID
-  guildId         String   // Discord server ID
-  rakeReductionBps Int     @default(0) // Basis points (5000 = 50% reduction)
-  label           String   // "NFT Holder", "VIP", "Partner", etc.
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  expiresAt       DateTime? // Calculated expiry date
+  id               Int                    @id @default(autoincrement())
+  roleId           String
+  guildId          String
+  rakeReductionBps Int                    @default(0)
+  label            String
+  isActive         Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  expiresAt        DateTime?
+  createdBy        String?
+  notes            String?
+  dailyAnalytics   RoleBenefitAnalytics[] @relation("TaxAnalytics")
 
-  // Admin tracking
-  createdBy       String?  // Admin who created this reduction
-  notes           String?  // Internal notes about partnership
-
-  // Analytics relations
-  dailyAnalytics RoleBenefitAnalytics[] @relation("RakeAnalytics")
-
-  @@unique([roleId, guildId]) // One reduction per role per server
+  @@unique([roleId, guildId])
   @@index([guildId, isActive])
   @@index([expiresAt])
-  // SECURITY: Prevent invalid rake reduction rates (BPS: 0-10000 = 0-100%) (enforced at DB level)
 }
 
-// Daily analytics for role-based benefits (for partnership reports)
 model RoleBenefitAnalytics {
-  id              Int      @id @default(autoincrement())
-  roleId          String   // Discord role ID
-  guildId         String   // Discord server ID
-  date            DateTime @db.Date // Analytics date (daily aggregation)
+  id                       Int               @id @default(autoincrement())
+  roleId                   String
+  guildId                  String
+  date                     DateTime          @db.Date
+  tipsFromRoleHolders      Int               @default(0)
+  tipsToRoleHolders        Int               @default(0)
+  totalTipVolumeAtomic     Decimal           @default(0)
+  totalTaxSavedAtomic      Decimal           @default(0)
+  averageTipSizeAtomic     Decimal           @default(0)
+  gamesPlayedByRoleHolders Int               @default(0)
+  totalWageredAtomic       Decimal           @default(0)
+  gamesWonByRoleHolders    Int               @default(0)
+  totalRakeSavedAtomic     Decimal           @default(0)
+  averageWagerSizeAtomic   Decimal           @default(0)
+  activeRoleHolders        Int               @default(0)
+  newRoleHoldersEngaged    Int               @default(0)
+  returningRoleHolders     Int               @default(0)
+  createdAt                DateTime          @default(now())
+  rakeReduction            RoleRakeReduction @relation("RakeAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_rake_fkey")
+  taxExemption             RoleTaxExemption  @relation("TaxAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_tax_fkey")
 
-  // Tip metrics (tax benefits)
-  tipsFromRoleHolders    Int     @default(0) // Tips sent by role holders
-  tipsToRoleHolders      Int     @default(0) // Tips received by role holders
-  totalTipVolumeAtomic   Decimal @default(0) // Volume tipped by role holders
-  totalTaxSavedAtomic    Decimal @default(0) // Total tax savings provided
-  averageTipSizeAtomic   Decimal @default(0) // Average tip size from role holders
-
-  // Gaming metrics (rake benefits)
-  gamesPlayedByRoleHolders Int     @default(0) // Games played by role holders
-  totalWageredAtomic       Decimal @default(0) // Volume wagered by role holders
-  gamesWonByRoleHolders    Int     @default(0) // Games won by role holders
-  totalRakeSavedAtomic     Decimal @default(0) // Total rake savings provided (NEW)
-  averageWagerSizeAtomic   Decimal @default(0) // Average wager size from role holders (NEW)
-
-  // Engagement metrics
-  activeRoleHolders       Int @default(0) // Unique role holders who tipped/gamed today
-  newRoleHoldersEngaged   Int @default(0) // First-time role holders who engaged
-
-  // Retention metrics
-  returningRoleHolders    Int @default(0) // Role holders who engaged yesterday & today
-
-  createdAt DateTime @default(now())
-
-  // Relations (flexible - can be tax OR rake exemption)
-  taxExemption  RoleTaxExemption?  @relation("TaxAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_tax_fkey")
-  rakeReduction RoleRakeReduction? @relation("RakeAnalytics", fields: [roleId, guildId], references: [roleId, guildId], map: "RoleBenefitAnalytics_rake_fkey")
-
-  @@unique([roleId, guildId, date]) // One record per role per day
-  @@index([guildId, date]) // Query by server and time range
-  @@index([date]) // Global analytics by date
+  @@unique([roleId, guildId, date])
+  @@index([guildId, date])
+  @@index([date])
 }
 
-// SECURITY: Database model for persistent withdrawal attempt tracking
 model WithdrawalAttempt {
-  id          Int      @id @default(autoincrement())
-  userId      Int      // User.id
-  tokenId     Int      // Token.id
-  amount      Decimal  // Amount attempted
-  createdAt   DateTime @default(now())
-  blocked     Boolean  @default(false) // Was this attempt blocked?
-  reason      String?  // Why blocked (rate limit, cooldown, etc.)
-  ipAddress   String?  // IP tracking for advanced abuse detection
-  userAgent   String?  // Browser fingerprinting
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenId   Int
+  amount    Decimal
+  createdAt DateTime @default(now())
+  blocked   Boolean  @default(false)
+  reason    String?
+  ipAddress String?
+  userAgent String?
+  token     Token    @relation(fields: [tokenId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
-  // Relations
-  user        User     @relation(fields: [userId], references: [id])
-  token       Token    @relation(fields: [tokenId], references: [id])
-
-  @@index([userId, createdAt]) // Fast lookup for user's recent attempts
-  @@index([userId, tokenId, createdAt]) // Per-token attempt tracking
+  @@index([userId, createdAt])
+  @@index([userId, tokenId, createdAt])
 }
 
-// Social Gaming Features Models
-
-// Profile reactions system (like, fire, diamond, etc.)
 model ProfileReaction {
   id           Int      @id @default(autoincrement())
-  giverId      Int      // User giving the reaction
-  receiverId   Int      // User receiving the reaction
-  reactionType String   // 'like', 'fire', 'diamond', 'rocket', 'star'
+  giverId      Int
+  receiverId   Int
+  reactionType String
   createdAt    DateTime @default(now())
+  giver        User     @relation("ReactionGiver", fields: [giverId], references: [id], onDelete: Cascade)
+  receiver     User     @relation("ReactionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
 
-  // Relations
-  giver    User @relation("ReactionGiver", fields: [giverId], references: [id], onDelete: Cascade)
-  receiver User @relation("ReactionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-
-  // Ensure one reaction type per user pair
   @@unique([giverId, receiverId, reactionType])
-  @@index([receiverId, reactionType]) // Fast lookup for reaction counts
-  @@index([giverId, createdAt]) // User's reaction history
+  @@index([receiverId, reactionType])
+  @@index([giverId, createdAt])
 }
 
-// User following system
 model UserFollow {
   id          Int      @id @default(autoincrement())
-  followerId  Int      // User doing the following
-  followingId Int      // User being followed
+  followerId  Int
+  followingId Int
   createdAt   DateTime @default(now())
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
 
-  // Relations
-  follower  User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
-  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
-
-  // Prevent duplicate follows and self-following
   @@unique([followerId, followingId])
-  @@index([followingId, createdAt]) // Followers list
-  @@index([followerId, createdAt]) // Following list
+  @@index([followingId, createdAt])
+  @@index([followerId, createdAt])
 }
 
-// Activity feed for social features
 model ActivityFeedItem {
   id         Int      @id @default(autoincrement())
-  userId     Int      // User who performed the action
-  type       String   // 'tip', 'reaction', 'follow', 'achievement', 'join', 'challenge'
-  data       Json     // Flexible data storage for activity details
-  visibility String   @default("public") // 'public', 'followers', 'private'
+  userId     Int
+  type       String
+  data       Json
+  visibility String   @default("public")
   createdAt  DateTime @default(now())
+  user       User     @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
 
-  // Relations
-  user User @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([type, createdAt]) // Feed by activity type
-  @@index([userId, createdAt]) // User's activity history
-  @@index([visibility, createdAt]) // Public feed
+  @@index([type, createdAt])
+  @@index([userId, createdAt])
+  @@index([visibility, createdAt])
 }
 
-// Prediction markets system
 model PredictionMarket {
-  id              String   @id @default(cuid())
-  title           String   // "Will BTC be above $70K by Friday?"
-  description     String   // Detailed market description
-  createdAt       DateTime @default(now())
-  resolveAt       DateTime // When the market should be resolved
-  status          String   @default("ACTIVE") // ACTIVE, RESOLVED, CANCELLED
-  outcome         String?  // YES, NO (null until resolved)
+  id                       String                    @id @default(cuid())
+  title                    String
+  description              String
+  createdAt                DateTime                  @default(now())
+  resolveAt                DateTime
+  status                   String                    @default("ACTIVE")
+  outcome                  String?
+  totalYesBets             Int                       @default(0)
+  totalNoBets              Int                       @default(0)
+  totalBetCount            Int                       @default(0)
+  rakePercentage           Float                     @default(3.0)
+  minBet                   Int                       @default(1)
+  maxBet                   Int                       @default(10000)
+  creatorId                String
+  guildId                  String
+  channelId                String
+  tokenSymbol              String
+  marketType               String
+  marketData               Json
+  currentPrices            Json?
+  liquidity                BigInt?                   @default(1000)
+  lmsrShares               Json?
+  marketOutcomes           String[]                  @default(["YES", "NO"])
+  totalPipchipsVolume      BigInt?                   @default(0)
+  adminNotes               String?
+  isSpecialMarket          Boolean                   @default(false)
+  requiresManualResolution Boolean                   @default(false)
+  resolutionMethod         String                    @default("API_AUTO")
+  resolvedAt               DateTime?
+  resolvedBy               String?
+  templateType             String?
+  participations           PredictionParticipation[]
 
-  // Betting pools
-  totalYesBets    Int      @default(0) // Total amount bet on YES
-  totalNoBets     Int      @default(0) // Total amount bet on NO
-  totalBetCount   Int      @default(0) // Number of individual bets
-
-  // Market configuration
-  rakePercentage  Float    @default(3.0) // House rake (default 3%)
-  minBet          Int      @default(1)
-  maxBet          Int      @default(10000)
-
-  // Market metadata
-  creatorId       String   // Discord ID of market creator
-  guildId         String   // Discord guild/server ID
-  channelId       String   // Discord channel ID
-  tokenSymbol     String   // Token used for betting (PENGUIN, ICE, etc.)
-  marketType      String   // PRICE_UP_DOWN, PRICE_ABOVE_BELOW, VOLUME_RANKING
-  marketData      Json     // Market-specific data (target price, symbol, etc.)
-
-  // LMSR fields for PIPChips markets
-  lmsrShares      Json?    // LMSR share tracking for outcomes {"YES": "1000", "NO": "500"}
-  marketOutcomes  String[] @default(["YES", "NO"]) // Possible outcomes
-
-  // PIPChips market fields
-  totalPipchipsVolume BigInt? @default(0) // Total PIPChips volume traded
-  currentPrices       Json?   // Current LMSR prices {"YES": "0.65", "NO": "0.35"}
-  liquidity          BigInt? @default(1000) // LMSR liquidity parameter
-
-  // Admin template and resolution system
-  templateType        String? // Template used (THREE_WAY_SPORTS, MULTI_CHOICE, etc.)
-  resolutionMethod    String  @default("API_AUTO") // API_AUTO, API_SPORTS, MANUAL_ADMIN
-  isSpecialMarket     Boolean @default(false) // Admin-created special market
-  requiresManualResolution Boolean @default(false) // Needs admin to resolve
-  adminNotes          String? // Internal admin notes
-  resolvedBy          String? // Admin who resolved (for manual resolution)
-  resolvedAt          DateTime? // When market was resolved
-
-  // Relations
-  participations  PredictionParticipation[]
-
-  @@index([guildId, status]) // Active markets by guild
-  @@index([status, resolveAt]) // Markets to resolve
-  @@index([creatorId, createdAt]) // User's markets
+  @@index([guildId, status])
+  @@index([status, resolveAt])
+  @@index([creatorId, createdAt])
 }
 
-// Individual bets on prediction markets
 model PredictionParticipation {
-  id          String          @id @default(cuid())
-  marketId    String          // Which market this participation is on
-  userId      String          // Discord ID of participant
-  side        String          // YES or NO
-  amount      Int             // Participation amount in atomic units
-  tokenSymbol String          // Token used for the participation
-  sharesPurchased Decimal?    @db.Decimal(20, 8) // LMSR shares purchased
-  createdAt   DateTime        @default(now())
+  id              String           @id @default(cuid())
+  marketId        String
+  userId          String
+  side            String
+  amount          Int
+  tokenSymbol     String
+  sharesPurchased Decimal?         @db.Decimal(20, 8)
+  createdAt       DateTime         @default(now())
+  market          PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
 
-  // Relations
-  market      PredictionMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
-
-  @@index([marketId, side]) // Participations by market and side
-  @@index([userId, createdAt]) // User's participation history
-  @@index([marketId, userId]) // User's participations on specific market
+  @@index([marketId, side])
+  @@index([userId, createdAt])
+  @@index([marketId, userId])
 }
 
-// Automated market creation logging
 model AutoMarketLog {
-  id                String   @id // Unique identifier for this automation event
-  marketId          String?  // Market ID if creation was successful
-  type              String   // 'crypto' or 'sports'
-  subtype           String   // Specific subtype (e.g., 'price_increase_24h', 'winner')
-  success           Boolean  // Whether market creation succeeded
-  error             String?  // Error message if creation failed
-  config            Json     // Configuration and parameters used
-  guildId           String?  // Guild where market was created
-  engagementMetrics Json?    // Post-creation engagement data
+  id                String   @id
+  marketId          String?
+  type              String
+  subtype           String
+  success           Boolean
+  error             String?
+  config            Json
+  guildId           String?
+  engagementMetrics Json?
   createdAt         DateTime @default(now())
 
-  @@index([type, createdAt]) // Logs by type and date
-  @@index([success, createdAt]) // Success/failure analysis
-  @@index([guildId, createdAt]) // Guild-specific automation logs
+  @@index([type, createdAt])
+  @@index([success, createdAt])
+  @@index([guildId, createdAt])
 }
 
-// Market payout tracking for financial integrity
 model Payout {
-  id             String   @id @default(cuid())
-  marketId       String   // Reference to PredictionMarket.id
-  idempotencyKey String   @unique // Prevents duplicate payouts
-  totalAmount    String   // Total pool amount (BigInt as string)
-  winningShares  String   // Total winning shares (BigInt as string)
-  status         String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
-  payoutCount    Int?     // Number of individual payouts processed
-  actualTotal    String?  // Actual amount processed (should match totalAmount)
-  processedAt    DateTime @default(now())
+  id             String    @id @default(cuid())
+  marketId       String
+  idempotencyKey String    @unique
+  totalAmount    String
+  winningShares  String
+  status         String    @default("PENDING")
+  payoutCount    Int?
+  actualTotal    String?
+  processedAt    DateTime  @default(now())
   completedAt    DateTime?
-  metadata       Json?    // Additional payout metadata
-  createdAt      DateTime @default(now())
+  metadata       Json?
+  createdAt      DateTime  @default(now())
 
   @@index([marketId, status])
   @@index([idempotencyKey])
   @@index([status, processedAt])
 }
 
-// Dead letter queue tracking for failed jobs
 model DeadLetterJob {
   id                   String   @id @default(cuid())
-  originalQueue        String   // Which queue the job originally came from
-  originalJobId        String   // Original job ID
-  originalPayload      Json     // Original job data
-  failureReason        String   // Why the job failed
-  attempts             Int      // Number of attempts made
-  lastError            Json     // Last error details
-  canRetry             Boolean  @default(false) // Whether automatic retry is safe
-  requiresManualReview Boolean  @default(true) // Needs admin review
-  escalationLevel      String   // low, medium, high, critical
-  estimatedResolution  String?  // Description of what's needed to fix
-  status               String   @default("PENDING") // PENDING, RETRIED, DISMISSED, RESOLVED
-  reviewedBy           String?  // Admin who reviewed/acted on this
-  dismissalReason      String?  // Reason for dismissal if applicable
+  originalQueue        String
+  originalJobId        String
+  originalPayload      Json
+  failureReason        String
+  attempts             Int
+  lastError            Json
+  canRetry             Boolean  @default(false)
+  requiresManualReview Boolean  @default(true)
+  escalationLevel      String
+  estimatedResolution  String?
+  status               String   @default("PENDING")
+  reviewedBy           String?
+  dismissalReason      String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -1133,16 +920,15 @@ model DeadLetterJob {
   @@index([requiresManualReview, status])
 }
 
-// Reconciliation results tracking for balance integrity
 model ReconciliationResult {
   id                String   @id @default(cuid())
-  type              String   // user_balance, market_pool, treasury, full_audit
-  status            String   // PASSED, FAILED, DRIFT_DETECTED, CORRECTED
-  scope             Json     // Reconciliation scope parameters
-  driftsFound       Int      @default(0) // Number of drifts detected
-  correctionsMade   Int      @default(0) // Number of corrections applied
-  toleranceExceeded Int      @default(0) // Number of drifts exceeding tolerance
-  details           Json     // Full reconciliation result details
+  type              String
+  status            String
+  scope             Json
+  driftsFound       Int      @default(0)
+  correctionsMade   Int      @default(0)
+  toleranceExceeded Int      @default(0)
+  details           Json
   createdAt         DateTime @default(now())
 
   @@index([type, createdAt])
@@ -1150,201 +936,199 @@ model ReconciliationResult {
   @@index([type, status])
 }
 
-// Outbox pattern for reliable Discord message delivery
 model OutboxMessage {
-  id            String      @id @default(cuid())
-  aggregateId   String      // e.g., marketId, userId for grouping related messages
-  aggregateType String      // MARKET, USER, SYSTEM, PAYOUT
-  eventType     String      // MARKET_RESOLVED, PAYOUT_COMPLETED, NOTIFICATION
-  channelId     String?     // Discord channel ID
-  userId        String?     // Discord user ID for DMs
-  guildId       String?     // Discord guild ID
-  payload       Json        // Message content, embeds, components
+  id            String       @id @default(cuid())
+  aggregateId   String
+  aggregateType String
+  eventType     String
+  channelId     String?
+  userId        String?
+  guildId       String?
+  payload       Json
   status        OutboxStatus @default(PENDING)
-  attempts      Int         @default(0)
-  maxAttempts   Int         @default(5)
-  lastError     String?     // Last error message
-  nextRetryAt   DateTime    @default(now()) // When to retry next
-  messageHash   String      // Deduplication hash
-  priority      Int         @default(5) // 1=highest, 10=lowest
-  createdAt     DateTime    @default(now())
-  processedAt   DateTime?   // When successfully sent
+  attempts      Int          @default(0)
+  maxAttempts   Int          @default(5)
+  lastError     String?
+  nextRetryAt   DateTime     @default(now())
+  messageHash   String       @unique
+  priority      Int          @default(5)
+  createdAt     DateTime     @default(now())
+  processedAt   DateTime?
 
-  @@unique([messageHash]) // Prevent duplicate messages
-  @@index([status, nextRetryAt]) // For processing queue
-  @@index([aggregateId, eventType]) // For related message queries
-  @@index([status, priority]) // For priority processing
-  @@index([createdAt]) // For cleanup and analysis
+  @@index([status, nextRetryAt])
+  @@index([aggregateId, eventType])
+  @@index([status, priority])
+  @@index([createdAt])
 }
 
-enum OutboxStatus {
-  PENDING     // Waiting to be sent
-  PROCESSING  // Currently being sent
-  SENT        // Successfully delivered
-  FAILED      // Failed after max attempts
-  DLQ         // Moved to dead letter queue
-}
-
-// PIPChips purchase packages (managed by admins)
 model PipchipsPackage {
-  id               String  @id @default(cuid())
-  name             String  // "Starter Pack", "Premium Bundle", etc.
-  pipchipsAmount   BigInt  // Number of PIPChips in package
-  usdPrice         Decimal @db.Decimal(10, 2) // Price in USD
-  tokenSymbol      String  @default("PENGU") // Token symbol for purchase
-  tokenCost        Decimal @db.Decimal(20, 8) @default(0) // Cost in tokens
-  bonusPercentage  Int     @default(0) // Bonus percentage (0-100)
-  bonusText        String? // "20% bonus!" or similar marketing text
-  isActive         Boolean @default(true)
-  displayOrder     Int     @default(0) // For sorting in UI
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  // Relations
-  purchases      PipchipsPurchase[]
+  id              String             @id @default(cuid())
+  name            String
+  pipchipsAmount  BigInt
+  usdPrice        Decimal            @db.Decimal(10, 2)
+  bonusText       String?
+  isActive        Boolean            @default(true)
+  displayOrder    Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  bonusPercentage Int                @default(0)
+  tokenCost       Decimal            @default(0) @db.Decimal(20, 8)
+  tokenSymbol     String             @default("PENGU")
+  purchases       PipchipsPurchase[]
 
   @@index([isActive, displayOrder])
 }
 
-// Record of PIPChips purchases
 model PipchipsPurchase {
-  id                String           @id @default(cuid())
-  userId            String           // Discord ID of purchaser
-  packageId         String           // Which package was purchased
-  pipchipsAmount    BigInt           // PIPChips received
-  usdPrice          Decimal          @db.Decimal(10, 2) // USD amount paid
-  paymentTokenId    String           // Which token was used for payment
-  paymentAmount     String           // Amount of token paid (BigInt as string)
-  tokenPriceUsd     Decimal          @db.Decimal(18, 8) // USD price of token at time of purchase
-  transactionHash   String?          // Blockchain transaction hash (if applicable)
-  status            PurchaseStatus   @default(PENDING)
-  createdAt         DateTime         @default(now())
-  processedAt       DateTime?        // When purchase was completed
-
-  // Relations
-  package           PipchipsPackage  @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  user              User             @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+  id              String          @id @default(cuid())
+  userId          String
+  packageId       String
+  pipchipsAmount  BigInt
+  usdPrice        Decimal         @db.Decimal(10, 2)
+  paymentTokenId  String
+  paymentAmount   String
+  tokenPriceUsd   Decimal         @db.Decimal(18, 8)
+  transactionHash String?
+  status          PurchaseStatus  @default(PENDING)
+  createdAt       DateTime        @default(now())
+  processedAt     DateTime?
+  package         PipchipsPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [discordId], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
 }
 
-enum PurchaseStatus {
-  PENDING     // Waiting for payment confirmation
-  PROCESSING  // Payment confirmed, crediting PIPChips
-  COMPLETED   // PIPChips successfully credited
-  FAILED      // Purchase failed
-  REFUNDED    // Purchase was refunded
-}
-
-// Comprehensive PIPChips transaction log
 model PipchipsTransaction {
-  id            String                @id @default(cuid())
-  userId        String                // Discord ID
-  amount        BigInt                // Positive for credit, negative for debit
-  transactionType PipchipsTransactionType // Type of transaction
-  referenceId   String?               // market_id, tournament_id, purchase_id, etc.
-  balanceAfter  BigInt                // User's balance after this transaction
-  description   String?               // Human-readable description
-  metadata      Json?                 // Additional transaction data
-  createdAt     DateTime              @default(now())
-
-  // Relations
-  user          User                  @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+  id              String                  @id @default(cuid())
+  userId          String
+  amount          BigInt
+  transactionType PipchipsTransactionType
+  referenceId     String?
+  balanceAfter    BigInt
+  description     String?
+  metadata        Json?
+  createdAt       DateTime                @default(now())
+  user            User                    @relation(fields: [userId], references: [discordId], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([transactionType, createdAt])
   @@index([referenceId])
 }
 
-enum PipchipsTransactionType {
-  DAILY_BONUS      // Daily claim bonus
-  STREAK_BONUS     // Additional streak multiplier
-  PURCHASE         // Bought with real tokens
-  BET_PLACED       // Spent on prediction
-  BET_WON          // Winnings from correct prediction
-  BET_REFUNDED     // Market cancelled/refunded
-  PREDICTION_BET   // Prediction bet placed
-  PREDICTION_WIN   // Won prediction payout
-  PREDICTION_LOSS  // Lost prediction (for tracking)
-  TOURNAMENT_ENTRY // Entry fee paid to join tournament
-  TOURNAMENT_BET   // Tournament-specific prediction bet
-  TOURNAMENT_WIN   // Tournament bet winnings (isolated balance)
-  TOURNAMENT_PRIZE // Prize from tournament/leaderboard
-  ADMIN_CREDIT     // Manual credit by admin
-  ADMIN_DEBIT      // Manual debit by admin
-  REFERRAL_BONUS   // Bonus for referring new users
-  STARTING_BONUS   // Initial 10,000 PIPChips for new users
-}
-
-// Admin-configurable system settings
 model AdminSetting {
-  key         String    @id // Setting key (e.g., 'daily_bonus_amount')
-  value       Json      // Setting value (number, string, object, etc.)
-  description String?   // What this setting controls
-  updatedAt   DateTime  @updatedAt
-  updatedBy   String?   // Admin who last updated this
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
 
   @@index([updatedAt])
 }
 
-// Tournament system with context-based PIPChips isolation
 model TournamentSession {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  entryFeeUSD     Decimal
-  startTime       DateTime
-  endTime         DateTime
-  status          String   @default("UPCOMING") // UPCOMING, ACTIVE, COMPLETED, CANCELLED
-  minPlayers      Int      @default(10)
-  maxPlayers      Int?
-
-  // Prize configuration using existing multi-token system
-  prizeTokens     Json     // [{"tokenId": 1, "amount": 100}, {"tokenId": 2, "amount": 0.05}]
-  prizeDistribution Json   // {"1": 40, "2": 25, "3": 15, "4-10": 20}
-
-  // Tournament settings
-  startingPIPChips Int     @default(10000)
-  allowLatecomer  Boolean @default(false)
-
-  participants    TournamentParticipant[]
-  createdAt       DateTime @default(now())
-  createdBy       String? // Admin who created tournament
+  id                String                  @id @default(cuid())
+  name              String
+  description       String?
+  entryFeeUSD       Decimal
+  startTime         DateTime
+  endTime           DateTime
+  status            String                  @default("UPCOMING")
+  minPlayers        Int                     @default(10)
+  maxPlayers        Int?
+  prizeTokens       Json
+  prizeDistribution Json
+  startingPIPChips  Int                     @default(10000)
+  allowLatecomer    Boolean                 @default(false)
+  createdAt         DateTime                @default(now())
+  createdBy         String?
+  participants      TournamentParticipant[]
 
   @@index([status, startTime])
   @@index([startTime, endTime])
 }
 
 model TournamentParticipant {
-  id              String   @id @default(cuid())
-  tournamentId    String
-  userId          Int      // Reference to User.id
-
-  // Tournament-specific PIPChips tracking (isolated from regular balance)
-  pipchipsStart   Int      @default(10000)
-  pipchipsBalance Int      @default(10000)  // Current tournament balance
-
-  // Performance metrics
-  marketsPlayed   Int      @default(0)
-  correctPredictions Int   @default(0)
-  totalWagered    Int      @default(0)
-  profitLoss      Int?     // Final profit/loss (calculated at tournament end)
-
-  // Final tournament results
-  rank            Int?
-  prizesWon       Json?    // {"tokenId": 1, "amount": 40, "tokenSymbol": "USDC"}
-
-  // Entry details
-  entryTokenId    Int?     // Token used to pay entry fee
-  entryAmount     Decimal? // Amount paid in entry token
-
-  // Relations
-  tournament      TournamentSession @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  enteredAt       DateTime @default(now())
+  id                 String            @id @default(cuid())
+  tournamentId       String
+  userId             Int
+  pipchipsStart      Int               @default(10000)
+  pipchipsBalance    Int               @default(10000)
+  marketsPlayed      Int               @default(0)
+  correctPredictions Int               @default(0)
+  totalWagered       Int               @default(0)
+  profitLoss         Int?
+  rank               Int?
+  prizesWon          Json?
+  entryTokenId       Int?
+  entryAmount        Decimal?
+  enteredAt          DateTime          @default(now())
+  tournament         TournamentSession @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, userId])
   @@index([tournamentId, pipchipsBalance])
   @@index([tournamentId, rank])
+}
+
+enum TierMembershipStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum TipStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+}
+
+enum GroupTipStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  REFUNDED
+  FAILED
+}
+
+enum GroupContributionStatus {
+  PENDING
+  CLAIMED
+  REFUNDED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  DLQ
+}
+
+enum PurchaseStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PipchipsTransactionType {
+  DAILY_BONUS
+  STREAK_BONUS
+  PURCHASE
+  BET_PLACED
+  BET_WON
+  BET_REFUNDED
+  TOURNAMENT_PRIZE
+  ADMIN_CREDIT
+  ADMIN_DEBIT
+  REFERRAL_BONUS
+  STARTING_BONUS
+  PREDICTION_BET
+  PREDICTION_WIN
+  PREDICTION_LOSS
+  TOURNAMENT_ENTRY
+  TOURNAMENT_BET
+  TOURNAMENT_WIN
 }

@@ -114,8 +114,9 @@ class AdminAuthSystem {
         if (!session || !this.isSessionValid(session)) {
             return { success: false, error: 'Invalid session' };
         }
-        // Generate random 6-digit code
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate cryptographically secure 6-digit code
+        const randomBytes = crypto.randomBytes(4);
+        const code = (100000 + (randomBytes.readUInt32BE(0) % 900000)).toString();
         const challengeId = crypto.randomBytes(16).toString('hex');
         const challenge = {
             challengeId,
@@ -126,8 +127,10 @@ class AdminAuthSystem {
         };
         this.mfaChallenges.set(challengeId, challenge);
         // In production, send code via email/SMS
-        // For now, log it (REMOVE IN PRODUCTION!)
-        console.log(`🔐 MFA Code for admin session ${sessionId}: ${code}`);
+        // For now, log it (development only)
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`🔐 MFA Code for admin session ${sessionId}: ${code}`);
+        }
         return { success: true, challengeId };
     }
     /**

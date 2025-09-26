@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
+import { data as pipReferralData } from "../commands/pip_referral.js";
 export function getCommandsJson() {
     const defs = [
         new SlashCommandBuilder().setName("pip_profile").setDescription("👤 View your balance, stats, and account details"),
@@ -155,6 +156,7 @@ export function getCommandsJson() {
         new SlashCommandBuilder()
             .setName("pip_automation_status")
             .setDescription("🤖 View prediction market automation system status and activity"),
+        pipReferralData,
     ];
     return defs.map(d => d.toJSON());
 }

@@ -122,7 +122,8 @@ export class PayoutProcessor {
   }
 
   private async acquirePayoutLock(lockKey: string): Promise<boolean> {
-    const lockValue = `${Date.now()}_${Math.random()}`;
+    const randomBytes = require('crypto').randomBytes(8);
+    const lockValue = `${Date.now()}_${randomBytes.toString('hex')}`;
     const result = await redis.set(lockKey, lockValue, 'PX', 300000, 'NX'); // 5 minute lock
     return result === 'OK';
   }

@@ -218,6 +218,7 @@ export async function debitToken(
       throw new Error("Insufficient balance due to concurrent transaction");
     }
 
+    // SECURITY FIX: Log debit as NEGATIVE to maintain balance conservation
     await logTxAtomicTx(db, {
       userId: user.id,
       otherUserId: opts.otherUserId ?? null,
@@ -225,7 +226,7 @@ export async function debitToken(
       type,
       tokenId,
       decimals,
-      amountAtomic,
+      amountAtomic: -amountAtomic, // NEGATIVE for debits (outgoing funds)
       feeAtomic: opts.feeAtomic ?? 0n,
       txHash: opts.txHash ?? null,
       note: opts.note ?? null,
@@ -318,18 +319,6 @@ export async function transferToken(
   const toBal = toAtomic(toBalRow.amount, decimals);
   const totalDebit = amountAtomic + fee;
 
-  // DEBUG: Log the transfer values to debug balance issues
-  console.log('DEBUG transferToken Balance Check:', {
-    fromDiscordId,
-    tokenSymbol: token.symbol,
-    fromBalanceRaw: fromBalRow.amount.toString(),
-    fromBalAtomic: fromBal.toString(),
-    amountAtomic: amountAtomic.toString(),
-    feeAtomic: fee.toString(),
-    totalDebit: totalDebit.toString(),
-    hasEnough: fromBal >= totalDebit,
-    decimals
-  });
 
   if (fromBal < totalDebit) throw new Error("Insufficient balance for transfer");
 
@@ -347,6 +336,7 @@ export async function transferToken(
     });
 
     // mirror logs (same tx client)
+    // SECURITY FIX: Log sender's transaction as NEGATIVE to maintain balance conservation
     await logTxAtomicTx(db, {
       userId: fromUser.id,
       otherUserId: toUser.id,
@@ -354,12 +344,13 @@ export async function transferToken(
       type,
       tokenId,
       decimals,
-      amountAtomic,
+      amountAtomic: -amountAtomic, // NEGATIVE for sender (outgoing transfer)
       feeAtomic: fee,
       txHash: opts.txHash ?? null,
       note: opts.note ?? null,
     });
 
+    // SECURITY FIX: Log receiver's transaction as POSITIVE
     await logTxAtomicTx(db, {
       userId: toUser.id,
       otherUserId: fromUser.id,
@@ -367,7 +358,7 @@ export async function transferToken(
       type,
       tokenId,
       decimals,
-      amountAtomic,
+      amountAtomic, // POSITIVE for receiver (incoming transfer)
       feeAtomic: 0n,
       txHash: opts.txHash ?? null,
       note: opts.note ?? null,
@@ -462,7 +453,7 @@ export async function debitTokenAtomicTx(
     throw new Error("Insufficient balance due to concurrent transaction");
   }
 
-  // Log transaction
+  // SECURITY FIX: Log debit as NEGATIVE to maintain balance conservation
   await logTxAtomicTx(tx, {
     userId: user.id,
     otherUserId: opts.otherUserId ?? null,
@@ -470,7 +461,7 @@ export async function debitTokenAtomicTx(
     type,
     tokenId,
     decimals,
-    amountAtomic,
+    amountAtomic: -amountAtomic, // NEGATIVE for debits (outgoing funds)
     feeAtomic: opts.feeAtomic ?? 0n,
     txHash: opts.txHash ?? null,
     note: opts.note ?? null,
@@ -517,6 +508,7 @@ export async function debitTokenTx(
     data: { amount: toDecStr(newBal, decimals) },
   });
 
+  // SECURITY FIX: Log debit as NEGATIVE to maintain balance conservation
   await logTxAtomicTx(tx, {
     userId: user.id,
     otherUserId: opts.otherUserId ?? null,
@@ -524,7 +516,7 @@ export async function debitTokenTx(
     type,
     tokenId,
     decimals,
-    amountAtomic,
+    amountAtomic: -amountAtomic, // NEGATIVE for debits (outgoing funds)
     feeAtomic: opts.feeAtomic ?? 0n,
     txHash: opts.txHash ?? null,
     note: opts.note ?? null,
@@ -631,6 +623,7 @@ export async function transferTokenTx(
   });
 
   // mirror logs
+  // SECURITY FIX: Log sender's transaction as NEGATIVE to maintain balance conservation
   await logTxAtomicTx(tx, {
     userId: fromUser.id,
     otherUserId: toUser.id,
@@ -638,12 +631,13 @@ export async function transferTokenTx(
     type,
     tokenId,
     decimals,
-    amountAtomic,
+    amountAtomic: -amountAtomic, // NEGATIVE for sender (outgoing transfer)
     feeAtomic: fee,
     txHash: opts.txHash ?? null,
     note: opts.note ?? null,
   });
 
+  // SECURITY FIX: Log receiver's transaction as POSITIVE
   await logTxAtomicTx(tx, {
     userId: toUser.id,
     otherUserId: fromUser.id,
@@ -651,7 +645,7 @@ export async function transferTokenTx(
     type,
     tokenId,
     decimals,
-    amountAtomic,
+    amountAtomic, // POSITIVE for receiver (incoming transfer)
     feeAtomic: 0n,
     txHash: opts.txHash ?? null,
     note: opts.note ?? null,

@@ -273,11 +273,12 @@ export async function performComprehensiveWithdrawalCheck(
 
     // 5. Check treasury balance
     const { JsonRpcProvider, Wallet, Contract } = await import("ethers");
-    const { ABSTRACT_RPC_URL, AGW_SESSION_PRIVATE_KEY } = await import("../config.js");
+    const { ABSTRACT_RPC_URL } = await import("../config.js");
+    const { getSecureTreasuryPrivateKey } = await import("./secure_key.js");
 
     const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
     const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
-    const signer = new Wallet(AGW_SESSION_PRIVATE_KEY, provider);
+    const signer = new Wallet(getSecureTreasuryPrivateKey(), provider);
     const tokenContract = new Contract(token.address, ERC20_ABI, signer);
 
     const treasuryBalance: bigint = await tokenContract.balanceOf(await signer.getAddress());
