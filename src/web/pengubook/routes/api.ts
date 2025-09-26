@@ -275,13 +275,31 @@ export const apiHandlers = {
         return res.status(401).json({ success: false, error: "Not authenticated" });
       }
 
+      // TRACE: Log every balance API call with detailed info
+      const requestId = Math.random().toString(36).substring(7);
+      const timestamp = new Date().toISOString();
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+      const referer = req.headers['referer'] || 'Unknown';
+
+      console.log(`🔍 [TRACE-${requestId}] Balance API called at ${timestamp}`);
+      console.log(`🔍 [TRACE-${requestId}] User: ${currentUser.discordId.slice(-4)}`);
+      console.log(`🔍 [TRACE-${requestId}] User-Agent: ${userAgent.substring(0, 100)}`);
+      console.log(`🔍 [TRACE-${requestId}] Referer: ${referer}`);
+
       const cacheKey = `balance_${currentUser.discordId}`;
       const cached = balanceCache.get(cacheKey);
 
       // Return cached data if still fresh
       if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
+        console.log(`🔍 [TRACE-${requestId}] Returning cached data (${Date.now() - cached.timestamp}ms old)`);
         return res.json(cached.data);
       }
+
+      console.log(`🔍 [TRACE-${requestId}] Cache miss - fetching fresh data`);
+
+      const cacheAge = cached ? Date.now() - cached.timestamp : 'no cache';
+      console.log(`🔍 [TRACE-${requestId}] Cache age: ${cacheAge}`);
+      console.log(`🔍 [TRACE-${requestId}] About to call priceAPI.getTokenPrices()`);
 
       const user = await findOrCreateUser(currentUser.discordId);
       const balances = await prisma.userBalance.findMany({
@@ -299,13 +317,16 @@ export const apiHandlers = {
 
       if (tokenSymbols.length > 0 && !emergencyDisablePrices) {
         try {
-          console.log(`🔍 Balance API: Fetching prices for ${tokenSymbols.join(',')}`);
+          console.log(`🔍 [TRACE-${requestId}] Calling priceAPI.getTokenPrices([${tokenSymbols.join(',')}])`);
+          const priceCallStart = Date.now();
           priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+          const priceCallEnd = Date.now();
+          console.log(`🔍 [TRACE-${requestId}] Price API completed in ${priceCallEnd - priceCallStart}ms, source: ${priceResult.source}`);
         } catch (error) {
-          console.warn("Failed to fetch USD prices for balances:", error);
+          console.warn(`🔍 [TRACE-${requestId}] Price API failed:`, error);
         }
       } else if (emergencyDisablePrices) {
-        console.warn("🚫 EMERGENCY: Price API disabled via EMERGENCY_DISABLE_PRICE_API=true");
+        console.warn(`🔍 [TRACE-${requestId}] EMERGENCY: Price API disabled via EMERGENCY_DISABLE_PRICE_API=true`);
       }
 
       const priceMap = priceResult?.prices ?? {};
