@@ -59,6 +59,26 @@ class PriceAPIService {
       const caller = stack?.split('\n')[2]?.trim() || 'Unknown';
       console.log(`🔍 Price API called for ${symbols.join(',')} from: ${caller}`);
 
+      // Global rate limiting - prevent rapid successive calls
+      const now = Date.now();
+      const cacheKey = symbols.sort().join(','); // Create consistent key
+
+      // Check if we've fetched these symbols very recently (within 1 second)
+      if (this.cache.has(cacheKey)) {
+        const cached = this.cache.get(cacheKey)!;
+        if (now - cached.timestamp < 1000) { // 1 second aggressive rate limit
+          console.log(`🚫 Price API rate limited (${symbols.join(',')}) - using recent cache`);
+          // Return cached prices in the correct format
+          const prices: Record<string, number> = {};
+          symbols.forEach(symbol => {
+            if (this.cache.has(symbol)) {
+              prices[symbol] = this.cache.get(symbol)!.price;
+            }
+          });
+          return { success: true, prices, source: 'fallback' };
+        }
+      }
+
       // First try DexScreener (best for Abstract Chain DEX tokens)
       const dexscreenerResult = await this.fetchFromDexScreener(symbols);
       if (dexscreenerResult.success) {

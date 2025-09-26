@@ -247,17 +247,10 @@ export const apiHandlers = {
       const cacheKey = `balance_${currentUser.discordId}`;
       const cached = balanceCache.get(cacheKey);
 
-      // Debug logging for cache behavior
-      console.log(`🔍 Balance API called for user ${currentUser.discordId.slice(-4)}`);
-
       // Return cached data if still fresh
       if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
-        const age = Date.now() - cached.timestamp;
-        console.log(`✅ Serving cached balance (${age}ms old) for user ${currentUser.discordId.slice(-4)}`);
         return res.json(cached.data);
       }
-
-      console.log(`🔄 Cache miss for user ${currentUser.discordId.slice(-4)} - fetching fresh data`);
 
       const user = await findOrCreateUser(currentUser.discordId);
       const balances = await prisma.userBalance.findMany({
@@ -329,8 +322,6 @@ export const apiHandlers = {
         data: response,
         timestamp: Date.now()
       });
-
-      console.log(`💾 Cached balance response for user ${currentUser.discordId.slice(-4)} (TTL: ${BALANCE_CACHE_TTL}ms)`);
 
       res.json(response);
     } catch (error) {
