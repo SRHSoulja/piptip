@@ -17,6 +17,13 @@ const balanceCache = new Map<string, {
 }>();
 const BALANCE_CACHE_TTL = 30 * 1000; // 30 seconds cache
 
+// Unread count cache to prevent duplicate calls
+const unreadCountCache = new Map<string, {
+  data: any;
+  timestamp: number;
+}>();
+const UNREAD_COUNT_CACHE_TTL = 5 * 1000; // 5 seconds aggressive cache
+
 export const apiHandlers = {
   // GET /pengubook/api/unread-count
   async unreadCount(req: Request, res: Response) {
@@ -26,8 +33,32 @@ export const apiHandlers = {
         return res.status(401).json({ success: false, error: "Not authenticated" });
       }
 
+      const cacheKey = `unread_${currentUser.discordId}`;
+      const cached = unreadCountCache.get(cacheKey);
+
+      console.log(`🔍 Unread count API called for user ${currentUser.discordId.slice(-4)}`);
+
+      // Return cached data if still fresh (5 second aggressive cache)
+      if (cached && Date.now() - cached.timestamp < UNREAD_COUNT_CACHE_TTL) {
+        const age = Date.now() - cached.timestamp;
+        console.log(`✅ Serving cached unread count (${age}ms old) for user ${currentUser.discordId.slice(-4)}`);
+        return res.json(cached.data);
+      }
+
+      console.log(`🔄 Unread cache miss for user ${currentUser.discordId.slice(-4)} - fetching fresh count`);
+
       const count = await getUnreadMessageCount(currentUser.discordId);
-      res.json({ success: true, count });
+      const response = { success: true, count };
+
+      // Cache the response
+      unreadCountCache.set(cacheKey, {
+        data: response,
+        timestamp: Date.now()
+      });
+
+      console.log(`💾 Cached unread count (${count}) for user ${currentUser.discordId.slice(-4)}`);
+
+      res.json(response);
     } catch (error) {
       console.error("Unread count fetch error:", error);
       res.status(500).json({ success: false, error: "Failed to fetch unread count" });
