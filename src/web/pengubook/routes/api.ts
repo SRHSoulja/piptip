@@ -1295,6 +1295,130 @@ export const apiHandlers = {
     }
   },
 
+  // POST /pengubook/api/tip-preview - Preview tip with tax calculation
+  async tipPreview(req: Request, res: Response) {
+    try {
+      const currentUser = getCurrentUser(req);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: "Not authenticated" });
+      }
+
+      const { tokenId, amount } = req.body;
+
+      // Validate inputs
+      if (!tokenId || !amount) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing required fields: tokenId, amount"
+        });
+      }
+
+      // Validate amount
+      if (typeof amount !== 'number' || amount <= 0 || amount > 1e15) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid amount"
+        });
+      }
+
+      // Get token info
+      const { getActiveTokens } = await import("../../../services/token.js");
+      const tokens = await getActiveTokens();
+      const token = tokens.find(t => t.id === parseInt(tokenId));
+
+      if (!token || !token.active) {
+        return res.status(404).json({
+          success: false,
+          error: "Token not found or inactive"
+        });
+      }
+
+      // Import services needed for tax calculation
+      const { getConfig } = await import("../../../config.js");
+      const { RoleTaxBenefitService } = await import("../../../services/role_tax_benefits.js");
+      const { userHasActiveTaxFreeTier } = await import("../../../services/tiers.js");
+      const { toAtomicDirect, formatAmount, bigToDecDirect } = await import("../../../services/token.js");
+
+      // Get user for tax benefit calculation
+      const fromUser = await findOrCreateUser(currentUser.discordId);
+
+      // Calculate fees with role-based tax benefits (same logic as tip processor)
+      const cfg = await getConfig();
+
+      // Check for best available tax benefit (tier, role, or referral)
+      const bestTaxBenefit = await RoleTaxBenefitService.getBestTaxBenefit(
+        fromUser.id,
+        '', // No guild for PenguBook tips
+        currentUser.discordId
+      );
+
+      // Apply tax benefit or fallback to existing logic
+      let feeBpsNum = token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+
+      if (bestTaxBenefit) {
+        // Apply percentage reduction (exemptionRate = 0-100% reduction)
+        const taxReduction = bestTaxBenefit.exemptionRate / 100;
+        feeBpsNum = Math.round(feeBpsNum * (1 - taxReduction));
+      } else {
+        // Fallback to existing tier check for backward compatibility
+        const taxFree = await userHasActiveTaxFreeTier(fromUser.id);
+        feeBpsNum = taxFree ? 0 : feeBpsNum;
+      }
+
+      const feeBps = BigInt(feeBpsNum);
+      const atomic = toAtomicDirect(amount, token.decimals);
+
+      // Calculate fee (same logic as tip processor)
+      let feeAtomic = (atomic * feeBps) / 10000n;
+
+      // Apply ceiling division (round up, favor platform)
+      const remainder = (atomic * feeBps) % 10000n;
+      if (remainder > 0n) {
+        feeAtomic = feeAtomic + 1n;
+      }
+
+      // Force minimum fee only if calculated fee is still 0
+      if (feeBps > 0n && feeAtomic === 0n) {
+        feeAtomic = 1n;
+      }
+
+      const totalNeeded = atomic + feeAtomic;
+
+      // Format amounts for display
+      const feeFormatted = formatAmount(feeAtomic, token);
+      const totalFormatted = formatAmount(totalNeeded, token);
+
+      // Calculate tax savings
+      const originalFeeBps = token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+      const originalFee = (atomic * BigInt(originalFeeBps)) / 10000n;
+      const taxSavedAtomic = originalFee - feeAtomic;
+      const taxSavedFormatted = formatAmount(taxSavedAtomic, token);
+
+      return res.json({
+        success: true,
+        preview: {
+          amount: amount,
+          amountFormatted: formatAmount(atomic, token),
+          fee: bigToDecDirect(feeAtomic, token.decimals),
+          feeFormatted,
+          total: bigToDecDirect(totalNeeded, token.decimals),
+          totalFormatted,
+          taxSaved: bigToDecDirect(taxSavedAtomic, token.decimals),
+          taxSavedFormatted,
+          tokenSymbol: token.symbol,
+          effectiveFeeBps: Number(feeBps),
+          originalFeeBps: originalFeeBps,
+          benefitLabel: bestTaxBenefit?.label || null,
+          exemptionRate: bestTaxBenefit?.exemptionRate || 0
+        }
+      });
+
+    } catch (error) {
+      console.error("Tip preview API error:", error);
+      res.status(500).json({ success: false, error: "Failed to calculate tip preview" });
+    }
+  },
+
   // POST /pengubook/api/create-market - Create new PIPChips prediction market
   async createMarket(req: Request, res: Response) {
     try {
