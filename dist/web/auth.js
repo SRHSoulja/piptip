@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { randomBytes } from "crypto";
 import { findOrCreateUser } from "../services/user_helpers.js";
+import { getSecureCredential } from "../services/secure_key.js";
 export const authRouter = Router();
 // Store OAuth states (in production, use Redis or similar)
 const oauthStates = new Map();
@@ -14,25 +15,36 @@ setInterval(() => {
         }
     }
 }, 3600000);
-// Discord OAuth URLs and scopes
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
-const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI;
+// Discord OAuth URLs and scopes - using secure credential access
+const getDiscordCredentials = () => {
+    try {
+        return {
+            clientId: process.env.DISCORD_CLIENT_ID, // This is public, doesn't need encryption
+            clientSecret: getSecureCredential('DISCORD_CLIENT_SECRET'),
+            redirectUri: process.env.DISCORD_REDIRECT_URI // This is also public config
+        };
+    }
+    catch (error) {
+        return null;
+    }
+};
 const SCOPES = "identify guilds";
 // Check if Discord OAuth is properly configured
 const isDiscordOAuthConfigured = () => {
-    return DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && REDIRECT_URI;
+    const credentials = getDiscordCredentials();
+    return credentials && credentials.clientId && credentials.clientSecret && credentials.redirectUri;
 };
 // GET /auth/discord - Initiate Discord OAuth
 authRouter.get("/discord", (req, res) => {
-    if (!isDiscordOAuthConfigured()) {
+    const credentials = getDiscordCredentials();
+    if (!credentials) {
         return res.status(500).send(`
       <h2>PenguBook Authentication Not Configured</h2>
       <p>Discord OAuth is not properly configured. Missing environment variables:</p>
       <ul>
-        ${!DISCORD_CLIENT_ID ? '<li>DISCORD_CLIENT_ID</li>' : ''}
-        ${!DISCORD_CLIENT_SECRET ? '<li>DISCORD_CLIENT_SECRET</li>' : ''}
-        ${!REDIRECT_URI ? '<li>DISCORD_REDIRECT_URI</li>' : ''}
+        <li>DISCORD_CLIENT_ID</li>
+        <li>DISCORD_CLIENT_SECRET</li>
+        <li>DISCORD_REDIRECT_URI</li>
       </ul>
       <p><a href="/">← Back to Home</a></p>
     `);
@@ -44,8 +56,8 @@ authRouter.get("/discord", (req, res) => {
         redirectTo: redirectTo || "/pengubook"
     });
     const authUrl = new URL("https://discord.com/api/oauth2/authorize");
-    authUrl.searchParams.set("client_id", DISCORD_CLIENT_ID);
-    authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+    authUrl.searchParams.set("client_id", credentials.clientId);
+    authUrl.searchParams.set("redirect_uri", credentials.redirectUri);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("scope", SCOPES);
     authUrl.searchParams.set("state", state);
@@ -59,7 +71,8 @@ authRouter.get("/discord/callback", async (req, res) => {
         hasSession: !!req.session,
         timestamp: new Date().toISOString()
     });
-    if (!isDiscordOAuthConfigured()) {
+    const credentials = getDiscordCredentials();
+    if (!credentials) {
         console.error("❌ Discord OAuth is not properly configured");
         return res.status(500).send("Discord OAuth is not properly configured");
     }
@@ -94,11 +107,11 @@ authRouter.get("/discord/callback", async (req, res) => {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({
-                client_id: DISCORD_CLIENT_ID,
-                client_secret: DISCORD_CLIENT_SECRET,
+                client_id: credentials.clientId,
+                client_secret: credentials.clientSecret,
                 grant_type: "authorization_code",
                 code,
-                redirect_uri: REDIRECT_URI,
+                redirect_uri: credentials.redirectUri,
             }),
         });
         console.log("📡 Token response status:", tokenResponse.status);
@@ -142,47 +155,59 @@ authRouter.get("/discord/callback", async (req, res) => {
             sessionId: req.sessionID,
             sessionExists: !!req.session
         });
-        // Store user session
-        req.session.discordId = discordUser.id;
-        req.session.username = discordUser.username;
-        req.session.avatar = discordUser.avatar
-            ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-            : `https://cdn.discordapp.com/embed/avatars/${parseInt(discordUser.id.slice(-1)) % 6}.png`;
-        req.session.accessToken = access_token;
-        req.session.refreshToken = refresh_token;
-        console.log("✅ Session stored successfully. Verifying storage...");
-        console.log("🔍 Session verification:", {
-            discordId: req.session.discordId,
-            username: req.session.username,
-            hasAvatar: !!req.session.avatar,
-            hasAccessToken: !!req.session.accessToken
-        });
-        // Force session save and add debugging
-        req.session.save((err) => {
+        // SECURITY FIX: Regenerate session ID after authentication to prevent session fixation
+        req.session.regenerate((err) => {
             if (err) {
-                console.error("❌ Session save error:", err);
+                console.error("❌ Session regeneration error:", err);
+                return res.status(500).send("Session security error");
             }
-            else {
-                console.log("✅ Session saved to store");
-            }
+            console.log("🔐 Session ID regenerated for security:", {
+                newSessionId: req.sessionID,
+                discordId: discordUser.id
+            });
+            // Store user session in regenerated session
+            req.session.discordId = discordUser.id;
+            req.session.username = discordUser.username;
+            req.session.avatar = discordUser.avatar
+                ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+                : `https://cdn.discordapp.com/embed/avatars/${parseInt(discordUser.id.slice(-1)) % 6}.png`;
+            req.session.accessToken = access_token;
+            req.session.refreshToken = refresh_token;
+            console.log("✅ Session stored successfully. Verifying storage...");
+            console.log("🔍 Session verification:", {
+                discordId: req.session.discordId,
+                username: req.session.username,
+                hasAvatar: !!req.session.avatar,
+                hasAccessToken: !!req.session.accessToken,
+                newSessionId: req.sessionID
+            });
+            // Force session save and add debugging
+            req.session.save((saveErr) => {
+                if (saveErr) {
+                    console.error("❌ Session save error:", saveErr);
+                }
+                else {
+                    console.log("✅ Session saved to store with new ID");
+                }
+                // Redirect to intended destination
+                const redirectUrl = stateData.redirectTo || "/pengubook";
+                console.log("🔄 Redirecting to:", redirectUrl);
+                // Log response headers before redirect
+                console.log("🍪 Response headers before redirect:", {
+                    'set-cookie': res.getHeaders()['set-cookie'],
+                    'sessionID': req.sessionID
+                });
+                if (redirectUrl.startsWith("/")) {
+                    // Use relative redirect to preserve session cookies
+                    console.log("📍 Relative redirect URL:", redirectUrl);
+                    res.redirect(redirectUrl);
+                }
+                else {
+                    console.log("📍 External redirect URL:", redirectUrl);
+                    res.redirect(redirectUrl);
+                }
+            });
         });
-        // Redirect to intended destination
-        const redirectUrl = stateData.redirectTo || "/pengubook";
-        console.log("🔄 Redirecting to:", redirectUrl);
-        // Log response headers before redirect
-        console.log("🍪 Response headers before redirect:", {
-            'set-cookie': res.getHeaders()['set-cookie'],
-            'sessionID': req.sessionID
-        });
-        if (redirectUrl.startsWith("/")) {
-            // Use relative redirect to preserve session cookies
-            console.log("📍 Relative redirect URL:", redirectUrl);
-            res.redirect(redirectUrl);
-        }
-        else {
-            console.log("📍 External redirect URL:", redirectUrl);
-            res.redirect(redirectUrl);
-        }
     }
     catch (error) {
         console.error("Discord OAuth callback error:", error);

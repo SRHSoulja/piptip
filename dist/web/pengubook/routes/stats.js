@@ -5,11 +5,20 @@ import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
 import { formatDecimal } from "../../../services/token.js";
 import { priceAPI } from "../../../services/price_api.js";
+// Stats page cache
+const statsCache = new Map();
+const STATS_CACHE_TTL = 60 * 1000; // 60 seconds cache for stats
 export async function statsHandler(req, res) {
     try {
         const currentUser = getCurrentUser(req);
         if (!currentUser)
             return res.redirect("/auth/discord");
+        const cacheKey = `stats_${currentUser.discordId}`;
+        const cached = statsCache.get(cacheKey);
+        // Return cached HTML if still fresh
+        if (cached && Date.now() - cached.timestamp < STATS_CACHE_TTL) {
+            return res.send(cached.data);
+        }
         const user = await findOrCreateUser(currentUser.discordId);
         const unreadCount = await getUnreadMessageCount(currentUser.discordId);
         // Get comprehensive statistics
@@ -275,10 +284,16 @@ export async function statsHandler(req, res) {
             </a>
         </div>
     </div>`;
-        res.send(generateBaseHTML(content, '📊 Statistics - PenguBook', 'stats', {
+        const html = generateBaseHTML(content, '📊 Statistics - PenguBook', 'stats', {
             user: currentUser,
             unreadCount
-        }));
+        });
+        // Cache the generated HTML
+        statsCache.set(cacheKey, {
+            data: html,
+            timestamp: Date.now()
+        });
+        res.send(html);
     }
     catch (error) {
         console.error("PenguBook stats error:", error);

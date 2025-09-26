@@ -325,12 +325,21 @@ pengubookRouter.post("/api/profile", async (req, res) => {
         res.status(500).json({ success: false, error: "Failed to update profile" });
     }
 });
+// Balance cache for PenguBook API
+const balanceCache = new Map();
+const BALANCE_CACHE_TTL = 30 * 1000; // 30 seconds cache
 // GET /pengubook/api/balance - Get current user's balance
 pengubookRouter.get("/api/balance", async (req, res) => {
     try {
         const currentUser = getCurrentUser(req);
         if (!currentUser) {
             return res.status(401).json({ success: false, error: "Not authenticated" });
+        }
+        const cacheKey = `balance_${currentUser.discordId}`;
+        const cached = balanceCache.get(cacheKey);
+        // Return cached data if still fresh
+        if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
+            return res.json(cached.data);
         }
         const user = await findOrCreateUser(currentUser.discordId);
         const balances = await prisma.userBalance.findMany({
@@ -380,14 +389,20 @@ pengubookRouter.get("/api/balance", async (req, res) => {
         const priceDisclaimer = tokenSymbols.length > 0
             ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}`
             : null;
-        res.json({
+        const response = {
             success: true,
             balances: formattedBalances,
             totalUSD,
             formattedTotalUSD,
             priceSource,
             priceDisclaimer
+        };
+        // Cache the response
+        balanceCache.set(cacheKey, {
+            data: response,
+            timestamp: Date.now()
         });
+        res.json(response);
     }
     catch (error) {
         console.error("Balance fetch error:", error);
@@ -1466,6 +1481,59 @@ function generateProfileHTML(data) {
 </body>
 </html>`;
 }
+// GET /pengubook/api/discord-users/batch - Batch fetch Discord user info
+pengubookRouter.post("/api/discord-users/batch", async (req, res) => {
+    try {
+        const currentUser = getCurrentUser(req);
+        if (!currentUser)
+            return res.status(401).json({ success: false, error: "Not authenticated" });
+        const { discordIds } = req.body;
+        if (!Array.isArray(discordIds) || discordIds.length === 0) {
+            return res.status(400).json({ success: false, error: "Invalid discord IDs array" });
+        }
+        // Limit batch size to prevent abuse
+        if (discordIds.length > 50) {
+            return res.status(400).json({ success: false, error: "Too many IDs in batch (max 50)" });
+        }
+        // Get Discord client from services
+        const { getDiscordClient } = await import("../services/discord_users.js");
+        const client = getDiscordClient();
+        const results = {};
+        if (!client) {
+            // Return fallback data for all IDs
+            for (const discordId of discordIds) {
+                results[discordId] = {
+                    username: `User#${discordId.slice(-4)}`,
+                    avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+                };
+            }
+            return res.json({ success: true, users: results });
+        }
+        // Fetch users in parallel with error handling
+        const fetchPromises = discordIds.map(async (discordId) => {
+            try {
+                const user = await client.users.fetch(discordId);
+                results[discordId] = {
+                    username: user.username || user.displayName || `User#${discordId.slice(-4)}`,
+                    avatarURL: user.displayAvatarURL({ size: 256, extension: 'png' })
+                };
+            }
+            catch (error) {
+                // User not found or not accessible, return fallback
+                results[discordId] = {
+                    username: `User#${discordId.slice(-4)}`,
+                    avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+                };
+            }
+        });
+        await Promise.all(fetchPromises);
+        res.json({ success: true, users: results });
+    }
+    catch (error) {
+        console.error("Discord users batch fetch error:", error);
+        res.status(500).json({ success: false, error: "Failed to fetch user info" });
+    }
+});
 // GET /pengubook/api/discord-user/:discordId - Fetch Discord user info
 pengubookRouter.get("/api/discord-user/:discordId", async (req, res) => {
     try {

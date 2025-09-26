@@ -5,6 +5,8 @@ class PriceAPIService {
     lastAPICall = new Map(); // Track API call times
     MIN_CALL_INTERVAL = 1000; // 1 second between calls per API
     apiCallCount = new Map(); // Track call counts per hour
+    globalRateLimit = new Map(); // Global deduplication
+    GLOBAL_RATE_LIMIT = 3000; // 3 seconds between identical requests
     /**
      * Check if we can make an API call (rate limiting)
      */
@@ -32,6 +34,28 @@ class PriceAPIService {
      */
     async getTokenPrices(symbols) {
         try {
+            // Log call source for debugging multiple calls
+            const stack = new Error().stack;
+            const caller = stack?.split('\n')[2]?.trim() || 'Unknown';
+            console.log(`🔍 Price API called for ${symbols.join(',')} from: ${caller}`);
+            // Global rate limiting - prevent rapid successive calls
+            const now = Date.now();
+            const cacheKey = symbols.sort().join(','); // Create consistent key
+            // Check if we've fetched these symbols very recently (within 1 second)
+            if (this.cache.has(cacheKey)) {
+                const cached = this.cache.get(cacheKey);
+                if (now - cached.timestamp < 1000) { // 1 second aggressive rate limit
+                    console.log(`🚫 Price API rate limited (${symbols.join(',')}) - using recent cache`);
+                    // Return cached prices in the correct format
+                    const prices = {};
+                    symbols.forEach(symbol => {
+                        if (this.cache.has(symbol)) {
+                            prices[symbol] = this.cache.get(symbol).price;
+                        }
+                    });
+                    return { success: true, prices, source: 'fallback' };
+                }
+            }
             // First try DexScreener (best for Abstract Chain DEX tokens)
             const dexscreenerResult = await this.fetchFromDexScreener(symbols);
             if (dexscreenerResult.success) {

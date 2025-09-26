@@ -7,6 +7,12 @@ import { priceAPI } from "../../../services/price_api.js";
 import { queueNotice } from "../../../services/notifier.js";
 import { pipchipsService } from "../../../services/pipchips_service.js";
 import { ensureUser } from "../../../services/balances.js";
+// Balance cache for PenguBook API
+const balanceCache = new Map();
+const BALANCE_CACHE_TTL = 30 * 1000; // 30 seconds cache
+// Unread count cache to prevent duplicate calls
+const unreadCountCache = new Map();
+const UNREAD_COUNT_CACHE_TTL = 5 * 1000; // 5 seconds aggressive cache
 export const apiHandlers = {
     // GET /pengubook/api/unread-count
     async unreadCount(req, res) {
@@ -15,8 +21,25 @@ export const apiHandlers = {
             if (!currentUser) {
                 return res.status(401).json({ success: false, error: "Not authenticated" });
             }
+            const cacheKey = `unread_${currentUser.discordId}`;
+            const cached = unreadCountCache.get(cacheKey);
+            console.log(`🔍 Unread count API called for user ${currentUser.discordId.slice(-4)}`);
+            // Return cached data if still fresh (5 second aggressive cache)
+            if (cached && Date.now() - cached.timestamp < UNREAD_COUNT_CACHE_TTL) {
+                const age = Date.now() - cached.timestamp;
+                console.log(`✅ Serving cached unread count (${age}ms old) for user ${currentUser.discordId.slice(-4)}`);
+                return res.json(cached.data);
+            }
+            console.log(`🔄 Unread cache miss for user ${currentUser.discordId.slice(-4)} - fetching fresh count`);
             const count = await getUnreadMessageCount(currentUser.discordId);
-            res.json({ success: true, count });
+            const response = { success: true, count };
+            // Cache the response
+            unreadCountCache.set(cacheKey, {
+                data: response,
+                timestamp: Date.now()
+            });
+            console.log(`💾 Cached unread count (${count}) for user ${currentUser.discordId.slice(-4)}`);
+            res.json(response);
         }
         catch (error) {
             console.error("Unread count fetch error:", error);
@@ -213,6 +236,12 @@ export const apiHandlers = {
             if (!currentUser) {
                 return res.status(401).json({ success: false, error: "Not authenticated" });
             }
+            const cacheKey = `balance_${currentUser.discordId}`;
+            const cached = balanceCache.get(cacheKey);
+            // Return cached data if still fresh
+            if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
+                return res.json(cached.data);
+            }
             const user = await findOrCreateUser(currentUser.discordId);
             const balances = await prisma.userBalance.findMany({
                 where: { userId: user.id },
@@ -262,14 +291,20 @@ export const apiHandlers = {
             const priceDisclaimer = tokenSymbols.length > 0
                 ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}`
                 : null;
-            res.json({
+            const response = {
                 success: true,
                 balances: formattedBalances,
                 totalUSD,
                 formattedTotalUSD,
                 priceSource,
                 priceDisclaimer
+            };
+            // Cache the response
+            balanceCache.set(cacheKey, {
+                data: response,
+                timestamp: Date.now()
             });
+            res.json(response);
         }
         catch (error) {
             console.error("Balance fetch error:", error);
@@ -1122,6 +1157,108 @@ export const apiHandlers = {
         catch (error) {
             console.error("Buy chips options API error:", error);
             res.status(500).json({ success: false, error: "Failed to get chip packages" });
+        }
+    },
+    // POST /pengubook/api/tip-preview - Preview tip with tax calculation
+    async tipPreview(req, res) {
+        try {
+            const currentUser = getCurrentUser(req);
+            if (!currentUser) {
+                return res.status(401).json({ success: false, error: "Not authenticated" });
+            }
+            const { tokenId, amount } = req.body;
+            // Validate inputs
+            if (!tokenId || !amount) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Missing required fields: tokenId, amount"
+                });
+            }
+            // Validate amount
+            if (typeof amount !== 'number' || amount <= 0 || amount > 1e15) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid amount"
+                });
+            }
+            // Get token info
+            const { getActiveTokens } = await import("../../../services/token.js");
+            const tokens = await getActiveTokens();
+            const token = tokens.find(t => t.id === parseInt(tokenId));
+            if (!token || !token.active) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Token not found or inactive"
+                });
+            }
+            // Import services needed for tax calculation
+            const { getConfig } = await import("../../../config.js");
+            const { RoleTaxBenefitService } = await import("../../../services/role_tax_benefits.js");
+            const { userHasActiveTaxFreeTier } = await import("../../../services/tiers.js");
+            const { toAtomicDirect, formatAmount, bigToDecDirect } = await import("../../../services/token.js");
+            // Get user for tax benefit calculation
+            const fromUser = await findOrCreateUser(currentUser.discordId);
+            // Calculate fees with role-based tax benefits (same logic as tip processor)
+            const cfg = await getConfig();
+            // Check for best available tax benefit (tier, role, or referral)
+            const bestTaxBenefit = await RoleTaxBenefitService.getBestTaxBenefit(fromUser.id, '', // No guild for PenguBook tips
+            currentUser.discordId);
+            // Apply tax benefit or fallback to existing logic
+            let feeBpsNum = token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+            if (bestTaxBenefit) {
+                // Apply percentage reduction (exemptionRate = 0-100% reduction)
+                const taxReduction = bestTaxBenefit.exemptionRate / 100;
+                feeBpsNum = Math.round(feeBpsNum * (1 - taxReduction));
+            }
+            else {
+                // Fallback to existing tier check for backward compatibility
+                const taxFree = await userHasActiveTaxFreeTier(fromUser.id);
+                feeBpsNum = taxFree ? 0 : feeBpsNum;
+            }
+            const feeBps = BigInt(feeBpsNum);
+            const atomic = toAtomicDirect(amount, token.decimals);
+            // Calculate fee (same logic as tip processor)
+            let feeAtomic = (atomic * feeBps) / 10000n;
+            // Apply ceiling division (round up, favor platform)
+            const remainder = (atomic * feeBps) % 10000n;
+            if (remainder > 0n) {
+                feeAtomic = feeAtomic + 1n;
+            }
+            // Force minimum fee only if calculated fee is still 0
+            if (feeBps > 0n && feeAtomic === 0n) {
+                feeAtomic = 1n;
+            }
+            const totalNeeded = atomic + feeAtomic;
+            // Format amounts for display
+            const feeFormatted = formatAmount(feeAtomic, token);
+            const totalFormatted = formatAmount(totalNeeded, token);
+            // Calculate tax savings
+            const originalFeeBps = token.tipFeeBps ?? cfg?.tipFeeBps ?? 100;
+            const originalFee = (atomic * BigInt(originalFeeBps)) / 10000n;
+            const taxSavedAtomic = originalFee - feeAtomic;
+            const taxSavedFormatted = formatAmount(taxSavedAtomic, token);
+            return res.json({
+                success: true,
+                preview: {
+                    amount: amount,
+                    amountFormatted: formatAmount(atomic, token),
+                    fee: bigToDecDirect(feeAtomic, token.decimals),
+                    feeFormatted,
+                    total: bigToDecDirect(totalNeeded, token.decimals),
+                    totalFormatted,
+                    taxSaved: bigToDecDirect(taxSavedAtomic, token.decimals),
+                    taxSavedFormatted,
+                    tokenSymbol: token.symbol,
+                    effectiveFeeBps: Number(feeBps),
+                    originalFeeBps: originalFeeBps,
+                    benefitLabel: bestTaxBenefit?.label || null,
+                    exemptionRate: bestTaxBenefit?.exemptionRate || 0
+                }
+            });
+        }
+        catch (error) {
+            console.error("Tip preview API error:", error);
+            res.status(500).json({ success: false, error: "Failed to calculate tip preview" });
         }
     },
     // POST /pengubook/api/create-market - Create new PIPChips prediction market

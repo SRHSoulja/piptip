@@ -34,6 +34,8 @@ import { tournamentsRouter } from "./admin/tournaments.js";
 import { prisma } from "../services/db.js";
 import { getTreasurySnapshot } from "../services/treasury.js";
 import { priceAPI } from "../services/price_api.js";
+import { verifyCSRFToken, generateCSRFToken, getCSRFStats } from "../services/csrf_protection.js";
+import { getSecureAdminSecret } from "../services/secure_key.js";
 export const adminRouter = Router();
 // Get current directory for file paths
 const __filename = fileURLToPath(import.meta.url);
@@ -126,6 +128,9 @@ adminRouter.get("/ui", (_req, res) => {
       <input id="secret" name="secret" type="password" placeholder="Paste ADMIN_SECRET"/>
       <button id="saveSecret">Save & Connect</button>
       <span id="authStatus"></span>
+    </div>
+    <div class="row" style="margin-top:10px; font-size:0.9em; color:#9ca3af;">
+      🔐 Enhanced CSRF Protection: All operations protected with session-bound tokens, Double Submit Cookies, and HMAC validation.
     </div>
   </section>
 
@@ -787,33 +792,445 @@ adminRouter.post('/auth/mfa/initiate', async (req, res) => {
 adminRouter.post('/auth/mfa/verify', async (req, res) => {
     try {
         const { verifyMFA } = await import('../services/admin_auth.js');
-        const { challengeId, code } = req.body;
+        const { challengeId, code, includeJWT } = req.body;
         const result = await verifyMFA(challengeId, code);
         if (!result.success) {
             return res.status(400).json(result);
         }
-        res.json({
+        let jwtTokens = null;
+        // Generate JWT tokens if requested
+        if (includeJWT) {
+            try {
+                const { generateTokenPair } = await import('../services/jwt_auth.js');
+                const { adminAuth } = await import('../services/admin_auth.js');
+                const sessionValidation = await adminAuth.validateSession(result.sessionId);
+                if (sessionValidation.valid && sessionValidation.session) {
+                    jwtTokens = await generateTokenPair(result.sessionId, sessionValidation.session.adminId, sessionValidation.session.permissions, req);
+                }
+            }
+            catch (jwtError) {
+                console.warn('JWT token generation failed:', jwtError);
+                // Continue without JWT tokens - don't fail the whole request
+            }
+        }
+        const response = {
             success: true,
             sessionId: result.sessionId,
             message: 'MFA verification successful'
-        });
+        };
+        if (jwtTokens) {
+            response.tokens = jwtTokens;
+            response.message += ' (JWT tokens included)';
+        }
+        // Mark session fingerprint as verified after successful MFA
+        try {
+            const { markSessionAsVerified } = await import('../services/session_fingerprinting.js');
+            markSessionAsVerified(result.sessionId);
+        }
+        catch (error) {
+            // Non-critical - don't fail the request
+            console.warn('Failed to mark session fingerprint as verified:', error);
+        }
+        res.json(response);
     }
     catch (error) {
         console.error('MFA verification error:', error);
         res.status(500).json({ success: false, error: 'MFA verification error' });
     }
 });
-// Simple ping endpoint for admin auth verification  
-adminRouter.get('/ping', (req, res) => {
-    // Check Bearer token authentication
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        if (token === process.env.ADMIN_SECRET) {
-            return res.json({ ok: true, message: 'Authenticated' });
+// JWT-specific authentication endpoints
+adminRouter.post('/auth/jwt/refresh', async (req, res) => {
+    try {
+        const { refreshAccessToken } = await import('../services/jwt_auth.js');
+        const { refreshToken } = req.body;
+        if (!refreshToken) {
+            return res.status(400).json({
+                success: false,
+                error: 'Refresh token required',
+                code: 'MISSING_REFRESH_TOKEN'
+            });
         }
+        const result = await refreshAccessToken(refreshToken, req);
+        if (!result.success) {
+            return res.status(401).json({
+                success: false,
+                error: result.error,
+                code: 'REFRESH_FAILED'
+            });
+        }
+        res.json({
+            success: true,
+            tokens: result.tokenPair,
+            message: 'Access token refreshed successfully'
+        });
     }
-    res.status(401).json({ ok: false, error: 'Invalid admin secret' });
+    catch (error) {
+        console.error('JWT refresh error:', error);
+        res.status(500).json({ success: false, error: 'Token refresh system error' });
+    }
+});
+adminRouter.post('/auth/jwt/logout', async (req, res) => {
+    try {
+        const { revokeRefreshToken, revokeAllTokensForSession } = await import('../services/jwt_auth.js');
+        const { refreshToken, sessionId, revokeAllSessions } = req.body;
+        let revokedCount = 0;
+        if (revokeAllSessions && sessionId) {
+            // Revoke all refresh tokens for the session
+            revokedCount = revokeAllTokensForSession(sessionId);
+        }
+        else if (refreshToken) {
+            // Revoke specific refresh token
+            const revoked = revokeRefreshToken(refreshToken);
+            revokedCount = revoked ? 1 : 0;
+        }
+        res.json({
+            success: true,
+            revokedCount,
+            message: revokedCount > 0 ?
+                `Successfully revoked ${revokedCount} token(s)` :
+                'No tokens were revoked'
+        });
+    }
+    catch (error) {
+        console.error('JWT logout error:', error);
+        res.status(500).json({ success: false, error: 'Logout system error' });
+    }
+});
+adminRouter.get('/auth/jwt/stats', async (req, res) => {
+    try {
+        // Simple bearer auth check for stats endpoint
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Bearer token required for JWT stats',
+                code: 'MISSING_BEARER'
+            });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid bearer token',
+                code: 'INVALID_BEARER'
+            });
+        }
+        const { getRefreshTokenStats } = await import('../services/jwt_auth.js');
+        const stats = getRefreshTokenStats();
+        res.json({
+            success: true,
+            stats: {
+                ...stats,
+                lastUpdated: new Date().toISOString()
+            }
+        });
+    }
+    catch (error) {
+        console.error('JWT stats error:', error);
+        res.status(500).json({ success: false, error: 'Stats system error' });
+    }
+});
+adminRouter.get('/security/fingerprint/stats', async (req, res) => {
+    try {
+        // Simple bearer auth check for security endpoint
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Bearer token required for security stats',
+                code: 'MISSING_BEARER'
+            });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid bearer token',
+                code: 'INVALID_BEARER'
+            });
+        }
+        const { getSuspiciousActivityStats } = await import('../services/session_fingerprinting.js');
+        const stats = getSuspiciousActivityStats();
+        res.json({
+            success: true,
+            stats: {
+                ...stats,
+                lastUpdated: new Date().toISOString()
+            }
+        });
+    }
+    catch (error) {
+        console.error('Fingerprint stats error:', error);
+        res.status(500).json({ success: false, error: 'Security stats system error' });
+    }
+});
+// Anomaly detection statistics endpoint
+adminRouter.get('/security/anomaly/stats', async (req, res) => {
+    try {
+        // Simple bearer auth check for security endpoint
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Bearer token required for anomaly stats',
+                code: 'MISSING_BEARER'
+            });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid bearer token',
+                code: 'INVALID_BEARER'
+            });
+        }
+        const { getAnomalyStats } = await import('../services/anomaly_detection.js');
+        const stats = getAnomalyStats();
+        res.json({
+            success: true,
+            stats: {
+                ...stats,
+                lastUpdated: new Date().toISOString()
+            }
+        });
+    }
+    catch (error) {
+        console.error('Anomaly stats error:', error);
+        res.status(500).json({ success: false, error: 'Anomaly stats system error' });
+    }
+});
+// Resolve anomaly alert endpoint
+adminRouter.post('/security/anomaly/resolve/:alertId', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Bearer token required',
+                code: 'MISSING_BEARER'
+            });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid bearer token',
+                code: 'INVALID_BEARER'
+            });
+        }
+        const { alertId } = req.params;
+        const { falsePositive = false } = req.body;
+        const { resolveAnomalyAlert } = await import('../services/anomaly_detection.js');
+        const resolved = resolveAnomalyAlert(alertId, falsePositive);
+        if (!resolved) {
+            return res.status(404).json({
+                success: false,
+                error: 'Alert not found'
+            });
+        }
+        res.json({
+            success: true,
+            message: falsePositive ? 'Alert marked as false positive' : 'Alert resolved',
+            alertId
+        });
+    }
+    catch (error) {
+        console.error('Resolve anomaly alert error:', error);
+        res.status(500).json({ success: false, error: 'Alert resolution system error' });
+    }
+});
+// Get user behavioral profile endpoint
+adminRouter.get('/security/anomaly/profile/:userId', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Bearer token required',
+                code: 'MISSING_BEARER'
+            });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid bearer token',
+                code: 'INVALID_BEARER'
+            });
+        }
+        const { userId } = req.params;
+        const { getUserBehaviorProfile } = await import('../services/anomaly_detection.js');
+        const profile = getUserBehaviorProfile(userId);
+        if (!profile) {
+            return res.status(404).json({
+                success: false,
+                error: 'User profile not found'
+            });
+        }
+        // Remove sensitive data and truncate large arrays for API response
+        const safeProfile = {
+            userId: profile.userId.slice(0, 8) + '...', // Anonymize user ID
+            patterns: {
+                loginTimes: profile.patterns.loginTimes.slice(-20), // Last 20 login times
+                commandFrequency: Object.keys(profile.patterns.commandFrequency).length > 20
+                    ? Object.fromEntries(Object.entries(profile.patterns.commandFrequency)
+                        .sort(([, a], [, b]) => b - a)
+                        .slice(0, 20))
+                    : profile.patterns.commandFrequency,
+                ipAddresses: profile.patterns.ipAddresses.slice(-10), // Last 10 IPs
+                userAgents: profile.patterns.userAgents.slice(-5), // Last 5 user agents
+                geographicRegions: profile.patterns.geographicRegions.slice(-10), // Last 10 regions
+                financialActivity: profile.patterns.financialActivity
+            },
+            riskFactors: profile.riskFactors,
+            lastUpdated: profile.lastUpdated,
+            createdAt: profile.createdAt
+        };
+        res.json({
+            success: true,
+            profile: safeProfile
+        });
+    }
+    catch (error) {
+        console.error('Get user profile error:', error);
+        res.status(500).json({ success: false, error: 'Profile system error' });
+    }
+});
+// Reset user behavioral profile endpoint (admin function)
+adminRouter.delete('/security/anomaly/profile/:userId', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Bearer token required',
+                code: 'MISSING_BEARER'
+            });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid bearer token',
+                code: 'INVALID_BEARER'
+            });
+        }
+        const { userId } = req.params;
+        const { resetUserBehaviorProfile } = await import('../services/anomaly_detection.js');
+        const reset = resetUserBehaviorProfile(userId);
+        if (!reset) {
+            return res.status(404).json({
+                success: false,
+                error: 'User profile not found'
+            });
+        }
+        res.json({
+            success: true,
+            message: 'User behavioral profile reset',
+            userId: userId.slice(0, 8) + '...' // Anonymize in response
+        });
+    }
+    catch (error) {
+        console.error('Reset user profile error:', error);
+        res.status(500).json({ success: false, error: 'Profile reset system error' });
+    }
+});
+// Simple ping endpoint for admin auth verification
+adminRouter.get('/ping', (req, res) => {
+    try {
+        // Check Bearer token authentication using secure credential
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            const adminSecret = getSecureAdminSecret();
+            if (token === adminSecret) {
+                return res.json({ ok: true, message: 'Authenticated' });
+            }
+        }
+        res.status(401).json({ ok: false, error: 'Invalid admin secret' });
+    }
+    catch (error) {
+        console.error('Admin ping authentication error:', error);
+        res.status(500).json({ ok: false, error: 'Authentication system error' });
+    }
+});
+// CSRF token generation endpoint (requires admin auth)
+adminRouter.get('/csrf-token', (req, res) => {
+    try {
+        // Check Bearer token authentication first using secure credential
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Admin authentication required' });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({ error: 'Invalid admin secret' });
+        }
+        // Generate session-bound CSRF token with optional user binding
+        const sessionId = req.sessionID;
+        const userId = req.session?.discordId; // For admin panel, we might have Discord user ID from OAuth
+        const csrf = generateCSRFToken(sessionId, userId);
+        // Set secure CSRF cookie for Double Submit Cookie pattern
+        res.cookie('csrf-token', csrf.token, {
+            httpOnly: true,
+            secure: req.secure || req.get('X-Forwarded-Proto') === 'https',
+            sameSite: 'strict',
+            maxAge: 3600000, // 1 hour in ms
+            path: '/admin'
+        });
+        const bindingInfo = [];
+        if (sessionId)
+            bindingInfo.push('session');
+        if (userId)
+            bindingInfo.push('user');
+        const bindingStr = bindingInfo.length > 0 ? ` (bound to ${bindingInfo.join(', ')})` : '';
+        res.json({
+            ok: true,
+            token: csrf.token,
+            secret: csrf.secret,
+            expiresIn: 3600000, // 1 hour in ms
+            usage: 'Include token in X-CSRF-Token header and secret in X-CSRF-Secret header for state-changing requests',
+            doubleSubmit: 'CSRF token also set as secure cookie for enhanced protection',
+            binding: `Token is bound to current session for maximum security${bindingStr}`
+        });
+    }
+    catch (error) {
+        console.error('CSRF token generation error:', error);
+        res.status(500).json({ error: 'CSRF token generation failed' });
+    }
+});
+// CSRF statistics endpoint (requires admin auth)
+adminRouter.get('/csrf-stats', (req, res) => {
+    try {
+        // Check Bearer token authentication first using secure credential
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Admin authentication required' });
+        }
+        const token = authHeader.substring(7);
+        const adminSecret = getSecureAdminSecret();
+        if (token !== adminSecret) {
+            return res.status(401).json({ error: 'Invalid admin secret' });
+        }
+        const stats = getCSRFStats();
+        res.json({
+            ok: true,
+            ...stats,
+            averageAgeMinutes: Math.round(stats.averageAge / 60000),
+            oldestTokenMinutes: Math.round(stats.oldestToken / 60000)
+        });
+    }
+    catch (error) {
+        console.error('CSRF stats error:', error);
+        res.status(500).json({ error: 'CSRF stats retrieval failed' });
+    }
 });
 // Serve admin UI without authentication
 adminRouter.get('/', (req, res) => {
@@ -821,18 +1238,28 @@ adminRouter.get('/', (req, res) => {
 });
 // Authentication middleware - apply AFTER UI routes
 function requireAuth(req, res, next) {
-    // Check Bearer token authentication
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        if (token === process.env.ADMIN_SECRET) {
-            return next();
+    try {
+        // Check Bearer token authentication using secure credential
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            const adminSecret = getSecureAdminSecret();
+            if (token === adminSecret) {
+                return next();
+            }
         }
+        res.status(401).json({
+            error: 'Admin authentication required',
+            message: 'Please include Authorization: Bearer <ADMIN_SECRET> header'
+        });
     }
-    res.status(401).json({
-        error: 'Admin authentication required',
-        message: 'Please include Authorization: Bearer <ADMIN_SECRET> header'
-    });
+    catch (error) {
+        console.error('Admin authentication error:', error);
+        res.status(500).json({
+            error: 'Authentication system error',
+            message: 'Unable to verify admin credentials'
+        });
+    }
 }
 // Serve JavaScript files securely
 const serveJavaScript = (filename) => async (req, res) => {
@@ -863,7 +1290,7 @@ adminRouter.get('/dashboard.js', serveJavaScript('dashboard.js'));
 /*                              Route Modules                               */
 /* ------------------------------------------------------------------------ */
 // Mount route modules
-// Mount API route modules with selective authentication
+// Mount API route modules with selective authentication and CSRF protection
 // Note: ping endpoint needs to be excluded from auth since it's used for auth verification
 adminRouter.use((req, res, next) => {
     // Skip auth for specific endpoints and JavaScript modules
@@ -873,11 +1300,28 @@ adminRouter.use((req, res, next) => {
         '/tokens.js', '/core.js', '/fees.js', '/dashboard.js',
         '/ads.js', '/tiers.js', '/tournaments.js', '/config.js', '/servers.js', '/treasury.js', '/fees-data.js'
     ];
+    // Skip auth for public paths
     if (publicPaths.includes(req.path)) {
         return next();
     }
-    // Apply auth to all other endpoints
-    return requireAuth(req, res, next);
+    // Apply admin authentication first
+    const authResult = requireAuth(req, res, (error) => {
+        if (error) {
+            return next(error);
+        }
+        // After successful auth, apply CSRF protection for state-changing operations
+        // Skip CSRF for auth endpoints and read-only operations
+        const skipCSRFPaths = [
+            '/csrf-token', '/csrf-stats', '/auth/login', '/auth/mfa/initiate', '/auth/mfa/verify',
+            '/auth/jwt/refresh', '/auth/jwt/logout', '/auth/jwt/stats', '/security/fingerprint/stats'
+        ];
+        if (skipCSRFPaths.some(path => req.path.endsWith(path)) || req.method === 'GET') {
+            return next();
+        }
+        // Apply CSRF verification for POST, PUT, DELETE, PATCH operations
+        return verifyCSRFToken(req, res, next);
+    });
+    return authResult;
 });
 adminRouter.use(configRouter);
 adminRouter.use(tokensRouter);

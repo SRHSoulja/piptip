@@ -117,6 +117,9 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
             }
         };
 
+        // Initialize global balance loading flag
+        window.balanceLoadingGlobal = false;
+
         // Ensure loading overlay is hidden by default after page load
         document.addEventListener('DOMContentLoaded', () => {
             window.setGlobalLoading(false);
@@ -489,7 +492,14 @@ export function generateHomeContent(user, currentUser) {
     </div>
 
     <script>
-        // Wallet balance functionality
+        // Wallet balance functionality with debouncing to prevent API spam
+        let balanceLoading = false;
+        let lastBalanceLoad = 0;
+        const BALANCE_DEBOUNCE_MS = 2000; // Minimum 2 seconds between calls
+
+        // Global flag to prevent duplicate balance loading across different components
+        window.balanceLoadingGlobal = window.balanceLoadingGlobal || false;
+
         async function loadBalances() {
             const container = document.getElementById('balanceContainer');
             const refreshBtn = document.getElementById('refreshBalanceBtn');
@@ -498,10 +508,27 @@ export function generateHomeContent(user, currentUser) {
                 return;
             }
 
+            // Prevent multiple simultaneous calls (local and global)
+            if (balanceLoading || window.balanceLoadingGlobal) {
+                console.log('🚫 Balance load already in progress (local or global), skipping...');
+                return;
+            }
+
+            // Debounce rapid calls
+            const now = Date.now();
+            if (now - lastBalanceLoad < BALANCE_DEBOUNCE_MS) {
+                console.log(\`🚫 Balance load debounced (last load \${now - lastBalanceLoad}ms ago)\`);
+                return;
+            }
+
             try {
+                balanceLoading = true;
+                window.balanceLoadingGlobal = true;
+                lastBalanceLoad = now;
                 refreshBtn.disabled = true;
                 refreshBtn.textContent = '🔄 Loading...';
 
+                console.log('📊 Loading balances from API...');
                 const response = await fetch('/pengubook/api/balance');
                 const data = await response.json();
 
@@ -551,6 +578,8 @@ export function generateHomeContent(user, currentUser) {
                     </div>
                 \`;
             } finally {
+                balanceLoading = false;
+                window.balanceLoadingGlobal = false;
                 refreshBtn.disabled = false;
                 refreshBtn.textContent = '🔄 Refresh';
             }

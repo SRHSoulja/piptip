@@ -2,6 +2,9 @@
 import "dotenv/config";
 import express from "express";
 import session from "express-session";
+import cookieParser from "cookie-parser";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import cors from "cors";
 import connectPgSimple from "connect-pg-simple";
 import path from "path";
 import { flushNoticesEphemeral } from "./services/notifier.js";
@@ -54,7 +57,80 @@ if (process.env.NODE_ENV === "production") {
     app.set('trust proxy', 1);
     console.log("✅ Trust proxy enabled for production");
 }
+// Global rate limiting middleware
+const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: {
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded. Please wait before making more requests.',
+        retryAfter: Math.ceil(15 * 60) // 15 minutes in seconds
+    },
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    skip: (req) => {
+        // Skip rate limiting for health checks and internal endpoints
+        return req.path.startsWith('/health') ||
+            req.path.startsWith('/internal') ||
+            req.path === '/favicon.ico';
+    },
+    keyGenerator: (req, res) => {
+        // Use express-rate-limit's IPv6-compatible helper
+        const forwardedFor = req.headers['x-forwarded-for'];
+        if (forwardedFor) {
+            const ip = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0].trim();
+            return ipKeyGenerator(ip);
+        }
+        return ipKeyGenerator(req.ip || req.socket.remoteAddress || 'anonymous');
+    }
+});
+// Apply global rate limiting
+app.use(globalLimiter);
+// CORS configuration for API endpoints
+const corsOptions = cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin)
+            return callback(null, true);
+        // Production whitelist
+        const allowedOrigins = [
+            'https://piptip.app',
+            'https://www.piptip.app',
+            'https://admin.piptip.app'
+        ];
+        // Development mode - allow localhost and common dev ports
+        if (process.env.NODE_ENV !== 'production') {
+            allowedOrigins.push('http://localhost:3000', 'http://localhost:3001', 'http://localhost:8000', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://127.0.0.1:8000');
+        }
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        }
+        else {
+            console.warn(`🚫 CORS: Blocked request from origin: ${origin}`);
+            callback(new Error('Not allowed by CORS policy'), false);
+        }
+    },
+    credentials: true, // Allow cookies and authorization headers
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+        'Origin',
+        'X-Requested-With',
+        'Content-Type',
+        'Accept',
+        'Authorization',
+        'X-CSRF-Token',
+        'X-CSRF-Secret',
+        'Cookie'
+    ],
+    exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+    maxAge: 86400 // Cache preflight for 24 hours
+});
+// Apply CORS to API endpoints only
+app.use('/api', corsOptions);
+app.use('/admin/api', corsOptions);
+app.use('/internal', corsOptions);
 app.use(express.json({ limit: "256kb" }));
+app.use(cookieParser());
 // Session middleware for OAuth - will be configured in main()
 let sessionMiddleware;
 // Favicon route to prevent 404 errors
@@ -508,6 +584,24 @@ async function main() {
         });
         app.use(sessionMiddleware);
         console.log("✅ Session middleware configured with PostgreSQL store");
+        // Add session fingerprinting for security
+        try {
+            const { fingerprintMiddleware } = await import("./services/session_fingerprinting.js");
+            app.use(fingerprintMiddleware());
+            console.log("🔍 Session fingerprinting middleware enabled");
+        }
+        catch (error) {
+            console.error("Failed to initialize session fingerprinting:", error);
+        }
+        // Initialize anomaly detection service
+        try {
+            const { anomalyDetection } = await import("./services/anomaly_detection.js");
+            // Anomaly detection is passive - no middleware needed, just ensuring service is initialized
+            console.log("🧠 Anomaly detection service initialized");
+        }
+        catch (error) {
+            console.error("Failed to initialize anomaly detection:", error);
+        }
         // Add session-dependent routes after session middleware is configured
         const { adminRouter } = await import("./web/admin.js");
         const { authRouter } = await import("./web/auth.js");
@@ -521,6 +615,27 @@ async function main() {
         app.use("/pengubook", pengubookModularRouter);
         app.use("/api", marketsApiRouter);
         app.use("/api/pipchips", pipchipsMarketsRouter);
+        // Add security dashboard routes
+        try {
+            const { securityDashboardRouter } = await import("./web/security_dashboard.js");
+            const { twoFactorRouter } = await import("./web/2fa_setup.js");
+            const { passwordStrengthRouter } = await import("./web/password_strength.js");
+            app.use("/security/dashboard", securityDashboardRouter);
+            app.use("/security", twoFactorRouter);
+            app.use("/security", passwordStrengthRouter);
+            console.log("🛡️ Security dashboard routes configured");
+        }
+        catch (error) {
+            console.error("Failed to load security dashboard routes:", error);
+        }
+        // Initialize incident notification system
+        try {
+            const { incidentNotification } = await import("./services/incident_notification.js");
+            console.log("🚨 Incident notification system initialized");
+        }
+        catch (error) {
+            console.error("Failed to initialize incident notification system:", error);
+        }
         // Add redirect for common mistyped URL
         app.get("/pipchips", (req, res) => {
             res.redirect("/pengubook/pipchips");

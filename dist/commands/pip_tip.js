@@ -6,6 +6,25 @@ import { getActiveTokens } from "../services/token.js";
 import { PENGUIN_ERRORS } from "../utils/penguin_messages.js";
 export default async function pipTip(i) {
     try {
+        // Analyze user behavior for anomaly detection
+        try {
+            const { analyzeUserBehavior } = await import('../services/anomaly_detection.js');
+            const mockReq = {
+                get: (header) => i.client.user?.tag || 'Discord Bot',
+                ip: 'discord.com',
+                headers: { 'user-agent': 'Discord Bot' },
+                socket: { remoteAddress: 'discord.com' }
+            };
+            await analyzeUserBehavior(i.user.id, mockReq, 'tip_command', {
+                tipAmount: i.options.getNumber("amount", true),
+                isFinancialTransaction: true,
+                hasTarget: !!i.options.getUser("user"),
+                timestamp: new Date().toISOString()
+            });
+        }
+        catch (behaviorError) {
+            console.warn('Anomaly detection analysis failed for tip command:', behaviorError);
+        }
         // Check for emergency mode
         const config = await prisma.appConfig.findFirst();
         if (config?.tippingPaused || config?.emergencyMode) {

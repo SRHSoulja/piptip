@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../../services/db.js";
 import { getConfig } from "../../config.js";
 import { safeAmountToNumber, safeToNumber, ValidationError } from "../../utils/safe_conversions.js";
+import { adminMiddleware } from "../../services/admin_auth.js";
 export const configRouter = Router();
 configRouter.get("/ping", (_req, res) => {
     res.json({ ok: true, message: "Admin authenticated" });
@@ -16,7 +17,7 @@ configRouter.get("/config", async (_req, res) => {
         res.status(500).json({ ok: false, error: "Failed to load config" });
     }
 });
-configRouter.put("/config", async (req, res) => {
+configRouter.put("/config", adminMiddleware([], 'config_update'), async (req, res) => {
     try {
         const { minDeposit, minWithdraw, withdrawMaxPerTx, withdrawDailyCap, referralEnabled, referralTaxReductionBps, referralRakeReductionBps, referralVerificationThreshold, referralRewardInterval, referralWelcomeBonus } = req.body;
         // SECURITY FIX: Use safe conversion functions to prevent overflow attacks

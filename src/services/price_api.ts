@@ -56,6 +56,12 @@ class PriceAPIService {
    */
   async getTokenPrices(symbols: string[]): Promise<PriceAPIResponse> {
     try {
+      // EMERGENCY CIRCUIT BREAKER - Skip all API calls if enabled
+      if (process.env.EMERGENCY_DISABLE_PRICE_API === 'true') {
+        console.warn(`🚨 EMERGENCY: Price API completely disabled - returning fallback prices only`);
+        return this.getFallbackPrices(symbols);
+      }
+
       // Log call source for debugging multiple calls
       const stack = new Error().stack;
       const caller = stack?.split('\n')[2]?.trim() || 'Unknown';
@@ -401,9 +407,10 @@ class PriceAPIService {
    */
   private getFallbackPrices(symbols: string[]): PriceAPIResponse {
     const fallbackPrices: Record<string, number> = {
-      'PGU': 0.001,  // Penguin token estimate
-      'ICE': 0.0005, // Ice token estimate
-      'PEB': 0.0002  // Pebble token estimate
+      'PGU': 0.001,      // Penguin token estimate
+      'ICE': 0.0005,     // Ice token estimate
+      'PEB': 0.0002,     // Pebble token estimate
+      'ABSTER': 0.019    // ABSTER token estimate based on logs
     };
 
     const prices: Record<string, number> = {};

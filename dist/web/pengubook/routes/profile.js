@@ -295,7 +295,14 @@ export async function profileHandler(req, res) {
             const container = document.getElementById('profileBalanceContainer');
             const refreshBtn = document.getElementById('refreshProfileBalanceBtn');
 
+            // Check if global balance loading is already in progress
+            if (window.balanceLoadingGlobal) {
+                console.log('🚫 Profile balance load skipped - global balance loading in progress');
+                return;
+            }
+
             try {
+                window.balanceLoadingGlobal = true;
                 refreshBtn.disabled = true;
                 refreshBtn.textContent = '🔄 Loading...';
 
@@ -348,6 +355,7 @@ export async function profileHandler(req, res) {
                     </div>
                 \`;
             } finally {
+                window.balanceLoadingGlobal = false;
                 refreshBtn.disabled = false;
                 refreshBtn.textContent = '🔄 Refresh';
             }

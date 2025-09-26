@@ -45,6 +45,7 @@ pengubookModularRouter.get("/api/discord-user/:discordId", apiHandlers.discordUs
 pengubookModularRouter.post("/api/discord-users-batch", apiHandlers.discordUsersBatch);
 pengubookModularRouter.get("/api/user-data", apiHandlers.userData);
 pengubookModularRouter.post("/api/tip", apiHandlers.tip);
+pengubookModularRouter.post("/api/tip-preview", apiHandlers.tipPreview);
 pengubookModularRouter.post("/api/profile", apiHandlers.profile);
 pengubookModularRouter.post("/api/apply", applyPostHandler);
 pengubookModularRouter.get("/api/balance", apiHandlers.balance);

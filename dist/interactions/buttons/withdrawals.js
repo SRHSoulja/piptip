@@ -461,7 +461,8 @@ export async function handleConfirmWithdraw(i, parts) {
         });
         // Import required modules for transaction processing
         const { JsonRpcProvider, Wallet, Contract } = await import("ethers");
-        const { ABSTRACT_RPC_URL, AGW_SESSION_PRIVATE_KEY, TREASURY_AGW_ADDRESS } = await import("../../config.js");
+        const { ABSTRACT_RPC_URL, TREASURY_AGW_ADDRESS } = await import("../../config.js");
+        const { getSecureTreasuryPrivateKey } = await import("../../services/secure_key.js");
         const { debitToken } = await import("../../services/balances.js");
         const { queueNotice } = await import("../../services/notifier.js");
         const ERC20_ABI = [
@@ -470,7 +471,7 @@ export async function handleConfirmWithdraw(i, parts) {
         ];
         // Setup blockchain connection
         const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
-        const signer = new Wallet(AGW_SESSION_PRIVATE_KEY, provider);
+        const signer = new Wallet(getSecureTreasuryPrivateKey(), provider);
         const signerAddr = (await signer.getAddress()).toLowerCase();
         if (signerAddr !== TREASURY_AGW_ADDRESS.toLowerCase()) {
             return i.editReply({

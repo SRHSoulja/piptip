@@ -294,12 +294,18 @@ export const apiHandlers = {
 
       let priceResult: { prices: Record<string, number>; source: string } | null = null;
 
-      if (tokenSymbols.length > 0) {
+      // EMERGENCY CIRCUIT BREAKER - Can be enabled via environment variable
+      const emergencyDisablePrices = process.env.EMERGENCY_DISABLE_PRICE_API === 'true';
+
+      if (tokenSymbols.length > 0 && !emergencyDisablePrices) {
         try {
+          console.log(`🔍 Balance API: Fetching prices for ${tokenSymbols.join(',')}`);
           priceResult = await priceAPI.getTokenPrices(tokenSymbols);
         } catch (error) {
           console.warn("Failed to fetch USD prices for balances:", error);
         }
+      } else if (emergencyDisablePrices) {
+        console.warn("🚫 EMERGENCY: Price API disabled via EMERGENCY_DISABLE_PRICE_API=true");
       }
 
       const priceMap = priceResult?.prices ?? {};

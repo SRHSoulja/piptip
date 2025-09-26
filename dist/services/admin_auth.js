@@ -1,6 +1,7 @@
 // Hybrid Admin Authentication System
 // Provides both simple bearer auth for Replit/demos and full MFA for production
 import crypto from 'crypto';
+import { getSecureAdminSecret } from './secure_key.js';
 // Environment detection for tiered authentication
 const isReplitEnvironment = () => {
     return !!(process.env.REPLIT_DB_URL || process.env.REPL_ID || process.env.REPL_SLUG);
@@ -18,7 +19,7 @@ export const AUTH_TIERS = {
 };
 export function getAuthTier(operationType) {
     // Always force secure auth for critical financial operations regardless of environment
-    const criticalOps = ['withdrawal', 'deposit', 'balance_edit', 'user_ban', 'emergency', 'grand_reset'];
+    const criticalOps = ['withdrawal', 'deposit', 'balance_edit', 'user_ban', 'emergency', 'grand_reset', 'treasury_management', 'config_update', 'user_balance_modification'];
     if (operationType && criticalOps.includes(operationType)) {
         return AUTH_TIERS.SECURE;
     }
@@ -69,8 +70,11 @@ class AdminAuthSystem {
             }
         }
         // Validate bearer token (timing-safe comparison)
-        const expectedToken = process.env.ADMIN_SECRET;
-        if (!expectedToken) {
+        let expectedToken;
+        try {
+            expectedToken = getSecureAdminSecret();
+        }
+        catch (error) {
             return { success: false, error: 'Admin authentication not configured' };
         }
         if (!this.timingSafeEqual(bearerToken, expectedToken)) {
@@ -236,8 +240,11 @@ class AdminAuthSystem {
      */
     handleBearerAuth(req, res, next, requiredPermissions = []) {
         const authHeader = req.headers.authorization;
-        const expectedToken = process.env.ADMIN_SECRET;
-        if (!expectedToken) {
+        let expectedToken;
+        try {
+            expectedToken = getSecureAdminSecret();
+        }
+        catch (error) {
             return res.status(500).json({
                 error: 'Admin authentication not configured',
                 authTier: 'demo'
@@ -401,8 +408,11 @@ export const criticalAdminMiddleware = (permissions = []) => adminAuth.adminMidd
 // Simple bearer auth check function for legacy compatibility
 export function checkBearerAuth(req) {
     const authHeader = req.headers.authorization;
-    const expectedToken = process.env.ADMIN_SECRET;
-    if (!expectedToken) {
+    let expectedToken;
+    try {
+        expectedToken = getSecureAdminSecret();
+    }
+    catch (error) {
         return { valid: false, error: 'Admin authentication not configured' };
     }
     if (!authHeader || !authHeader.startsWith('Bearer ')) {

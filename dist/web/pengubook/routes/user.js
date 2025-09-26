@@ -247,6 +247,34 @@ export async function userHandler(req, res) {
                             <small class="pg-form-hint">Maximum 2 decimal places</small>
                         </div>
 
+                        <!-- Tax Preview Section -->
+                        <div id="tipPreview" class="pg-tip-preview" style="display: none;">
+                            <div class="pg-tip-preview-header">
+                                <h4>💰 Transaction Summary</h4>
+                            </div>
+                            <div class="pg-tip-preview-details">
+                                <div class="pg-tip-preview-row">
+                                    <span>Amount:</span>
+                                    <span id="previewAmount">-</span>
+                                </div>
+                                <div class="pg-tip-preview-row">
+                                    <span>Fee:</span>
+                                    <span id="previewFee">-</span>
+                                </div>
+                                <div class="pg-tip-preview-row pg-tip-preview-total">
+                                    <span><strong>Total Deducted:</strong></span>
+                                    <span id="previewTotal"><strong>-</strong></span>
+                                </div>
+                                <div id="previewSavings" class="pg-tip-preview-savings" style="display: none;">
+                                    <span>💎 Tax Savings:</span>
+                                    <span id="previewSaved" class="pg-text-success">-</span>
+                                </div>
+                                <div id="previewBenefit" class="pg-tip-preview-benefit" style="display: none;">
+                                    <small id="previewBenefitText" class="pg-text-muted">-</small>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="pg-form-group">
                             <label for="tipMessage">Message (optional)</label>
                             <textarea id="tipMessage" maxlength="200" placeholder="Add a message with your tip..."></textarea>
@@ -274,6 +302,71 @@ export async function userHandler(req, res) {
 
             const form = document.getElementById('tipForm');
             form.addEventListener('submit', handleTipSubmit);
+
+            // Add preview functionality
+            const tokenSelect = document.getElementById('tokenSelect');
+            const amountInput = document.getElementById('tipAmount');
+
+            async function updateTipPreview() {
+                const tokenId = parseInt(tokenSelect.value);
+                const amount = parseFloat(amountInput.value);
+
+                const previewDiv = document.getElementById('tipPreview');
+
+                if (!tokenId || !amount || amount <= 0) {
+                    previewDiv.style.display = 'none';
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/pengubook/api/tip-preview', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tokenId, amount })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success && result.preview) {
+                        const p = result.preview;
+
+                        // Update preview display
+                        document.getElementById('previewAmount').textContent = p.amountFormatted;
+                        document.getElementById('previewFee').textContent = p.feeFormatted;
+                        document.getElementById('previewTotal').textContent = p.totalFormatted;
+
+                        // Show tax savings if applicable
+                        const savingsDiv = document.getElementById('previewSavings');
+                        if (p.taxSaved > 0) {
+                            document.getElementById('previewSaved').textContent = p.taxSavedFormatted;
+                            savingsDiv.style.display = 'flex';
+                        } else {
+                            savingsDiv.style.display = 'none';
+                        }
+
+                        // Show benefit information
+                        const benefitDiv = document.getElementById('previewBenefit');
+                        const benefitText = document.getElementById('previewBenefitText');
+                        if (p.benefitLabel && p.exemptionRate > 0) {
+                            benefitText.textContent = \`Using \${p.benefitLabel} (\${p.exemptionRate}% tax reduction)\`;
+                            benefitDiv.style.display = 'block';
+                        } else {
+                            benefitDiv.style.display = 'none';
+                        }
+
+                        previewDiv.style.display = 'block';
+                    } else {
+                        previewDiv.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch tip preview:', error);
+                    previewDiv.style.display = 'none';
+                }
+            }
+
+            // Add event listeners for real-time preview
+            tokenSelect.addEventListener('change', updateTipPreview);
+            amountInput.addEventListener('input', updateTipPreview);
 
             // Close on outside click
             modal.addEventListener('click', function(e) {
