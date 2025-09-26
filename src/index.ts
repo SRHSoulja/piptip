@@ -2,6 +2,9 @@
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import session from "express-session";
+import cookieParser from "cookie-parser";
+import rateLimit from "express-rate-limit";
+import cors from "cors";
 import connectPgSimple from "connect-pg-simple";
 import path from "path";
 import { flushNoticesEphemeral } from "./services/notifier.js";
@@ -35,6 +38,7 @@ import pipBalance from "./commands/pip_balance.js";
 import pipDaily from "./commands/pip_daily.js";
 import pipBuyChips from "./commands/pip_buy_chips.js";
 import pipAutomationStatus from "./commands/pip_automation_status.js";
+import pipReferral from "./commands/pip_referral.js";
 import { withAutoChannelCheck } from "./middleware/channel_check.js";
 import { handlePipButton } from "./interactions/pip_buttons.js";
 import { handleGroupTipButton } from "./interactions/group_tip_buttons.js";
@@ -66,7 +70,92 @@ if (process.env.NODE_ENV === "production") {
   console.log("✅ Trust proxy enabled for production");
 }
 
+// Global rate limiting middleware
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    error: 'Too Many Requests',
+    message: 'Rate limit exceeded. Please wait before making more requests.',
+    retryAfter: Math.ceil(15 * 60) // 15 minutes in seconds
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req) => {
+    // Skip rate limiting for health checks and internal endpoints
+    return req.path.startsWith('/health') ||
+           req.path.startsWith('/internal') ||
+           req.path === '/favicon.ico';
+  },
+  keyGenerator: (req, res) => {
+    // Use express-rate-limit's built-in helper for IPv6 compatibility
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      const ip = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0];
+      return ip.trim();
+    }
+    return req.ip || req.socket.remoteAddress || 'anonymous';
+  }
+});
+
+// Apply global rate limiting
+app.use(globalLimiter);
+
+// CORS configuration for API endpoints
+const corsOptions = cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+
+    // Production whitelist
+    const allowedOrigins = [
+      'https://piptip.app',
+      'https://www.piptip.app',
+      'https://admin.piptip.app'
+    ];
+
+    // Development mode - allow localhost and common dev ports
+    if (process.env.NODE_ENV !== 'production') {
+      allowedOrigins.push(
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:8000',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:3001',
+        'http://127.0.0.1:8000'
+      );
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`🚫 CORS: Blocked request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS policy'), false);
+    }
+  },
+  credentials: true, // Allow cookies and authorization headers
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'X-CSRF-Token',
+    'X-CSRF-Secret',
+    'Cookie'
+  ],
+  exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+  maxAge: 86400 // Cache preflight for 24 hours
+});
+
+// Apply CORS to API endpoints only
+app.use('/api', corsOptions);
+app.use('/admin/api', corsOptions);
+app.use('/internal', corsOptions);
+
 app.use(express.json({ limit: "256kb" }));
+app.use(cookieParser());
 
 // Session middleware for OAuth - will be configured in main()
 let sessionMiddleware: any;
@@ -387,6 +476,7 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
       case "pip_daily": return withAutoChannelCheck(i as any, pipDaily);
       case "pip_buy_chips": return withAutoChannelCheck(i as any, pipBuyChips);
       case "pip_automation_status": return withAutoChannelCheck(i as any, pipAutomationStatus);
+      case "pip_referral": return withAutoChannelCheck(i as any, pipReferral);
       default:
         console.warn("Unknown command:", (i as any).commandName);
     }
@@ -524,7 +614,13 @@ async function main() {
 
     sessionMiddleware = session({
       store: sessionStore,
-      secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-this",
+      secret: process.env.SESSION_SECRET || (() => {
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('SESSION_SECRET environment variable is required in production');
+        }
+        console.warn('⚠️ Using fallback session secret in development mode');
+        return "fallback-dev-secret-change-this";
+      })(),
       resave: false,
       saveUninitialized: false,
       name: 'piptip-session', // Explicit session name
@@ -539,6 +635,24 @@ async function main() {
 
     app.use(sessionMiddleware);
     console.log("✅ Session middleware configured with PostgreSQL store");
+
+    // Add session fingerprinting for security
+    try {
+      const { fingerprintMiddleware } = await import("./services/session_fingerprinting.js");
+      app.use(fingerprintMiddleware());
+      console.log("🔍 Session fingerprinting middleware enabled");
+    } catch (error) {
+      console.error("Failed to initialize session fingerprinting:", error);
+    }
+
+    // Initialize anomaly detection service
+    try {
+      const { anomalyDetection } = await import("./services/anomaly_detection.js");
+      // Anomaly detection is passive - no middleware needed, just ensuring service is initialized
+      console.log("🧠 Anomaly detection service initialized");
+    } catch (error) {
+      console.error("Failed to initialize anomaly detection:", error);
+    }
 
     // Add session-dependent routes after session middleware is configured
     const { adminRouter } = await import("./web/admin.js");

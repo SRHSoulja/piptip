@@ -7,6 +7,26 @@ import { PENGUIN_ERRORS, PENGUIN_LOADING, createPenguinError } from "../utils/pe
 
 export default async function pipTip(i: ChatInputCommandInteraction) {
   try {
+    // Analyze user behavior for anomaly detection
+    try {
+      const { analyzeUserBehavior } = await import('../services/anomaly_detection.js');
+      const mockReq = {
+        get: (header: string) => i.client.user?.tag || 'Discord Bot',
+        ip: 'discord.com',
+        headers: { 'user-agent': 'Discord Bot' },
+        socket: { remoteAddress: 'discord.com' }
+      } as any;
+
+      await analyzeUserBehavior(i.user.id, mockReq, 'tip_command', {
+        tipAmount: i.options.getNumber("amount", true),
+        isFinancialTransaction: true,
+        hasTarget: !!i.options.getUser("user"),
+        timestamp: new Date().toISOString()
+      });
+    } catch (behaviorError) {
+      console.warn('Anomaly detection analysis failed for tip command:', behaviorError);
+    }
+
     // Check for emergency mode
     const config = await prisma.appConfig.findFirst();
     
