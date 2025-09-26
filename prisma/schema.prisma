@@ -713,7 +713,7 @@ model RoleRakeReduction {
   expiresAt        DateTime?
   createdBy        String?
   notes            String?
-  dailyAnalytics   RoleBenefitAnalytics[] @relation("TaxAnalytics")
+  dailyAnalytics   RoleBenefitAnalytics[] @relation("RakeAnalytics")
 
   @@unique([roleId, guildId])
   @@index([guildId, isActive])
