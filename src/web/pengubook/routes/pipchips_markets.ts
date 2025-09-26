@@ -396,6 +396,12 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
     </div>
 
     <style>
+      /* Dark theme for PIPChips interface */
+      body, html {
+        background: #0f1419 !important;
+        color: #e2e8f0 !important;
+      }
+
       .pipchips-balance-header {
         display: flex;
         justify-content: space-between;
@@ -473,16 +479,17 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
       }
 
       .market-card {
-        border: 1px solid #e5e7eb;
+        border: 1px solid #334155;
         border-radius: 12px;
         padding: 20px;
-        background: white;
+        background: #1e293b;
+        color: #e2e8f0;
         transition: all 0.2s;
       }
 
       .market-card:hover {
-        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        border-color: #3b82f6;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        border-color: #60a5fa;
       }
 
       .market-header h3 {
@@ -496,19 +503,19 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
       }
 
       .market-header h3 a:hover {
-        color: #3b82f6;
+        color: #60a5fa;
       }
 
       .market-meta {
         display: flex;
         gap: 16px;
-        color: #4b5563;
+        color: #94a3b8;
         font-size: 14px;
         margin-bottom: 12px;
       }
 
       .market-description {
-        color: #374151;
+        color: #cbd5e1;
         line-height: 1.6;
         margin: 12px 0;
       }
@@ -524,18 +531,21 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
         text-align: center;
         padding: 12px;
         border-radius: 8px;
-        background: #f3f4f6;
+        background: #334155;
+        color: #e2e8f0;
         cursor: pointer;
         transition: all 0.2s;
+        border: 1px solid #475569;
       }
 
       .outcome-chip:hover {
-        background: #e5e7eb;
+        background: #475569;
+        border-color: #60a5fa;
       }
 
       .outcome-probability {
         font-weight: bold;
-        color: #3b82f6;
+        color: #60a5fa;
         font-size: 18px;
       }
 
@@ -936,17 +946,17 @@ function generateMarketCard(market: any) {
       <div class="market-header">
         <h3><a href="/pengubook/pipchips/market/${market.id}">${market.title}</a></h3>
         <div class="market-meta">
-          <span class="created-time" style="color: #4b5563; font-size: 12px;">📅 Created ${ageText}</span>
+          <span class="created-time" style="color: #94a3b8; font-size: 12px;">📅 Created ${ageText}</span>
           ${marketTypeBadge}
         </div>
       </div>
 
       <p class="market-description">${market.description}</p>
 
-      <div class="market-timing" style="background: #f3f4f6; padding: 12px; border-radius: 8px; margin: 12px 0;">
+      <div class="market-timing" style="background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 12px; border-radius: 8px; margin: 12px 0;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-          <span>⏰ Resolution: <strong>${timeText}</strong></span>
-          <span>💰 Volume: <strong>${market.totalVolume.toLocaleString()} PIPChips</strong></span>
+          <span style="color: #cbd5e1;">⏰ Resolution: <strong style="color: #f1f5f9;">${timeText}</strong></span>
+          <span style="color: #cbd5e1;">💰 Volume: <strong style="color: #f1f5f9;">${market.totalVolume.toLocaleString()} PIPChips</strong></span>
         </div>
         <div style="font-size: 14px;">
           ${predictionStatus}
@@ -962,7 +972,7 @@ function generateMarketCard(market: any) {
         `).join('')}
       </div>
 
-      <div class="market-stats" style="display: flex; justify-content: space-between; color: #1f2937; font-size: 14px;">
+      <div class="market-stats" style="display: flex; justify-content: space-between; color: #cbd5e1; font-size: 14px;">
         <span>👥 ${market.totalBets} prediction${market.totalBets !== 1 ? 's' : ''}</span>
         <span>💧 Liquidity: ${market.liquidityParameter || 1000}</span>
         <span>📊 LMSR Market</span>
@@ -980,18 +990,22 @@ function generatePIPChipsMarketDetailContent(data: any) {
         max-width: 800px;
         margin: 0 auto;
         padding: 20px;
+        background: #0f1419;
+        color: #e2e8f0;
+        min-height: 100vh;
       }
 
       .market-header {
-        border-bottom: 2px solid #e5e7eb;
+        border-bottom: 2px solid #334155;
         padding-bottom: 20px;
         margin-bottom: 30px;
       }
 
       .market-header h1 {
         margin: 0 0 10px 0;
-        color: #1f2937;
+        color: #f8fafc;
         font-size: 24px;
+        font-weight: 700;
       }
 
       .market-status {
@@ -1003,17 +1017,19 @@ function generatePIPChipsMarketDetailContent(data: any) {
       }
 
       .market-status.active {
-        background: #d1fae5;
-        color: #065f46;
+        background: #065f46;
+        color: #d1fae5;
+        border: 1px solid #10b981;
       }
 
       .market-status.closed {
-        background: #fecaca;
-        color: #991b1b;
+        background: #7f1d1d;
+        color: #fecaca;
+        border: 1px solid #ef4444;
       }
 
       .market-info .description {
-        color: #374151;
+        color: #cbd5e1;
         font-size: 16px;
         line-height: 1.6;
         margin-bottom: 20px;
@@ -1023,7 +1039,8 @@ function generatePIPChipsMarketDetailContent(data: any) {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 20px;
-        background: #f3f4f6;
+        background: #1e293b;
+        border: 1px solid #334155;
         padding: 20px;
         border-radius: 8px;
         margin-bottom: 30px;
@@ -1035,27 +1052,29 @@ function generatePIPChipsMarketDetailContent(data: any) {
 
       .market-stats .label {
         display: block;
-        color: #374151;
+        color: #94a3b8;
         font-size: 14px;
         margin-bottom: 4px;
+        font-weight: 500;
       }
 
       .market-stats .value {
         display: block;
-        color: #1f2937;
+        color: #f1f5f9;
         font-size: 18px;
-        font-weight: 600;
+        font-weight: 700;
       }
 
       .user-balance {
         display: flex;
         align-items: center;
         gap: 12px;
-        background: #fef3cd;
-        border: 1px solid #f59e0b;
+        background: #365314;
+        border: 1px solid #65a30d;
         padding: 16px;
         border-radius: 8px;
         margin-bottom: 30px;
+        color: #ecfccb;
       }
 
       .pipchips-logo-small {
@@ -1066,8 +1085,8 @@ function generatePIPChipsMarketDetailContent(data: any) {
       }
 
       .betting-section {
-        background: white;
-        border: 1px solid #e5e7eb;
+        background: #1e293b;
+        border: 1px solid #334155;
         border-radius: 12px;
         padding: 24px;
         margin-bottom: 30px;
@@ -1075,7 +1094,8 @@ function generatePIPChipsMarketDetailContent(data: any) {
 
       .betting-section h3 {
         margin: 0 0 20px 0;
-        color: #1f2937;
+        color: #f1f5f9;
+        font-weight: 600;
       }
 
       .outcome-betting {
@@ -1085,16 +1105,17 @@ function generatePIPChipsMarketDetailContent(data: any) {
       }
 
       .outcome-bet-card {
-        border: 1px solid #d1d5db;
+        border: 1px solid #475569;
         border-radius: 8px;
         padding: 20px;
-        background: #fafafa;
+        background: #334155;
       }
 
       .outcome-bet-card h4 {
         margin: 0 0 12px 0;
-        color: #1f2937;
+        color: #f1f5f9;
         font-size: 18px;
+        font-weight: 600;
       }
 
       .current-price {
@@ -1106,12 +1127,12 @@ function generatePIPChipsMarketDetailContent(data: any) {
         display: block;
         font-size: 24px;
         font-weight: bold;
-        color: #3b82f6;
+        color: #60a5fa;
       }
 
       .price-label {
         display: block;
-        color: #374151;
+        color: #cbd5e1;
         font-size: 14px;
       }
 
@@ -1137,21 +1158,22 @@ function generatePIPChipsMarketDetailContent(data: any) {
       }
 
       .bet-amount-btn:disabled {
-        background: #d1d5db;
-        color: #9ca3af;
+        background: #475569;
+        color: #94a3b8;
         cursor: not-allowed;
       }
 
       .user-participations-section {
-        background: white;
-        border: 1px solid #e5e7eb;
+        background: #1e293b;
+        border: 1px solid #334155;
         border-radius: 12px;
         padding: 24px;
       }
 
       .user-participations-section h3 {
         margin: 0 0 20px 0;
-        color: #1f2937;
+        color: #f1f5f9;
+        font-weight: 600;
       }
 
       .user-participation {
@@ -1160,12 +1182,12 @@ function generatePIPChipsMarketDetailContent(data: any) {
         gap: 12px;
         align-items: center;
         padding: 12px 0;
-        border-bottom: 1px solid #f3f4f6;
+        border-bottom: 1px solid #475569;
       }
 
       .participation-outcome {
-        background: #e5e7eb;
-        color: #374151;
+        background: #475569;
+        color: #e2e8f0;
         padding: 4px 8px;
         border-radius: 4px;
         font-weight: 600;
@@ -1175,11 +1197,11 @@ function generatePIPChipsMarketDetailContent(data: any) {
       .participation-amount,
       .potential-payout {
         font-weight: 600;
-        color: #1f2937;
+        color: #f1f5f9;
       }
 
       .participation-date {
-        color: #374151;
+        color: #cbd5e1;
         font-size: 14px;
       }
     </style>
