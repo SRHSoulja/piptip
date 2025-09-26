@@ -10,6 +10,13 @@ import { queueNotice } from "../../../services/notifier.js";
 import { pipchipsService } from "../../../services/pipchips_service.js";
 import { ensureUser } from "../../../services/balances.js";
 
+// Balance cache for PenguBook API
+const balanceCache = new Map<string, {
+  data: any;
+  timestamp: number;
+}>();
+const BALANCE_CACHE_TTL = 30 * 1000; // 30 seconds cache
+
 export const apiHandlers = {
   // GET /pengubook/api/unread-count
   async unreadCount(req: Request, res: Response) {
@@ -237,6 +244,14 @@ export const apiHandlers = {
         return res.status(401).json({ success: false, error: "Not authenticated" });
       }
 
+      const cacheKey = `balance_${currentUser.discordId}`;
+      const cached = balanceCache.get(cacheKey);
+
+      // Return cached data if still fresh
+      if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
+        return res.json(cached.data);
+      }
+
       const user = await findOrCreateUser(currentUser.discordId);
       const balances = await prisma.userBalance.findMany({
         where: { userId: user.id },
@@ -293,14 +308,22 @@ export const apiHandlers = {
         ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}`
         : null;
 
-      res.json({
+      const response = {
         success: true,
         balances: formattedBalances,
         totalUSD,
         formattedTotalUSD,
         priceSource,
         priceDisclaimer
+      };
+
+      // Cache the response
+      balanceCache.set(cacheKey, {
+        data: response,
+        timestamp: Date.now()
       });
+
+      res.json(response);
     } catch (error) {
       console.error("Balance fetch error:", error);
       res.status(500).json({ success: false, error: "Failed to fetch balance" });
