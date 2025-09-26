@@ -491,5 +491,24 @@ class PriceAPIService {
   }
 }
 
+// Global singleton instance to ensure consistent caching across the entire application
 export const priceAPI = new PriceAPIService();
 export type { TokenPrice, PriceAPIResponse };
+
+/**
+ * Global cached price getter - use this throughout the codebase
+ * Ensures all parts of the bot (Discord, web, admin, workers) use the same cached prices
+ */
+export async function getCachedTokenPrice(symbol: string): Promise<number> {
+  const result = await priceAPI.getTokenPrices([symbol]);
+  return result.prices[symbol] || 0;
+}
+
+/**
+ * Global cached prices getter for multiple tokens
+ * Ensures consistent caching across all bot components
+ */
+export async function getCachedTokenPrices(symbols: string[]): Promise<Record<string, number>> {
+  const result = await priceAPI.getTokenPrices(symbols);
+  return result.prices;
+}

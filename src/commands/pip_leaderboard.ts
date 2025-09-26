@@ -3,7 +3,7 @@ import { EmbedBuilder, MessageFlags } from "discord.js";
 import { prisma } from "../services/db.js";
 import { getStreakLeaderboard } from "../services/streaks.js";
 import { formatDecimal, formatDecimalWithUSD } from "../services/token.js";
-import { priceAPI } from "../services/price_api.js";
+import { getCachedTokenPrices } from "../services/price_api.js";
 import { cacheWithMetrics, CacheKeys, CacheTTL } from "../services/cache.js";
 import { withTiming } from "../services/performance.js";
 
@@ -409,9 +409,9 @@ async function buildWealthLeaderboard(limit: number): Promise<EmbedBuilder> {
     breakdown: string[];
   }>();
 
-  // Get all unique token symbols for price lookup
+  // Get all unique token symbols for price lookup using global cache
   const tokenSymbols = [...new Set(usersWithBalances.map(b => b.Token.symbol))];
-  const priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+  const prices = await getCachedTokenPrices(tokenSymbols);
 
   for (const balance of usersWithBalances) {
     const userId = balance.User.discordId;
@@ -422,7 +422,7 @@ async function buildWealthLeaderboard(limit: number): Promise<EmbedBuilder> {
     };
 
     const tokenAmount = Number(balance.amount);
-    const tokenPrice = priceResult.prices[balance.Token.symbol] || 0;
+    const tokenPrice = prices[balance.Token.symbol] || 0;
     const usdValue = tokenAmount * tokenPrice;
 
     current.totalUSDValue += usdValue;

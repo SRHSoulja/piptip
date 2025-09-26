@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { incrementNegativeBalanceAttempts } from "./metrics.js";
 import { BalanceConservationService } from "./balance_conservation.js";
 import { cache, CacheKeys, CacheTTL } from "./cache.js";
-import { priceAPI } from "./price_api.js";
+import { getCachedTokenPrices } from "./price_api.js";
 
 // Legacy compatibility function for existing commands
 export async function debit(discordId: string, amountAtomic: bigint, type = "MATCH_WAGER") {
@@ -107,16 +107,16 @@ export async function logTxAtomicTx(
 
   if (tokenSymbol) {
     try {
-      const priceResult = await priceAPI.getTokenPrices([tokenSymbol]);
-      if (priceResult.success && priceResult.prices[tokenSymbol]) {
-        const tokenPrice = priceResult.prices[tokenSymbol];
+      const prices = await getCachedTokenPrices([tokenSymbol]);
+      const tokenPrice = prices[tokenSymbol];
+      if (tokenPrice && tokenPrice > 0) {
         const amountInTokens = parseFloat(toDecStr(amountAtomic, decimals));
         const feeInTokens = parseFloat(toDecStr(feeAtomic, decimals));
 
         usdPrice = tokenPrice.toString();
         usdValue = (amountInTokens * tokenPrice).toString();
         usdFeeValue = (feeInTokens * tokenPrice).toString();
-        priceSource = priceResult.source;
+        priceSource = 'cached_global'; // Indicate this uses global cache
       }
     } catch (error) {
       // Silently continue without USD values if price fetch fails

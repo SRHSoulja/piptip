@@ -4,7 +4,7 @@ import { formatUnits, parseUnits } from "ethers";
 import { prisma } from "./db.js";
 import { userHasActiveTaxFreeTier } from "./tiers.js";
 import { cache, CacheKeys, CacheTTL } from "./cache.js";
-import { priceAPI } from "./price_api.js";
+import { getCachedTokenPrice } from "./price_api.js";
 
 
 /** For legacy callers that still read a single TOKEN_ADDRESS */
@@ -150,8 +150,8 @@ export async function formatDecimalWithUSD(dec: any, symbol: string, options?: {
   let result = showSymbol ? `${formatted} ${symbol}` : formatted;
 
   try {
-    // Get USD price for this token
-    const usdPrice = await priceAPI.getTokenPrice(symbol);
+    // Get USD price for this token using global cache
+    const usdPrice = await getCachedTokenPrice(symbol);
     const usdValue = num * usdPrice;
 
     // Only show USD if above threshold and price is available
