@@ -485,6 +485,34 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
         border-color: #3b82f6;
       }
 
+      .market-header h3 {
+        margin: 0 0 8px 0;
+      }
+
+      .market-header h3 a {
+        color: #1f2937;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .market-header h3 a:hover {
+        color: #3b82f6;
+      }
+
+      .market-meta {
+        display: flex;
+        gap: 16px;
+        color: #4b5563;
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+
+      .market-description {
+        color: #374151;
+        line-height: 1.6;
+        margin: 12px 0;
+      }
+
       .market-outcomes {
         display: flex;
         gap: 12px;
@@ -736,6 +764,13 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
       async function purchaseChips(tokenId, pipchipsAmount) {
         if (!confirm(\`Purchase \${pipchipsAmount.toLocaleString()} PIPChips?\`)) return;
 
+        // TODO: The /api/buy-pipchips endpoint needs to be implemented
+        // For now, show a message that this feature is coming soon
+        alert('PIPChips purchase feature coming soon! For now, you can earn PIPChips through daily bonuses and gameplay.');
+        document.querySelector('div[style*="position: fixed"]')?.remove();
+        return;
+
+        /* Once the endpoint is implemented, uncomment this:
         try {
           const response = await fetch('/api/buy-pipchips', {
             method: 'POST',
@@ -757,6 +792,7 @@ function generatePIPChipsMarketsPageContent(markets: any[], options: any) {
           console.error('Purchase error:', error);
           alert('Network error processing purchase');
         }
+        */
       }
 
       // Create Market Functions
@@ -963,7 +999,7 @@ function generatePIPChipsMarketDetailContent(data: any) {
         if (!confirm(\`Place \${amount} PIPChips on \${outcome}?\`)) return;
 
         try {
-          const response = await fetch('/api/pipchips/participate', {
+          const response = await fetch('/api/pipchips/bet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ marketId, outcome, pipchipsAmount: amount })

@@ -444,11 +444,19 @@ export class MarketAutomationScheduler {
    * Scan crypto opportunities across multiple chains
    */
   private async scanCryptoOpportunities(): Promise<any[]> {
-    // Get chains to scan from configuration - no hardcoded lists!
-    const chainsToScan = this.config.crypto.chainsToScan || ['ethereum', 'arbitrum', 'base', 'polygon', 'optimism', 'avalanche', 'bsc'];
+    // Get chains to scan from configuration - Abstract chain is PRIORITY!
+    let chainsToScan = this.config.crypto.chainsToScan || ['abstract', 'ethereum', 'arbitrum', 'base', 'polygon', 'optimism', 'avalanche', 'bsc'];
+
+    // Ensure Abstract is always first if prioritizeAbstract is true
+    if (this.config.crypto.prioritizeAbstract !== false) {
+      // Remove abstract from wherever it is and put it first
+      chainsToScan = chainsToScan.filter(c => c.toLowerCase() !== 'abstract');
+      chainsToScan.unshift('abstract');
+    }
+
     const opportunities: any[] = [];
 
-    console.log(`🔍 Scanning crypto opportunities across ${chainsToScan.length} chains from config...`);
+    console.log(`🔍 Scanning crypto opportunities across ${chainsToScan.length} chains (Abstract priority: ${this.config.crypto.prioritizeAbstract !== false})...`);
 
     for (const chain of chainsToScan) {
       try {
@@ -490,9 +498,22 @@ export class MarketAutomationScheduler {
     }
 
     // Sort by opportunity score (highest first)
-    const sortedOpportunities = opportunities
+    let sortedOpportunities = opportunities
       .sort((a, b) => b.score - a.score)
       .slice(0, 20); // Top 20 opportunities
+
+    // If we have Abstract chain tokens and prioritizeAbstract is true, ensure they're at the top
+    if (this.config.crypto.prioritizeAbstract !== false) {
+      const abstractTokens = sortedOpportunities.filter(opp => opp.chain.toLowerCase() === 'abstract');
+      const otherTokens = sortedOpportunities.filter(opp => opp.chain.toLowerCase() !== 'abstract');
+
+      // Put Abstract tokens first, then others
+      sortedOpportunities = [...abstractTokens, ...otherTokens];
+
+      if (abstractTokens.length > 0) {
+        console.log(`🎯 Prioritizing ${abstractTokens.length} Abstract chain tokens!`);
+      }
+    }
 
     console.log(`✅ Found ${sortedOpportunities.length} high-quality crypto opportunities`);
 
@@ -536,80 +557,136 @@ export class MarketAutomationScheduler {
    */
   private async fetchDexScreenerTopTokens(chain: string): Promise<any[]> {
     try {
-      // Use DexScreener's tokens endpoint for each chain
-      const url = `https://api.dexscreener.com/latest/dex/tokens/${chain}`;
+      // First, try to get boosted/trending tokens (these are actively traded)
+      const boostedUrl = 'https://api.dexscreener.com/token-boosts/top/v1';
+      console.log(`📡 Fetching trending tokens from DexScreener...`);
 
-      console.log(`📡 Fetching from DexScreener tokens API: ${url}`);
-      const response = await fetch(url);
+      const response = await fetch(boostedUrl);
 
       if (!response.ok) {
-        console.log(`⚠️ DexScreener API error for ${chain}: ${response.status}`);
+        console.log(`⚠️ DexScreener API error: ${response.status}`);
         return [];
       }
 
-      const data = await response.json();
-
-      if (!data.pairs || !Array.isArray(data.pairs)) {
-        console.log(`⚠️ Invalid DexScreener response format for ${chain}`);
-        return [];
-      }
-
-      // Process and filter the pairs to extract tokens
+      const boostedTokens = await response.json();
       const tokens = [];
       const seenTokens = new Set();
 
-      console.log(`📊 Processing ${data.pairs.length} trading pairs from ${chain}...`);
+      // Process boosted tokens and filter by chain
+      for (const token of boostedTokens) {
+        // Map chain names to DexScreener chain IDs
+        const chainMap: Record<string, string[]> = {
+          'ethereum': ['ethereum'],
+          'arbitrum': ['arbitrum'],
+          'base': ['base'],
+          'polygon': ['polygon'],
+          'optimism': ['optimism'],
+          'avalanche': ['avalanche'],
+          'bsc': ['bsc'],
+          'abstract': ['abstract'], // Our chain
+          'solana': ['solana']
+        };
 
-      for (const pair of data.pairs) {
-        try {
-          // Skip if volume too low - minimum threshold
-          const volume24h = pair.volume?.h24 || 0;
-          if (volume24h < this.config.crypto.minVolumeUSD) continue;
+        const validChains = chainMap[chain.toLowerCase()] || [chain.toLowerCase()];
 
-          // Extract token info - prefer the non-stablecoin token
-          let tokenSymbol = pair.baseToken?.symbol;
-          let tokenAddress = pair.baseToken?.address;
+        // Skip if not on requested chain
+        if (!validChains.includes(token.chainId?.toLowerCase())) continue;
 
-          // Common stablecoins and base tokens - prefer the other token in the pair
-          const stablecoins = ['USDC', 'USDT', 'DAI', 'FRAX', 'BUSD'];
-          const baseTokens = ['WETH', 'ETH', 'WBTC', 'BTC', 'WMATIC', 'MATIC', 'WAVAX', 'AVAX', 'BNB', 'WBNB'];
+        // Get detailed token data if we have the address
+        if (token.tokenAddress) {
+          try {
+            const detailUrl = `https://api.dexscreener.com/latest/dex/tokens/${token.tokenAddress}`;
+            const detailResponse = await fetch(detailUrl);
 
-          if ([...stablecoins, ...baseTokens].includes(tokenSymbol) && pair.quoteToken?.symbol) {
-            tokenSymbol = pair.quoteToken.symbol;
-            tokenAddress = pair.quoteToken.address;
+            if (detailResponse.ok) {
+              const detailData = await detailResponse.json();
+
+              if (detailData.pairs && Array.isArray(detailData.pairs)) {
+                // Get the best pair for this token (highest volume)
+                const bestPair = detailData.pairs
+                  .filter((p: any) => validChains.includes(p.chainId?.toLowerCase()))
+                  .sort((a: any, b: any) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0))[0];
+
+                if (bestPair && bestPair.baseToken) {
+                  const tokenSymbol = bestPair.baseToken.symbol;
+
+                  if (!seenTokens.has(tokenSymbol) && this.isValidToken(tokenSymbol)) {
+                    seenTokens.add(tokenSymbol);
+
+                    tokens.push({
+                      symbol: tokenSymbol,
+                      address: bestPair.baseToken.address,
+                      price: parseFloat(bestPair.priceUsd || '0'),
+                      volume24h: bestPair.volume?.h24 || 0,
+                      priceChange24h: bestPair.priceChange?.h24 || 0,
+                      volatility: Math.abs(bestPair.priceChange?.h24 || 0),
+                      liquidity: bestPair.liquidity?.usd || 0,
+                      txCount24h: (bestPair.txns?.h24?.buys || 0) + (bestPair.txns?.h24?.sells || 0),
+                      pairAddress: bestPair.pairAddress,
+                      dexId: bestPair.dexId,
+                      chainId: bestPair.chainId,
+                      boosted: true
+                    });
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to get details for token ${token.tokenAddress}:`, err);
           }
+        }
+      }
 
-          // Skip if we've already processed this token
+      // If we don't have enough tokens, try a secondary approach
+      if (tokens.length < 10) {
+        console.log(`📊 Only found ${tokens.length} tokens via boosts, trying search...`);
+
+        // Try search with popular tokens for the chain
+        const popularTokens = this.getPopularTokensForChain(chain);
+
+        for (const tokenSymbol of popularTokens) {
           if (seenTokens.has(tokenSymbol)) continue;
-          seenTokens.add(tokenSymbol);
 
-          // Filter out scam/junk tokens
-          if (!this.isValidToken(tokenSymbol)) continue;
+          try {
+            const searchUrl = `https://api.dexscreener.com/latest/dex/search?q=${tokenSymbol}`;
+            const searchResponse = await fetch(searchUrl);
 
-          const priceChange24h = pair.priceChange?.h24 || 0;
-          const liquidity = pair.liquidity?.usd || 0;
-          const price = parseFloat(pair.priceUsd || '0');
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json();
 
-          // Skip tokens with insufficient liquidity
-          if (liquidity < 50000) continue; // Min $50k liquidity
+              if (searchData.pairs && Array.isArray(searchData.pairs)) {
+                const chainPairs = searchData.pairs.filter((p: any) =>
+                  chain.toLowerCase() === 'all' || p.chainId?.toLowerCase() === chain.toLowerCase()
+                );
 
-          tokens.push({
-            symbol: tokenSymbol,
-            address: tokenAddress,
-            price: price,
-            volume24h: volume24h,
-            priceChange24h: priceChange24h,
-            volatility: Math.abs(priceChange24h),
-            liquidity: liquidity,
-            txCount24h: (pair.txns?.h24?.buys || 0) + (pair.txns?.h24?.sells || 0),
-            pairAddress: pair.pairAddress,
-            dexId: pair.dexId,
-            chainId: pair.chainId
-          });
+                if (chainPairs.length > 0) {
+                  const bestPair = chainPairs.sort((a: any, b: any) =>
+                    (b.volume?.h24 || 0) - (a.volume?.h24 || 0)
+                  )[0];
 
-        } catch (pairError) {
-          console.error(`Error processing pair data:`, pairError);
-          continue;
+                  if (bestPair && !seenTokens.has(bestPair.baseToken?.symbol)) {
+                    seenTokens.add(bestPair.baseToken?.symbol);
+
+                    tokens.push({
+                      symbol: bestPair.baseToken?.symbol,
+                      address: bestPair.baseToken?.address,
+                      price: parseFloat(bestPair.priceUsd || '0'),
+                      volume24h: bestPair.volume?.h24 || 0,
+                      priceChange24h: bestPair.priceChange?.h24 || 0,
+                      volatility: Math.abs(bestPair.priceChange?.h24 || 0),
+                      liquidity: bestPair.liquidity?.usd || 0,
+                      txCount24h: (bestPair.txns?.h24?.buys || 0) + (bestPair.txns?.h24?.sells || 0),
+                      pairAddress: bestPair.pairAddress,
+                      dexId: bestPair.dexId,
+                      chainId: bestPair.chainId
+                    });
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`Search failed for ${tokenSymbol}:`, err);
+          }
         }
       }
 
@@ -618,7 +695,7 @@ export class MarketAutomationScheduler {
         .sort((a, b) => b.volume24h - a.volume24h)
         .slice(0, 50); // Top 50 by volume
 
-      console.log(`✅ Extracted ${topTokens.length} valid tokens from ${chain} (from ${data.pairs.length} pairs)`);
+      console.log(`✅ Found ${topTokens.length} valid tokens from ${chain}`);
 
       return topTokens;
 
@@ -655,6 +732,25 @@ export class MarketAutomationScheduler {
   // NO FALLBACK FUNCTIONS - PURE API DISCOVERY ONLY!
 
   /**
+   * Get popular tokens for a specific chain to search for
+   */
+  private getPopularTokensForChain(chain: string): string[] {
+    const popularByChain: Record<string, string[]> = {
+      'ethereum': ['PEPE', 'SHIB', 'LINK', 'UNI', 'AAVE', 'MKR', 'SNX', 'CRV', 'LDO'],
+      'arbitrum': ['ARB', 'GMX', 'MAGIC', 'RDNT', 'JOE', 'DPX', 'GRAIL'],
+      'base': ['BRETT', 'DEGEN', 'BALD', 'TOSHI', 'NORMIE'],
+      'polygon': ['MATIC', 'QUICK', 'GHST', 'SAND', 'MANA'],
+      'optimism': ['OP', 'VELO', 'SNX', 'PERP', 'KWENTA'],
+      'avalanche': ['JOE', 'PNG', 'QI', 'XAVA', 'TIME'],
+      'bsc': ['CAKE', 'XVS', 'ALPACA', 'BAKE', 'BABY'],
+      'abstract': ['ABSTER', 'PENGU', 'ABBY', 'RETSBA', 'ETH', 'USDC'], // Real Abstract chain tokens - PRIMARY FOCUS!
+      'solana': ['RAY', 'ORCA', 'BONK', 'WIF', 'JTO', 'JUP']
+    };
+
+    return popularByChain[chain.toLowerCase()] || ['ETH', 'BTC', 'USDC'];
+  }
+
+  /**
    * Calculate opportunity score for a token (higher = better)
    */
   private calculateOpportunityScore(token: any, chain: string): number {
@@ -663,8 +759,8 @@ export class MarketAutomationScheduler {
     // Base score for all tokens
     score += 10;
 
-    // Abstract chain gets major priority boost
-    if (chain === 'abstract') score += 25;
+    // Abstract chain gets MASSIVE priority boost - we want these markets!
+    if (chain.toLowerCase() === 'abstract') score += 50;
 
     // Volume scoring - higher volume = more interest
     if (token.volume24h > 1000000) score += 30;      // >$1M volume
@@ -690,16 +786,19 @@ export class MarketAutomationScheduler {
     if (token.liquidity > 500000) score += 10;
     else if (token.liquidity > 100000) score += 5;
 
-    // Chain priority scoring
+    // Chain priority scoring - Abstract is our MAIN focus
     const chainScores: { [key: string]: number } = {
-      'abstract': 25,    // Our ecosystem - highest priority
-      'ethereum': 15,    // Mainnet
-      'arbitrum': 12,    // L2 popular
-      'base': 10,        // Growing ecosystem
-      'polygon': 8       // Established L2
+      'abstract': 50,    // Our PRIMARY ecosystem - HIGHEST priority!
+      'ethereum': 10,    // Mainnet
+      'arbitrum': 8,     // L2 popular
+      'base': 7,         // Growing ecosystem
+      'polygon': 5,      // Established L2
+      'optimism': 5,     // L2
+      'avalanche': 4,    // Alt L1
+      'bsc': 3          // Alt L1
     };
 
-    score += chainScores[chain] || 5;
+    score += chainScores[chain.toLowerCase()] || 2;
 
     return score;
   }

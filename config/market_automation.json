@@ -7,12 +7,12 @@
   "defaultGuildId": null,
   "crypto": {
     "enabled": true,
-    "tokens": ["PENGU", "PEPE", "WOJAK", "BTC", "ETH"],
-    "types": ["price_increase_24h", "price_above_target"],
+    "chainsToScan": ["abstract", "ethereum", "arbitrum", "base", "polygon", "optimism", "avalanche", "bsc"],
+    "prioritizeAbstract": true,
+    "abstractMinMarkets": 2,
     "maxPerDay": 3,
-    "priceTargetMultipliers": [1.1, 1.2, 1.5, 2.0],
-    "durationHours": [24, 48, 72],
     "minVolumeUSD": 100000,
+    "minLiquidityUSD": 50000,
     "excludeStablecoins": true
   },
   "sports": {
