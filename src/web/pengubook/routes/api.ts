@@ -275,25 +275,56 @@ export const apiHandlers = {
         return res.status(401).json({ success: false, error: "Not authenticated" });
       }
 
-      // TRACE: Log every balance API call with detailed info
+      // TRACE: Log every balance API call with detailed info including stack trace
       const requestId = Math.random().toString(36).substring(7);
       const timestamp = new Date().toISOString();
       const userAgent = req.headers['user-agent'] || 'Unknown';
       const referer = req.headers['referer'] || 'Unknown';
+      const xRequestedWith = req.headers['x-requested-with'] || 'Not AJAX';
+      const method = req.method;
+      const url = req.url;
 
-      console.log(`🔍 [TRACE-${requestId}] Balance API called at ${timestamp}`);
+      console.log(`🔍 [TRACE-${requestId}] ===== BALANCE API CALL =====`);
+      console.log(`🔍 [TRACE-${requestId}] Time: ${timestamp}`);
       console.log(`🔍 [TRACE-${requestId}] User: ${currentUser.discordId.slice(-4)}`);
+      console.log(`🔍 [TRACE-${requestId}] Method: ${method} ${url}`);
       console.log(`🔍 [TRACE-${requestId}] User-Agent: ${userAgent.substring(0, 100)}`);
       console.log(`🔍 [TRACE-${requestId}] Referer: ${referer}`);
+      console.log(`🔍 [TRACE-${requestId}] X-Requested-With: ${xRequestedWith}`);
+
+      // Log request headers to help identify duplicate calls
+      const relevantHeaders = ['accept', 'content-type', 'origin', 'sec-fetch-site'];
+      relevantHeaders.forEach(header => {
+        if (req.headers[header]) {
+          console.log(`🔍 [TRACE-${requestId}] ${header}: ${req.headers[header]}`);
+        }
+      });
 
       const cacheKey = `balance_${currentUser.discordId}`;
       const cached = balanceCache.get(cacheKey);
 
-      // Return cached data if still fresh
+      // Return cached data if still fresh - AGGRESSIVE CACHING to stop API spam
       if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
-        console.log(`🔍 [TRACE-${requestId}] Returning cached data (${Date.now() - cached.timestamp}ms old)`);
+        const cacheAge = Date.now() - cached.timestamp;
+        console.log(`🔍 [TRACE-${requestId}] 🎯 CACHE HIT - Returning cached data (${cacheAge}ms old)`);
+        console.log(`🔍 [TRACE-${requestId}] 🚫 PREVENTED PRICE API CALL - Using cached prices`);
         return res.json(cached.data);
       }
+
+      // EMERGENCY: If too many requests from same user within 10 seconds, force cache
+      const emergencyKey = `emergency_${currentUser.discordId}`;
+      const lastEmergencyCall = balanceCache.get(emergencyKey);
+      if (lastEmergencyCall && Date.now() - lastEmergencyCall.timestamp < 10000) {
+        console.log(`🔍 [TRACE-${requestId}] 🚨 EMERGENCY RATE LIMIT - User called API ${Date.now() - lastEmergencyCall.timestamp}ms ago`);
+        // Return any cached data we have, even if expired
+        if (cached) {
+          console.log(`🔍 [TRACE-${requestId}] 🚫 FORCED CACHE RETURN - Using expired cache to prevent spam`);
+          return res.json(cached.data);
+        }
+      }
+
+      // Record this emergency call
+      balanceCache.set(emergencyKey, { data: null, timestamp: Date.now() });
 
       console.log(`🔍 [TRACE-${requestId}] Cache miss - fetching fresh data`);
 
