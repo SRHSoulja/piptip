@@ -890,23 +890,24 @@ function generateMarketCard(market: any) {
     timeText = `${minutes}m`;
   }
 
-  // Calculate betting cutoff time (20% before resolution or from marketData)
-  const bettingCutoffTime = market.marketData?.bettingCutoffTime ||
-                            market.marketData?.bettingClosesAt ||
-                            new Date(market.resolveAt).getTime() - (timeLeft * 0.2);
-  const bettingTimeLeft = bettingCutoffTime - Date.now();
-  const bettingClosed = bettingTimeLeft <= 0;
+  // Calculate prediction cutoff time (20% before resolution or from marketData)
+  const resolveAtTime = new Date(market.resolveAt).getTime();
+  const predictionCutoffTime = market.marketData?.bettingCutoffTime ||
+                               market.marketData?.bettingClosesAt ||
+                               Math.max(resolveAtTime - (timeLeft * 0.2), Date.now() + (5 * 60 * 1000)); // At least 5 min buffer
+  const predictionTimeLeft = predictionCutoffTime - Date.now();
+  const predictionsClosed = predictionTimeLeft <= 0;
 
-  let bettingStatus = '';
-  if (bettingClosed) {
-    bettingStatus = '<span style="color: #dc2626;">🔒 Betting closed</span>';
+  let predictionStatus = '';
+  if (predictionsClosed) {
+    predictionStatus = '<span style="color: #dc2626;">🔒 Predictions closed</span>';
   } else {
-    const bettingHours = Math.floor(bettingTimeLeft / (1000 * 60 * 60));
-    const bettingMins = Math.floor((bettingTimeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    if (bettingHours > 0) {
-      bettingStatus = `<span style="color: #059669;">✅ Betting closes in ${bettingHours}h ${bettingMins}m</span>`;
+    const predictionHours = Math.floor(Math.max(0, predictionTimeLeft) / (1000 * 60 * 60));
+    const predictionMins = Math.floor((Math.max(0, predictionTimeLeft) % (1000 * 60 * 60)) / (1000 * 60));
+    if (predictionHours > 0) {
+      predictionStatus = `<span style="color: #059669;">✅ Predictions close in ${predictionHours}h ${predictionMins}m</span>`;
     } else {
-      bettingStatus = `<span style="color: #ea580c;">⚠️ Betting closes in ${bettingMins}m</span>`;
+      predictionStatus = `<span style="color: #ea580c;">⚠️ Predictions close in ${predictionMins}m</span>`;
     }
   }
 
@@ -948,7 +949,7 @@ function generateMarketCard(market: any) {
           <span>💰 Volume: <strong>${market.totalVolume.toLocaleString()} PIPChips</strong></span>
         </div>
         <div style="font-size: 14px;">
-          ${bettingStatus}
+          ${predictionStatus}
         </div>
       </div>
 
@@ -961,8 +962,8 @@ function generateMarketCard(market: any) {
         `).join('')}
       </div>
 
-      <div class="market-stats" style="display: flex; justify-content: space-between; color: #4b5563; font-size: 14px;">
-        <span>👥 ${market.totalBets} bet${market.totalBets !== 1 ? 's' : ''}</span>
+      <div class="market-stats" style="display: flex; justify-content: space-between; color: #1f2937; font-size: 14px;">
+        <span>👥 ${market.totalBets} prediction${market.totalBets !== 1 ? 's' : ''}</span>
         <span>💧 Liquidity: ${market.liquidityParameter || 1000}</span>
         <span>📊 LMSR Market</span>
       </div>

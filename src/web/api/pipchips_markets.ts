@@ -321,18 +321,26 @@ pipchipsMarketsRouter.post("/predict", async (req: Request, res: Response) => {
     }
 
     // Check if market exists and is active
+    console.log('🔍 Looking for market:', { marketId });
     const market = await prisma.predictionMarket.findUnique({
       where: {
-        id: marketId,
-        tokenSymbol: 'PIPCHIPS',
-        status: 'ACTIVE'
+        id: marketId
+        // Remove tokenSymbol filter for now to debug
       }
     });
+    console.log('📊 Found market:', market ? { id: market.id, tokenSymbol: market.tokenSymbol, status: market.status } : 'NOT_FOUND');
 
     if (!market) {
       return res.status(404).json({
         success: false,
-        error: 'Active PIPChips market not found'
+        error: 'Market not found'
+      });
+    }
+
+    if (market.status !== 'ACTIVE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Market is not active'
       });
     }
 
@@ -467,18 +475,26 @@ pipchipsMarketsRouter.post("/bet", async (req: Request, res: Response) => {
     }
 
     // Check if market exists and is active
+    console.log('🔍 Looking for market:', { marketId });
     const market = await prisma.predictionMarket.findUnique({
       where: {
-        id: marketId,
-        tokenSymbol: 'PIPCHIPS',
-        status: 'ACTIVE'
+        id: marketId
+        // Remove tokenSymbol filter for now to debug
       }
     });
+    console.log('📊 Found market:', market ? { id: market.id, tokenSymbol: market.tokenSymbol, status: market.status } : 'NOT_FOUND');
 
     if (!market) {
       return res.status(404).json({
         success: false,
-        error: 'Active PIPChips market not found'
+        error: 'Market not found'
+      });
+    }
+
+    if (market.status !== 'ACTIVE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Market is not active'
       });
     }
 
