@@ -54,6 +54,11 @@ class PriceAPIService {
    */
   async getTokenPrices(symbols: string[]): Promise<PriceAPIResponse> {
     try {
+      // Log call source for debugging multiple calls
+      const stack = new Error().stack;
+      const caller = stack?.split('\n')[2]?.trim() || 'Unknown';
+      console.log(`🔍 Price API called for ${symbols.join(',')} from: ${caller}`);
+
       // First try DexScreener (best for Abstract Chain DEX tokens)
       const dexscreenerResult = await this.fetchFromDexScreener(symbols);
       if (dexscreenerResult.success) {
