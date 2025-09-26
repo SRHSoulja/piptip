@@ -1293,6 +1293,13 @@ function generatePIPChipsMarketDetailContent(data: any) {
 
         if (!confirm(\`Place \${amount} PIPChips on \${outcome}?\`)) return;
 
+        // Disable buttons and show loading state
+        const buttons = document.querySelectorAll('.bet-amount-btn');
+        buttons.forEach(btn => {
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+        });
+
         try {
           const response = await fetch('/api/pipchips/predict', {
             method: 'POST',
@@ -1303,13 +1310,44 @@ function generatePIPChipsMarketDetailContent(data: any) {
           const result = await response.json();
 
           if (result.success) {
-            alert(\`Participation placed successfully! You bought \${result.participation.sharesPurchased.toFixed(2)} shares.\`);
-            location.reload();
+            // Show success message without blocking the UI
+            const successMsg = document.createElement('div');
+            successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #065f46; color: #d1fae5; padding: 16px; border-radius: 8px; border: 1px solid #10b981; z-index: 1000; font-weight: 600;';
+            successMsg.textContent = \`✅ Prediction placed successfully! Spent \${amount} PIPChips on \${outcome}\`;
+            document.body.appendChild(successMsg);
+
+            // Remove success message after 5 seconds
+            setTimeout(() => successMsg.remove(), 5000);
+
+            // Update balance display if it exists
+            const balanceElement = document.querySelector('.balance-info h2');
+            if (balanceElement && result.userBalance) {
+              balanceElement.textContent = \`\${result.userBalance.current.toLocaleString()} PIPChips\`;
+            }
+
+            // Re-enable buttons after a short delay
+            setTimeout(() => {
+              buttons.forEach(btn => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+              });
+            }, 1000);
+
           } else {
             alert('Error: ' + result.error);
+            // Re-enable buttons on error
+            buttons.forEach(btn => {
+              btn.disabled = false;
+              btn.style.opacity = '1';
+            });
           }
         } catch (error) {
           alert('Network error placing participation');
+          // Re-enable buttons on error
+          buttons.forEach(btn => {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+          });
         }
       }
     </script>
