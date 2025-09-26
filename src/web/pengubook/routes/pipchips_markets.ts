@@ -1034,7 +1034,7 @@ function generatePIPChipsMarketDetailContent(data: any) {
 
       .market-stats .label {
         display: block;
-        color: #6b7280;
+        color: #374151;
         font-size: 14px;
         margin-bottom: 4px;
       }
@@ -1110,7 +1110,7 @@ function generatePIPChipsMarketDetailContent(data: any) {
 
       .price-label {
         display: block;
-        color: #6b7280;
+        color: #374151;
         font-size: 14px;
       }
 
@@ -1178,7 +1178,7 @@ function generatePIPChipsMarketDetailContent(data: any) {
       }
 
       .participation-date {
-        color: #6b7280;
+        color: #374151;
         font-size: 14px;
       }
     </style>
@@ -1271,7 +1271,7 @@ function generatePIPChipsMarketDetailContent(data: any) {
         if (!confirm(\`Place \${amount} PIPChips on \${outcome}?\`)) return;
 
         try {
-          const response = await fetch('/api/pipchips/bet', {
+          const response = await fetch('/api/pipchips/predict', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ marketId, outcome, pipchipsAmount: amount })
