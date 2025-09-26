@@ -493,7 +493,11 @@ export function generateHomeContent(user: any, currentUser: any): string {
     </div>
 
     <script>
-        // Wallet balance functionality
+        // Wallet balance functionality with debouncing to prevent API spam
+        let balanceLoading = false;
+        let lastBalanceLoad = 0;
+        const BALANCE_DEBOUNCE_MS = 2000; // Minimum 2 seconds between calls
+
         async function loadBalances() {
             const container = document.getElementById('balanceContainer');
             const refreshBtn = document.getElementById('refreshBalanceBtn');
@@ -502,10 +506,26 @@ export function generateHomeContent(user: any, currentUser: any): string {
                 return;
             }
 
+            // Prevent multiple simultaneous calls
+            if (balanceLoading) {
+                console.log('🚫 Balance load already in progress, skipping...');
+                return;
+            }
+
+            // Debounce rapid calls
+            const now = Date.now();
+            if (now - lastBalanceLoad < BALANCE_DEBOUNCE_MS) {
+                console.log(\`🚫 Balance load debounced (last load \${now - lastBalanceLoad}ms ago)\`);
+                return;
+            }
+
             try {
+                balanceLoading = true;
+                lastBalanceLoad = now;
                 refreshBtn.disabled = true;
                 refreshBtn.textContent = '🔄 Loading...';
 
+                console.log('📊 Loading balances from API...');
                 const response = await fetch('/pengubook/api/balance');
                 const data = await response.json();
 
@@ -555,6 +575,7 @@ export function generateHomeContent(user: any, currentUser: any): string {
                     </div>
                 \`;
             } finally {
+                balanceLoading = false;
                 refreshBtn.disabled = false;
                 refreshBtn.textContent = '🔄 Refresh';
             }
