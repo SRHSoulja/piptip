@@ -275,62 +275,13 @@ export const apiHandlers = {
         return res.status(401).json({ success: false, error: "Not authenticated" });
       }
 
-      // TRACE: Log every balance API call with detailed info including stack trace
-      const requestId = Math.random().toString(36).substring(7);
-      const timestamp = new Date().toISOString();
-      const userAgent = req.headers['user-agent'] || 'Unknown';
-      const referer = req.headers['referer'] || 'Unknown';
-      const xRequestedWith = req.headers['x-requested-with'] || 'Not AJAX';
-      const method = req.method;
-      const url = req.url;
-
-      console.log(`🔍 [TRACE-${requestId}] ===== BALANCE API CALL =====`);
-      console.log(`🔍 [TRACE-${requestId}] Time: ${timestamp}`);
-      console.log(`🔍 [TRACE-${requestId}] User: ${currentUser.discordId.slice(-4)}`);
-      console.log(`🔍 [TRACE-${requestId}] Method: ${method} ${url}`);
-      console.log(`🔍 [TRACE-${requestId}] User-Agent: ${userAgent.substring(0, 100)}`);
-      console.log(`🔍 [TRACE-${requestId}] Referer: ${referer}`);
-      console.log(`🔍 [TRACE-${requestId}] X-Requested-With: ${xRequestedWith}`);
-
-      // Log request headers to help identify duplicate calls
-      const relevantHeaders = ['accept', 'content-type', 'origin', 'sec-fetch-site'];
-      relevantHeaders.forEach(header => {
-        if (req.headers[header]) {
-          console.log(`🔍 [TRACE-${requestId}] ${header}: ${req.headers[header]}`);
-        }
-      });
-
       const cacheKey = `balance_${currentUser.discordId}`;
       const cached = balanceCache.get(cacheKey);
 
-      // Return cached data if still fresh - AGGRESSIVE CACHING to stop API spam
+      // Return cached data if still fresh (30 second cache)
       if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
-        const cacheAge = Date.now() - cached.timestamp;
-        console.log(`🔍 [TRACE-${requestId}] 🎯 CACHE HIT - Returning cached data (${cacheAge}ms old)`);
-        console.log(`🔍 [TRACE-${requestId}] 🚫 PREVENTED PRICE API CALL - Using cached prices`);
         return res.json(cached.data);
       }
-
-      // EMERGENCY: If too many requests from same user within 10 seconds, force cache
-      const emergencyKey = `emergency_${currentUser.discordId}`;
-      const lastEmergencyCall = balanceCache.get(emergencyKey);
-      if (lastEmergencyCall && Date.now() - lastEmergencyCall.timestamp < 10000) {
-        console.log(`🔍 [TRACE-${requestId}] 🚨 EMERGENCY RATE LIMIT - User called API ${Date.now() - lastEmergencyCall.timestamp}ms ago`);
-        // Return any cached data we have, even if expired
-        if (cached) {
-          console.log(`🔍 [TRACE-${requestId}] 🚫 FORCED CACHE RETURN - Using expired cache to prevent spam`);
-          return res.json(cached.data);
-        }
-      }
-
-      // Record this emergency call
-      balanceCache.set(emergencyKey, { data: null, timestamp: Date.now() });
-
-      console.log(`🔍 [TRACE-${requestId}] Cache miss - fetching fresh data`);
-
-      const cacheAge = cached ? Date.now() - cached.timestamp : 'no cache';
-      console.log(`🔍 [TRACE-${requestId}] Cache age: ${cacheAge}`);
-      console.log(`🔍 [TRACE-${requestId}] About to call priceAPI.getTokenPrices()`);
 
       const user = await findOrCreateUser(currentUser.discordId);
       const balances = await prisma.userBalance.findMany({
@@ -343,21 +294,13 @@ export const apiHandlers = {
 
       let priceResult: { prices: Record<string, number>; source: string } | null = null;
 
-      // EMERGENCY CIRCUIT BREAKER - Can be enabled via environment variable
-      const emergencyDisablePrices = process.env.EMERGENCY_DISABLE_PRICE_API === 'true';
 
-      if (tokenSymbols.length > 0 && !emergencyDisablePrices) {
+      if (tokenSymbols.length > 0) {
         try {
-          console.log(`🔍 [TRACE-${requestId}] Calling priceAPI.getTokenPrices([${tokenSymbols.join(',')}])`);
-          const priceCallStart = Date.now();
           priceResult = await priceAPI.getTokenPrices(tokenSymbols);
-          const priceCallEnd = Date.now();
-          console.log(`🔍 [TRACE-${requestId}] Price API completed in ${priceCallEnd - priceCallStart}ms, source: ${priceResult.source}`);
         } catch (error) {
-          console.warn(`🔍 [TRACE-${requestId}] Price API failed:`, error);
+          console.warn("Failed to fetch USD prices for balances:", error);
         }
-      } else if (emergencyDisablePrices) {
-        console.warn(`🔍 [TRACE-${requestId}] EMERGENCY: Price API disabled via EMERGENCY_DISABLE_PRICE_API=true`);
       }
 
       const priceMap = priceResult?.prices ?? {};
