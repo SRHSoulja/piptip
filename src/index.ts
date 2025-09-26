@@ -3,7 +3,7 @@ import "dotenv/config";
 import express, { Request, Response } from "express";
 import session from "express-session";
 import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import cors from "cors";
 import connectPgSimple from "connect-pg-simple";
 import path from "path";
@@ -88,13 +88,13 @@ const globalLimiter = rateLimit({
            req.path === '/favicon.ico';
   },
   keyGenerator: (req, res) => {
-    // Use express-rate-limit's built-in helper for IPv6 compatibility
+    // Use express-rate-limit's IPv6-compatible helper
     const forwardedFor = req.headers['x-forwarded-for'];
     if (forwardedFor) {
-      const ip = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0];
-      return ip.trim();
+      const ip = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0].trim();
+      return ipKeyGenerator(ip);
     }
-    return req.ip || req.socket.remoteAddress || 'anonymous';
+    return ipKeyGenerator(req.ip || req.socket.remoteAddress || 'anonymous');
   }
 });
 
