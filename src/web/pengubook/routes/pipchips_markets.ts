@@ -1307,6 +1307,23 @@ function generatePIPChipsMarketDetailContent(data: any) {
             body: JSON.stringify({ marketId, outcome, pipchipsAmount: amount })
           });
 
+          // Check if response is ok
+          if (!response.ok) {
+            if (response.status === 401) {
+              alert('⚠️ You need to log in first! Please sign in with Discord to place predictions.');
+              window.location.href = '/auth/discord';
+              return;
+            } else {
+              alert(\`Server error (\${response.status}): \${response.statusText}\`);
+              // Re-enable buttons on error
+              buttons.forEach(btn => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+              });
+              return;
+            }
+          }
+
           const result = await response.json();
 
           if (result.success) {
