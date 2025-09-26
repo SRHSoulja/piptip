@@ -21,6 +21,8 @@ class PriceAPIService {
   private lastAPICall = new Map<string, number>(); // Track API call times
   private readonly MIN_CALL_INTERVAL = 1000; // 1 second between calls per API
   private apiCallCount = new Map<string, number>(); // Track call counts per hour
+  private globalRateLimit = new Map<string, number>(); // Global deduplication
+  private readonly GLOBAL_RATE_LIMIT = 3000; // 3 seconds between identical requests
 
   /**
    * Check if we can make an API call (rate limiting)
@@ -63,10 +65,36 @@ class PriceAPIService {
       const now = Date.now();
       const cacheKey = symbols.sort().join(','); // Create consistent key
 
-      // Check if we've fetched these symbols very recently (within 1 second)
+      // ULTRA-AGGRESSIVE: Check if we've fetched these symbols very recently (within 5 seconds)
+      const globalKey = symbols.sort().join(',');
+      const lastGlobalCall = this.globalRateLimit.get(globalKey) || 0;
+
+      if (now - lastGlobalCall < this.GLOBAL_RATE_LIMIT) { // 3 second HARD limit
+        console.log(`🚫 GLOBAL Price API rate limited (${symbols.join(',')}) - ${now - lastGlobalCall}ms ago`);
+        // Return cached prices immediately - no API call
+        const prices: Record<string, number> = {};
+        symbols.forEach(symbol => {
+          const cached = this.cache.get(symbol);
+          if (cached) {
+            prices[symbol] = cached.price;
+          } else {
+            // Use fallback price if no cache
+            const fallbackPrices: Record<string, number> = {
+              'PGU': 0.001, 'ICE': 0.0005, 'PEB': 0.0002, 'ABSTER': 0.019
+            };
+            prices[symbol] = fallbackPrices[symbol] || 0.001;
+          }
+        });
+        return { success: true, prices, source: 'fallback' };
+      }
+
+      // Record this global call to prevent immediate duplicates
+      this.globalRateLimit.set(globalKey, now);
+
+      // Check individual symbol cache (legacy check)
       if (this.cache.has(cacheKey)) {
         const cached = this.cache.get(cacheKey)!;
-        if (now - cached.timestamp < 1000) { // 1 second aggressive rate limit
+        if (now - cached.timestamp < 1000) { // 1 second legacy rate limit
           console.log(`🚫 Price API rate limited (${symbols.join(',')}) - using recent cache`);
           // Return cached prices in the correct format
           const prices: Record<string, number> = {};
