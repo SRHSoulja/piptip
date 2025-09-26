@@ -118,6 +118,9 @@ export function generateBaseHTML(content: string, title: string = 'PenguBook', c
             }
         };
 
+        // Initialize global balance loading flag
+        window.balanceLoadingGlobal = false;
+
         // Ensure loading overlay is hidden by default after page load
         document.addEventListener('DOMContentLoaded', () => {
             window.setGlobalLoading(false);
@@ -498,6 +501,9 @@ export function generateHomeContent(user: any, currentUser: any): string {
         let lastBalanceLoad = 0;
         const BALANCE_DEBOUNCE_MS = 2000; // Minimum 2 seconds between calls
 
+        // Global flag to prevent duplicate balance loading across different components
+        window.balanceLoadingGlobal = window.balanceLoadingGlobal || false;
+
         async function loadBalances() {
             const container = document.getElementById('balanceContainer');
             const refreshBtn = document.getElementById('refreshBalanceBtn');
@@ -506,9 +512,9 @@ export function generateHomeContent(user: any, currentUser: any): string {
                 return;
             }
 
-            // Prevent multiple simultaneous calls
-            if (balanceLoading) {
-                console.log('🚫 Balance load already in progress, skipping...');
+            // Prevent multiple simultaneous calls (local and global)
+            if (balanceLoading || window.balanceLoadingGlobal) {
+                console.log('🚫 Balance load already in progress (local or global), skipping...');
                 return;
             }
 
@@ -521,6 +527,7 @@ export function generateHomeContent(user: any, currentUser: any): string {
 
             try {
                 balanceLoading = true;
+                window.balanceLoadingGlobal = true;
                 lastBalanceLoad = now;
                 refreshBtn.disabled = true;
                 refreshBtn.textContent = '🔄 Loading...';
@@ -576,6 +583,7 @@ export function generateHomeContent(user: any, currentUser: any): string {
                 \`;
             } finally {
                 balanceLoading = false;
+                window.balanceLoadingGlobal = false;
                 refreshBtn.disabled = false;
                 refreshBtn.textContent = '🔄 Refresh';
             }
