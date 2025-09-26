@@ -203,10 +203,13 @@ class PriceAPIService {
                   );
 
                   if (symbol) {
-                    prices[symbol] = priceUsd;
-                    change24h[symbol] = priceChange24h;
-                    this.updateCache(symbol, priceUsd, priceChange24h);
-                    console.log(`✅ DexScreener price for ${symbol}: $${priceUsd} (24h: ${priceChange24h}%)`);
+                    // Only update if this is a better (higher) price or first price found
+                    if (!prices[symbol] || priceUsd > prices[symbol]) {
+                      prices[symbol] = priceUsd;
+                      change24h[symbol] = priceChange24h;
+                      this.updateCache(symbol, priceUsd, priceChange24h);
+                      console.log(`✅ DexScreener best price for ${symbol}: $${priceUsd} (24h: ${priceChange24h}%) from ${pair.dexId || 'Unknown'}`);
+                    }
                   }
                 }
               }
