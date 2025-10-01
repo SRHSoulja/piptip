@@ -249,8 +249,12 @@ export function verifyCSRFToken(req: Request, res: Response, next: NextFunction)
   }
 
   // Skip CSRF for specific endpoints that handle their own protection
-  const skipPaths = ['/auth/login', '/auth/mfa/initiate', '/auth/mfa/verify', '/ping'];
+  const skipPaths = [
+    '/auth/login', '/auth/mfa/initiate', '/auth/mfa/verify', '/ping',
+    '/system/grand-reset'  // Admin bearer-auth provides equivalent protection
+  ];
   if (skipPaths.some(path => req.path.endsWith(path))) {
+    console.log('🔓 Skipping CSRF for whitelisted path:', req.path);
     return next();
   }
 
