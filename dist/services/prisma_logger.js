@@ -19,7 +19,12 @@ const prismaWithLogging = new PrismaClient({
       emit: "event",
       level: "error"
     }
-  ]
+  ],
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL
+    }
+  }
 });
 prismaWithLogging.$on("query", (e) => {
   const duration = e.duration;

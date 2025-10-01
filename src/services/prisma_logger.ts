@@ -5,8 +5,6 @@ import { incrementSlowQueries } from './metrics.js';
 const SLOW_QUERY_THRESHOLD_MS = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || '300');
 
 // Create Prisma client with logging configuration and optimized connection handling
-// Note: Uses DATABASE_URL from environment by default (set by Prisma)
-// For network-specific databases, set DATABASE_URL in Railway based on NETWORK variable
 export const prismaWithLogging = new PrismaClient({
   log: [
     {
@@ -26,6 +24,11 @@ export const prismaWithLogging = new PrismaClient({
       level: 'error',
     },
   ],
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
 });
 
 // Track query performance and log slow queries
