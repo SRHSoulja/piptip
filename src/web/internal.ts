@@ -197,4 +197,57 @@ internalRouter.post("/cancel-non-api-markets", async (req: Request, res: Respons
   return cancelNonApiMarkets(req, res);
 });
 
+// Grand reset endpoint (no CSRF protection required)
+internalRouter.post("/grand-reset", async (req: Request, res: Response) => {
+  const auth = req.headers.authorization ?? "";
+  if (!INTERNAL_BEARER || auth !== `Bearer ${INTERNAL_BEARER}`) {
+    return unauthorized(res);
+  }
+
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const resetPrisma = new PrismaClient();
+
+    // Delete all user data
+    await resetPrisma.$transaction(async (tx) => {
+      await tx.notification.deleteMany({});
+      await tx.activityFeedItem.deleteMany({});
+      await tx.pipchipsTransaction.deleteMany({});
+      await tx.tournamentParticipant.deleteMany({});
+      await tx.tournamentSession.deleteMany({});
+      await tx.groupTipClaim.deleteMany({});
+      await tx.groupTipContribution.deleteMany({});
+      await tx.groupTip.deleteMany({});
+      await tx.tip.deleteMany({});
+      await tx.match.deleteMany({});
+      await tx.userBalance.deleteMany({});
+      await tx.tierMembership.deleteMany({});
+      await tx.transaction.deleteMany({});
+      await tx.processedDeposit.deleteMany({});
+      await tx.webhookEvent.deleteMany({});
+      await tx.user.deleteMany({});
+
+      // Delete stress test markets
+      await tx.predictionMarket.deleteMany({
+        where: {
+          id: { in: ['cmg6217q20000hyepxpx8e3p6', 'cmg63d3lf0011hyborcqnw03u', 'cmg64g4dr000lhyf6ial1izo8'] }
+        }
+      });
+    });
+
+    await resetPrisma.$disconnect();
+
+    res.json({
+      success: true,
+      message: 'Grand reset completed - all user data and stress test markets deleted'
+    });
+  } catch (error: any) {
+    console.error('Grand reset error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 export { internalRouter };
