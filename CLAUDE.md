@@ -95,7 +95,7 @@ console.log('🚀 PIPTip v2.X.X - [description of fix]');
 
 ## Architecture
 
-PIPTip is a Discord tipping bot for Abstract Chain tokens (Penguin, Ice, Pebble) with integrated web admin interface.
+PIPTip (Penguin Ice Pebble Tip Bot) is a Discord tipping bot for Abstract Chain with multi-token support. The name comes from the rock-paper-scissors style game: Penguin beats Ice, Ice beats Pebble, Pebble beats Penguin. Users can tip each other, play matches, participate in prediction markets, and more.
 
 ### Core Components
 
@@ -166,3 +166,78 @@ Requires extensive `.env` configuration including Discord credentials, PostgreSQ
 3. Confirm PostgreSQL session store: "✅ PostgreSQL session store configured"
 4. Ensure routes load after sessions: "✅ Session-dependent routes configured"
 5. Session ID should remain consistent between OAuth callback and redirect
+
+## Multi-Token Economy
+
+PIPTip supports multiple ERC-20 tokens on Abstract Chain:
+- **Token Management**: Tokens stored in `Token` table with address, symbol, decimals, and active status
+- **Balance System**: Per-user, per-token balances in `UserBalance` table with atomic precision
+- **Token Operations**: All financial operations (tips, deposits, withdrawals, matches) support multi-token
+- **Admin Controls**: Tokens can be added/removed via admin panel at `/admin/ui`
+- **Minimum Amounts**: Each token has configurable `minDeposit` and `minWithdraw` thresholds
+
+### Adding New Tokens
+1. Admin panel: Enter token address at `/admin/ui` → Tokens section
+2. System fetches metadata (symbol, decimals) from blockchain via Alchemy
+3. Configure minimums and fee percentages
+4. Token appears in all user-facing commands with autocomplete
+
+## CSRF Protection
+
+Admin panel and state-changing endpoints use CSRF protection with session binding:
+- **Token Generation**: HMAC-based tokens bound to session ID and user ID
+- **Double Submit Cookie**: Enhanced security with cookie + header validation
+- **Bearer Auth Bypass**: Admin endpoints with Bearer token skip CSRF (bearer tokens prevent CSRF)
+- **Whitelisted Paths**: Auth endpoints and certain system endpoints skip CSRF validation
+- **Service File**: `src/services/csrf_protection.ts`
+
+### CSRF Exemptions
+Endpoints that skip CSRF validation:
+- `/auth/login`, `/auth/mfa/initiate`, `/auth/mfa/verify` - Auth flow
+- `/ping` - Health check
+- `/system/grand-reset` - Protected by bearer auth
+- All admin endpoints with valid Bearer token in Authorization header
+
+## Database Connection Management
+
+### Supabase Pooler Configuration
+- **Pooler Mode**: Transaction pooler (port 6543) for prepared statement compatibility
+- **Connection String**: `postgresql://[user]:[password]@[host]:6543/[database]?pgbouncer=true&connection_limit=5`
+- **Retry Logic**: Exponential backoff with 3 retries in `src/services/db.ts`
+- **Keepalive Queries**: Periodic `SELECT 1` to maintain connection
+- **Session Store**: Limited to 3 connections to stay under 60 connection limit on Supabase Free tier
+
+### Network Switching
+- **Testnet**: Set `NETWORK=testnet` + `TEST_DATABASE_URL` for isolated test database
+- **Mainnet**: Set `NETWORK=mainnet` + standard `DATABASE_URL`
+- **Automatic Switching**: Database URL switches based on NETWORK environment variable
+- **Safety**: Test database prevents accidental production data corruption during testing
+
+## Common Issues & Solutions
+
+### Discord Command Timeouts
+**Problem**: Commands fail with "Unknown interaction" or "Interaction already acknowledged"
+**Cause**: Command processing takes >3 seconds before deferring
+**Solution**:
+- Use `withAutoChannelCheck` wrapper for automatic deferral
+- Pre-warm caches at startup (e.g., guild settings cache in `src/index.ts`)
+- Defer interaction BEFORE doing slow operations (DB queries, API calls)
+
+### Profile Command Slow Performance
+**Problem**: `/pip_profile` times out on first use
+**Solution**: Guild settings cache warming at bot startup prevents first-use delay
+
+### Social Leaderboard Performance
+**Problem**: Leaderboard fails for many users with database errors
+**Cause**: Too many users being processed with complex queries
+**Solution**: Limited to 150 users max in `src/services/social_leaderboards.ts`
+**Circuit Breaker**: Stops processing if database connection fails
+
+### Prediction Market Auto-Resolution Failures
+**Problem**: Markets fail to resolve with "not API-guaranteed" errors
+**Cause**: Market created without `apiGuaranteed: true` flag or missing template metadata
+**Solution**:
+- All crypto markets MUST be created via automation scheduler
+- Manual market creation blocked for crypto market types in admin panel
+- Validation at startup: `src/services/crypto_market_validator.ts`
+- Only markets with `apiGuaranteed: true` can auto-resolve
