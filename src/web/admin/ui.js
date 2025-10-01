@@ -233,22 +233,9 @@ const API = async (path, opts = {}) => {
   const secret = localStorage.getItem("pip_admin_secret") || "";
   const headers = { "Authorization": `Bearer ${secret}`, ...(opts.headers || {}) };
 
-  // Add CSRF protection for state-changing requests
-  if (opts.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(opts.method.toUpperCase())) {
-    const hasCSRF = await ensureCSRFToken();
-    if (hasCSRF && csrfToken && csrfSecret) {
-      headers['X-CSRF-Token'] = csrfToken;
-      headers['X-CSRF-Secret'] = csrfSecret;
-      console.log("🔐 Added CSRF protection to", opts.method, "request");
-
-      // Mark token as used (will need refresh for next request)
-      csrfToken = null;
-      csrfSecret = null;
-      csrfExpiry = null;
-    } else {
-      console.warn("⚠️ Could not obtain CSRF token for state-changing request");
-    }
-  }
+  // Bearer token authentication provides CSRF protection
+  // Server-side exempts bearer-authenticated admin requests from CSRF validation
+  // So we don't need to add CSRF tokens here
 
   console.log(`🌐 Making API call to: ${path}`);
   try {
