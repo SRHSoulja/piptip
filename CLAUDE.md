@@ -65,6 +65,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Manual**: Follow procedures in `DEPLOYMENT_RUNBOOK.md`
 - **Environment**: Use `.env.example` as template for production environment setup
 
+### Railway Build Cache Issues (CRITICAL)
+
+**Problem**: Railway may deploy stale compiled JavaScript from cached `dist/` directory even after pushing new TypeScript changes.
+
+**Symptoms**:
+- New console.log statements don't appear in production logs
+- Code changes don't take effect despite "Deployment successful" messages
+- Version markers added to code don't show up in logs
+- Fixes appear to work locally but not in production
+
+**Verification Method**:
+Always add version markers when making critical fixes to verify deployment:
+```typescript
+console.log('🚀 PIPTip v2.X.X - [description of fix]');
+```
+
+**Solutions**:
+1. **Force rebuild** (nuclear option): Delete `dist/` directory and commit
+   ```bash
+   rm -rf dist/ && git add -A && git commit -m "Force Railway rebuild" && git push
+   ```
+2. **Railway dashboard**: Use "Redeploy" with "Clear build cache" option if available
+3. **Verify deployment**: Always check logs for version markers before assuming fix worked
+
+**Important**: Railway showing "Deployment successful" does NOT guarantee your code changes are running. The build cache can serve old compiled code. Always verify with log markers or by testing the actual functionality.
+
+**Root Cause**: Railway's build process compiles TypeScript to `dist/` using `npm run build`. If the build cache isn't properly invalidated, Railway deploys cached compiled JavaScript instead of rebuilding from new source.
+
 ## Architecture
 
 PIPTip is a Discord tipping bot for Abstract Chain tokens (Penguin, Ice, Pebble) with integrated web admin interface.
