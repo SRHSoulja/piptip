@@ -77,7 +77,7 @@ export async function profileEmbed(data: {
   const basicFields = [
     { name: "🐟 Fish Balance", value: balanceDisplay, inline: true },
     { name: "⚔️ Battle Record", value: `${data.wins}W • ${data.losses}L • ${data.ties}T`, inline: true },
-    { name: "🏠 Ice Cave Address", value: data.agwAddress ? `\`${data.agwAddress.slice(0, 10)}...\`` : "🚫 No cave linked", inline: true }
+    { name: "💼 Wallet Address", value: data.agwAddress ? `\`${data.agwAddress.slice(0, 10)}...\`` : "🚫 Not linked", inline: true }
   ];
 
   // Add level information if available
