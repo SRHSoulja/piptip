@@ -604,12 +604,16 @@ async function main() {
     await ensurePrisma();
     console.log("Database connected");
 
-    // Configure PostgreSQL session store
+    // Configure PostgreSQL session store with limited pool
     const PgSession = connectPgSimple(session);
     const sessionStore = new PgSession({
       conString: process.env.DATABASE_URL,
       tableName: "session",
-      createTableIfMissing: true
+      createTableIfMissing: true,
+      pool: {
+        min: 1,
+        max: 3
+      }
     });
     console.log("✅ PostgreSQL session store configured");
 
