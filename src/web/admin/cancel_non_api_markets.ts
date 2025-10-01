@@ -8,17 +8,36 @@ const CRYPTO_MARKET_TYPES = [
   'PRICE_UP_DOWN', 'PRICE_ABOVE_BELOW', 'VOLUME_RANKING'
 ];
 
+// Known stress test market IDs to force cancel
+const STRESS_TEST_MARKET_IDS = [
+  'cmg6217q20000hyepxpx8e3p6',
+  'cmg63d3lf0011hyborcqnw03u',
+  'cmg64g4dr000lhyf6ial1izo8'
+];
+
 export async function cancelNonApiMarkets(req: Request, res: Response) {
   try {
-    // Find all crypto markets without proper flags
+    // Find all crypto markets without proper flags OR stress test markets
     const violatingMarkets = await prisma.predictionMarket.findMany({
       where: {
-        status: 'ACTIVE',
-        marketType: { in: CRYPTO_MARKET_TYPES }
+        OR: [
+          {
+            status: 'ACTIVE',
+            marketType: { in: CRYPTO_MARKET_TYPES }
+          },
+          {
+            id: { in: STRESS_TEST_MARKET_IDS }
+          }
+        ]
       }
     });
 
     const toCancel = violatingMarkets.filter(m => {
+      // Always cancel stress test markets
+      if (STRESS_TEST_MARKET_IDS.includes(m.id)) {
+        return true;
+      }
+      // Otherwise check API guarantees
       const marketData = m.marketData as any;
       return !marketData?.templateBased || !marketData?.apiGuaranteed;
     });
