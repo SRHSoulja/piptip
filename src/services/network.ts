@@ -215,25 +215,60 @@ export function getFullNetworkInfo() {
 /**
  * Legacy compatibility - provides ABSTRACT_RPC_URL value
  * @deprecated Use getAbstractRpcUrl() instead
+ * Note: Uses lazy evaluation to avoid module load-time errors
  */
-export const ABSTRACT_RPC_URL = getAbstractRpcUrl();
+let _cachedRpcUrl: string | undefined;
+export function getLegacyAbstractRpcUrl(): string {
+  if (!_cachedRpcUrl) {
+    _cachedRpcUrl = getAbstractRpcUrl();
+  }
+  return _cachedRpcUrl;
+}
+
+// Lazy getter for backward compatibility
+Object.defineProperty(exports, 'ABSTRACT_RPC_URL', {
+  get: getLegacyAbstractRpcUrl,
+  enumerable: true
+});
 
 /**
  * Legacy compatibility - provides ABSTRACT_CHAIN_ID value
  * @deprecated Use getAbstractChainId() instead
+ * Note: Uses lazy evaluation to avoid module load-time errors
  */
-export const ABSTRACT_CHAIN_ID = getAbstractChainId();
-
-// Log network configuration on module load
-const config = getNetworkConfig();
-console.log(`🌐 Network configured: ${getNetworkDisplayName()}`);
-console.log(`📡 RPC URL: ${config.rpcUrl.replace(/\/v2\/.*/, '/v2/***')}`); // Hide API key
-
-// Backward compatibility warning if old env vars are set
-if (process.env.ABSTRACT_RPC_URL && process.env.ABSTRACT_RPC_URL !== config.rpcUrl) {
-  console.warn(`⚠️ ABSTRACT_RPC_URL is set but will be ignored. Using ${config.network} configuration instead.`);
+let _cachedChainId: number | undefined;
+export function getLegacyAbstractChainId(): number {
+  if (!_cachedChainId) {
+    _cachedChainId = getAbstractChainId();
+  }
+  return _cachedChainId;
 }
 
-if (process.env.ABSTRACT_CHAIN_ID && parseInt(process.env.ABSTRACT_CHAIN_ID) !== config.chainId) {
-  console.warn(`⚠️ ABSTRACT_CHAIN_ID is set but will be ignored. Using ${config.network} configuration instead.`);
+// Lazy getter for backward compatibility
+Object.defineProperty(exports, 'ABSTRACT_CHAIN_ID', {
+  get: getLegacyAbstractChainId,
+  enumerable: true
+});
+
+// Log network configuration on module load (with error handling)
+try {
+  const config = getNetworkConfig();
+  console.log(`🌐 Network configured: ${getNetworkDisplayName()}`);
+  console.log(`📡 RPC URL: ${config.rpcUrl.replace(/\/v2\/.*/, '/v2/***')}`); // Hide API key
+
+  // Backward compatibility warning if old env vars are set
+  if (process.env.ABSTRACT_RPC_URL && process.env.ABSTRACT_RPC_URL !== config.rpcUrl) {
+    console.warn(`⚠️ ABSTRACT_RPC_URL is set but will be ignored. Using ${config.network} configuration instead.`);
+  }
+
+  if (process.env.ABSTRACT_CHAIN_ID && parseInt(process.env.ABSTRACT_CHAIN_ID) !== config.chainId) {
+    console.warn(`⚠️ ABSTRACT_CHAIN_ID is set but will be ignored. Using ${config.network} configuration instead.`);
+  }
+} catch (error) {
+  console.error(`❌ Network configuration error: ${error instanceof Error ? error.message : String(error)}`);
+  console.error('⚠️  Please check your environment variables:');
+  console.error(`   - NETWORK=${process.env.NETWORK || 'not set (defaults to mainnet)'}`);
+  console.error(`   - For mainnet: MAINNET_RPC_URL and MAINNET_CHAIN_ID must be set`);
+  console.error(`   - For testnet: TESTNET_RPC_URL and TESTNET_CHAIN_ID must be set`);
+  throw error; // Re-throw to prevent startup with invalid config
 }
