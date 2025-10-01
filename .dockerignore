@@ -1,0 +1,74 @@
+# Tests
+tests/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# Test results and documentation
+TEST_*.md
+*_TEST_*.md
+test-results/
+coverage/
+
+# Development files
+*.backup
+.env.test
+.env.local
+.env.development
+
+# Docker and infrastructure
+docker-compose*.yml
+Dockerfile*
+
+# Build artifacts (keep dist for production)
+cache/
+cache-zk/
+artifacts/
+artifacts-zk/
+reports/
+
+# Scripts (except production needed ones)
+scripts/test_*.ts
+scripts/*_test.ts
+scripts/stress_*.ts
+scripts/validate_*.ts
+scripts/seed_test_*.ts
+scripts/setup_test_*.sh
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node
+node_modules/
+.npm
+.node_repl_history
+
+# Temporary files
+tmp/
+temp/
+*.tmp
