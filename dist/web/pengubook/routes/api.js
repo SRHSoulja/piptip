@@ -238,7 +238,7 @@ export const apiHandlers = {
             }
             const cacheKey = `balance_${currentUser.discordId}`;
             const cached = balanceCache.get(cacheKey);
-            // Return cached data if still fresh
+            // Return cached data if still fresh (30 second cache)
             if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
                 return res.json(cached.data);
             }

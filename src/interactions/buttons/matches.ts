@@ -306,20 +306,31 @@ export async function handleJoin(i: ButtonInteraction, matchId: number, move: Pi
           });
         }
 
-        // 🔹 Log the house rake as a Transaction inside the SAME DB tx
+        // 🔹 Log the house rake with explicit BalanceDelta for treasury reconciliation
         if (rakeBig > 0n) {
-          await tx.transaction.create({
-            data: {
-              type: "MATCH_RAKE",
-              userId: null,
-              otherUserId: null,
-              guildId: i.guildId ?? null,
-              tokenId: m.Token.id,
-              amount: rakeBig.toString(), // Store atomic units, not converted amounts
-              fee: "0",
-              txHash: null,
-              metadata: "house rake"
-            }
+          const { logCompleteTransaction } = await import("../../services/tx_logger.js");
+
+          await logCompleteTransaction(tx, {
+            source: 'BOT',
+            operation: 'TREASURY_RAKE',
+            userId: null, // Treasury operation
+            guildId: i.guildId ?? null,
+            idempotencyKey: `rake_match_${m.id}`,
+            opRef: `match_${m.id}`,
+            metadata: {
+              matchId: m.id,
+              rakeAmount: rakeBig.toString(),
+              tokenSymbol: m.Token.symbol,
+              description: 'Match house rake collection'
+            },
+            balanceChanges: [
+              {
+                tokenId: m.Token.id,
+                userId: undefined, // Treasury (null userId)
+                amountDelta: rakeBig, // Positive delta to treasury
+                reason: 'match_rake_collected'
+              }
+            ]
           });
         }
       }

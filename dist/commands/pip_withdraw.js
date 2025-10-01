@@ -4,10 +4,11 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "disc
 import { prisma } from "../services/db.js";
 import { formatDecimal } from "../services/token.js";
 import { PENGUIN_ERRORS } from "../utils/penguin_messages.js";
+import { getAppConfig } from "../services/app_config_cache.js";
 export default async function pipWithdraw(i) {
     try {
         // Check for emergency mode
-        const config = await prisma.appConfig.findFirst();
+        const config = await getAppConfig();
         if (config?.withdrawalsPaused || config?.emergencyMode) {
             return i.reply({
                 content: [

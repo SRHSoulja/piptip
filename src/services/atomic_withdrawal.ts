@@ -4,6 +4,7 @@
 import { prisma } from './db.js';
 import { decToBigDirect, formatAmount, toAtomicDirect } from './token.js';
 import type { TokenRow } from './token.js';
+import { getAppConfig } from './app_config_cache.js';
 
 export interface AtomicWithdrawalParams {
   userId: number;
@@ -72,25 +73,32 @@ export async function executeAtomicWithdrawal(
           throw new Error(`Blockchain transaction failed: ${blockchainError?.reason || blockchainError?.message || blockchainError}`);
         }
 
-        // 4. If blockchain transaction succeeded, debit the balance atomically
-        const newBalanceAtomic = currentBalanceAtomic - amountAtomic;
+        // 4. If blockchain transaction succeeded, log complete transaction with BalanceDelta
+        const { logCompleteTransaction } = await import("./tx_logger.js");
 
-        await tx.userBalance.update({
-          where: { userId_tokenId: { userId, tokenId } },
-          data: { amount: newBalanceAtomic.toString() }
-        });
-
-        // 5. Create transaction record
-        await tx.transaction.create({
-          data: {
-            type: 'WITHDRAW',
-            userId,
-            tokenId,
-            amount: amountHuman, // Store human-readable amount
-            txHash: blockchainTx.hash,
-            guildId,
-            metadata: metadata ? JSON.stringify(metadata) : null
-          }
+        await logCompleteTransaction(tx, {
+          source: 'BOT',
+          operation: 'WITHDRAWAL',
+          userId,
+          guildId: guildId ?? null,
+          idempotencyKey: `withdrawal_${userId}_${tokenId}_${Date.now()}`,
+          opRef: `withdrawal_${blockchainTx.hash}`,
+          txHash: blockchainTx.hash,
+          metadata: {
+            destinationAddress,
+            amount: amountHuman,
+            tokenSymbol: token.symbol,
+            blockchainTxHash: blockchainTx.hash,
+            ...(metadata || {})
+          },
+          balanceChanges: [
+            {
+              tokenId,
+              userId,
+              amountDelta: -amountAtomic, // Negative (debit)
+              reason: 'withdrawal'
+            }
+          ]
         });
 
         // 6. Update balance conservation tracking
@@ -221,7 +229,7 @@ export async function performComprehensiveWithdrawalCheck(
         select: { id: true, agwAddress: true }
       }),
       prisma.token.findUnique({ where: { id: tokenId } }),
-      prisma.appConfig.findFirst()
+      getAppConfig()
     ]);
 
     if (!user) {
@@ -273,11 +281,11 @@ export async function performComprehensiveWithdrawalCheck(
 
     // 5. Check treasury balance
     const { JsonRpcProvider, Wallet, Contract } = await import("ethers");
-    const { ABSTRACT_RPC_URL } = await import("../config.js");
+    const { getAbstractRpcUrl } = await import("./network.js");
     const { getSecureTreasuryPrivateKey } = await import("./secure_key.js");
 
     const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
-    const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+    const provider = new JsonRpcProvider(getAbstractRpcUrl());
     const signer = new Wallet(getSecureTreasuryPrivateKey(), provider);
     const tokenContract = new Contract(token.address, ERC20_ABI, signer);
 

@@ -1,6 +1,7 @@
 // src/services/emergency_controls.ts - Emergency shutdown and rollback procedures
 import { prisma } from "./db.js";
 import { predictionMarkets } from "./prediction_markets.js";
+import { getAppConfig } from "./app_config_cache.js";
 
 const FEATURE_FLAG_CACHE_TTL_MS = 30_000;
 
@@ -256,7 +257,7 @@ export class EmergencyControlsService {
     lastEmergencyAction?: any;
   }> {
     try {
-      const config = await prisma.appConfig.findFirst();
+      const config = await getAppConfig();
 
       const lastAction = await prisma.transaction.findFirst({
         where: {

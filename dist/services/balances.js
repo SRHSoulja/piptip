@@ -4,7 +4,6 @@ import { formatUnits, parseUnits } from "ethers";
 import { incrementNegativeBalanceAttempts } from "./metrics.js";
 import { BalanceConservationService } from "./balance_conservation.js";
 import { cache, CacheKeys, CacheTTL } from "./cache.js";
-import { priceAPI } from "./price_api.js";
 // Legacy compatibility function for existing commands
 export async function debit(discordId, amountAtomic, type = "MATCH_WAGER") {
     // For legacy compatibility, use the first active token (likely PENGU)
@@ -60,50 +59,11 @@ export async function ensureUserBalanceTx(tx, userId, tokenId) {
         create: { userId, tokenId, amount: 0 },
     });
 }
-// ---- tx-aware transaction logger (replaces the old global logTxAtomic) ----
+// ---- tx-aware transaction logger (delegated to new tx_logger) ----
 export async function logTxAtomicTx(db, params) {
-    const { userId, otherUserId = null, guildId = null, type, tokenId, decimals, amountAtomic, feeAtomic = 0n, txHash = null, note = null, tokenSymbol = null, } = params;
-    // Capture USD values for tax reporting and historical context
-    let usdValue = null;
-    let usdFeeValue = null;
-    let usdPrice = null;
-    let priceSource = null;
-    if (tokenSymbol) {
-        try {
-            const priceResult = await priceAPI.getTokenPrices([tokenSymbol]);
-            if (priceResult.success && priceResult.prices[tokenSymbol]) {
-                const tokenPrice = priceResult.prices[tokenSymbol];
-                const amountInTokens = parseFloat(toDecStr(amountAtomic, decimals));
-                const feeInTokens = parseFloat(toDecStr(feeAtomic, decimals));
-                usdPrice = tokenPrice.toString();
-                usdValue = (amountInTokens * tokenPrice).toString();
-                usdFeeValue = (feeInTokens * tokenPrice).toString();
-                priceSource = priceResult.source;
-            }
-        }
-        catch (error) {
-            // Silently continue without USD values if price fetch fails
-            console.warn(`Failed to get USD values for transaction: ${error}`);
-        }
-    }
-    await db.transaction.create({
-        data: {
-            type,
-            userId,
-            otherUserId,
-            guildId,
-            tokenId,
-            amount: toDecStr(amountAtomic, decimals),
-            fee: toDecStr(feeAtomic, decimals),
-            txHash: txHash ?? undefined,
-            metadata: note ?? null,
-            // USD value tracking for tax reporting
-            usdValue: usdValue ? parseFloat(usdValue) : null,
-            usdFeeValue: usdFeeValue ? parseFloat(usdFeeValue) : null,
-            usdPrice: usdPrice ? parseFloat(usdPrice) : null,
-            priceSource: priceSource,
-        },
-    });
+    // Delegate to new transaction logging system
+    const { logTxAtomicTx: newLogTxAtomicTx } = await import('./tx_logger.js');
+    await newLogTxAtomicTx(db, params);
 }
 // ---------- public API (multi-token only, non-TX) ----------
 /** Debit a user’s balance for a given token. Logs a Transaction. */

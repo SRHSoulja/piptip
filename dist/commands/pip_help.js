@@ -60,14 +60,18 @@ export default async function pipHelp(i) {
             "**Withdraw Funds**: `/pip_withdraw` - Interactive withdrawal interface with your holdings and limits",
         inline: false
     }, {
-        name: "🔮 Prediction Markets",
-        value: "**Trade Predictions**: Visit **PenguBook → Prediction Markets** to predict crypto prices, sports, and events\n" +
-            "**Live Trading**: Real-time odds, parimutuel pools, and instant payouts\n" +
-            "**Market Types**: Crypto price movements, sports outcomes, and community events\n" +
-            "**Web Interface**: Full prediction experience available at `/pengubook/markets`\n" +
-            "**Discord Integration**: Markets created and resolved through Discord, predict anywhere\n" +
-            "**Multiple Tokens**: Support for Abstract Chain tokens like ABSTER and others\n\n" +
-            "💡 *Visit PenguBook to browse active markets and start trading your predictions!*",
+        name: "🔮 Prediction Markets (Website Only)",
+        value: "**🌐 All prediction markets are now available exclusively on the website!**\n\n" +
+            "**Regular Markets** (PIPChips):\n" +
+            "• Trade predictions on crypto prices, sports, and events\n" +
+            "• Real-time odds and parimutuel pools\n" +
+            "• Visit: `/pengubook/markets`\n\n" +
+            "**Tournament Markets** (TPIP):\n" +
+            "• Enter tournaments with multi-token payments (any Abstract token)\n" +
+            "• Receive TPIP (Tournament PIPChips) for tournament play\n" +
+            "• Compete for prizes with isolated tournament balances\n" +
+            "• TPIP resets to zero at tournament conclusion\n\n" +
+            "💡 *Visit PenguBook to browse active markets, enter tournaments, and start trading!*",
         inline: false
     }, {
         name: "📖 PenguBook Social Features",

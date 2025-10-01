@@ -213,18 +213,7 @@ export async function profileHandler(req, res) {
             </div>
         </div>
 
-        <!-- Wallet Balance Card -->
-        <div class="pg-card" style="margin-top: var(--pg-space-6);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
-                <h2 style="margin: 0; color: var(--pg-dark-800);">💰 Wallet Balance</h2>
-                <button onclick="refreshProfileBalances()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshProfileBalanceBtn">
-                    🔄 Refresh
-                </button>
-            </div>
-            <div id="profileBalanceContainer" style="min-height: 60px;">
-                <div class="pg-loading-skeleton">Loading wallet balances...</div>
-            </div>
-        </div>
+        <!-- Balance handled by main template - no duplicate needed here -->
 
         <div class="pg-card" style="margin-top: var(--pg-space-6);">
             <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">Profile Stats</h2>
@@ -291,85 +280,9 @@ export async function profileHandler(req, res) {
         });
 
         // ===== Wallet Balance System =====
-        async function loadProfileBalances() {
-            const container = document.getElementById('profileBalanceContainer');
-            const refreshBtn = document.getElementById('refreshProfileBalanceBtn');
-
-            // Check if global balance loading is already in progress
-            if (window.balanceLoadingGlobal) {
-                console.log('🚫 Profile balance load skipped - global balance loading in progress');
-                return;
-            }
-
-            try {
-                window.balanceLoadingGlobal = true;
-                refreshBtn.disabled = true;
-                refreshBtn.textContent = '🔄 Loading...';
-
-                const response = await fetch('/pengubook/api/balance');
-                const data = await response.json();
-
-                if (data.success && data.balances && data.balances.length > 0) {
-                    const balanceHTML = \`
-                        <div class="pg-balance-grid">
-                            \${data.balances.map(balance => \`
-                                <div class="pg-balance-item">
-                                    <div class="pg-balance-amount">\${balance.amount}</div>
-                                    <div class="pg-balance-token">\${balance.Token.symbol}</div>
-                                    <div class="pg-balance-usd" style="margin-top: 4px; font-size: var(--pg-text-xs); color: var(--pg-dark-500);">
-                                        \${balance.formattedUSD ? \`\${balance.formattedUSD} USD\` : 'USD price unavailable'}
-                                    </div>
-                                </div>
-                            \`).join('')}
-                        </div>
-                        \${data.formattedTotalUSD ? \`
-                        <div style="margin-top: var(--pg-space-4); padding-top: var(--pg-space-3); border-top: 1px solid var(--pg-dark-300); display: flex; justify-content: space-between; align-items: center; font-size: var(--pg-text-sm);">
-                            <span style="color: var(--pg-dark-500);">Total USD Value</span>
-                            <strong style="color: var(--pg-dark-800);">\${data.formattedTotalUSD} USD</strong>
-                        </div>
-                        \` : ''}
-                        \${data.priceDisclaimer ? \`
-                        <div style="margin-top: var(--pg-space-2); font-size: var(--pg-text-xs); color: var(--pg-dark-400);">
-                            \${data.priceDisclaimer}
-                        </div>
-                        \` : ''}
-                    \`;
-                    container.innerHTML = balanceHTML;
-                } else {
-                    container.innerHTML = \`
-                        <div class="pg-empty-state" style="padding: var(--pg-space-4); text-align: center;">
-                            <div style="color: var(--pg-dark-600); margin-bottom: var(--pg-space-2);">
-                                💳 No wallet balances found
-                            </div>
-                            <div style="font-size: var(--pg-text-sm); color: var(--pg-dark-500);">
-                                Make a deposit or receive tips to see your balances here
-                            </div>
-                        </div>
-                    \`;
-                }
-            } catch (error) {
-                console.error('Failed to load balances:', error);
-                container.innerHTML = \`
-                    <div class="pg-error" style="padding: var(--pg-space-4); text-align: center;">
-                        ❌ Failed to load wallet balances
-                    </div>
-                \`;
-            } finally {
-                window.balanceLoadingGlobal = false;
-                refreshBtn.disabled = false;
-                refreshBtn.textContent = '🔄 Refresh';
-            }
-        }
-
-        function refreshProfileBalances() {
-            loadProfileBalances();
-        }
-
-        // Load balances when page loads
-        document.addEventListener('DOMContentLoaded', loadProfileBalances);
-
-        // Make functions global
-        window.refreshProfileBalances = refreshProfileBalances;
+        // REMOVED: Profile page balance loading - main template already handles this
+        // The main template (generateBaseHTML) loads balances via loadBalances()
+        // No need for duplicate balance loading on profile pages
 
         // ===== Aesthetic Customization System =====
         class PenguBookAesthetics {

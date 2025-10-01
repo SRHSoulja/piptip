@@ -1,0 +1,530 @@
+{
+  "timestamp": "2025-10-01T09:50:41.768Z",
+  "filesScanned": 16,
+  "functionsFound": 64,
+  "categorization": {
+    "logged": 31,
+    "excludedByDesign": 0,
+    "missingLog": 33,
+    "uncertain": 0
+  },
+  "findings": [
+    {
+      "file": "src/commands/pip_game.ts",
+      "functionName": "pipStart",
+      "lineNumber": 32,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "30: \n31:     // debit the challenger (returns challenger User.id)\n32:     const challengerId = await debitToken(i.user.id, token.id, atomic, \"MATCH_WAGER\", {\n33:       guildId: i.guildId,\n34:     });"
+    },
+    {
+      "file": "src/commands/pip_game.ts",
+      "functionName": "pipStart",
+      "lineNumber": 43,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "41:     potAtomic: (2n * atomic).toString(), // Store atomic units, not converted amounts\n42:     tokenId: token.id,          // scalar FK\n43:     challengerId,               // scalar FK (from debitToken)\n44:   } as Prisma.MatchUncheckedCreateInput, // <-- key line\n45: });"
+    },
+    {
+      "file": "src/features/finalizeExpiredGroupTip.ts",
+      "functionName": "finalizeExpiredGroupTip",
+      "lineNumber": 75,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "73:         const totalRefund = contributionAtomic + taxAtomic;\n74: \n75:         await creditTokenTx(tx, contrib.contributor.discordId, tip.Token.id, totalRefund, \"GROUP_TIP_REFUND\", {\n76:           guildId: tip.guildId ?? undefined,\n77:           note: `Group tip contribution refund: ${contrib.amount} + ${contrib.taxPaid} tax`"
+    },
+    {
+      "file": "src/features/finalizeExpiredGroupTip.ts",
+      "functionName": "finalizeExpiredGroupTip",
+      "lineNumber": 137,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "135:         continue;\n136:       }\n137:       await creditTokenTx(tx, c.User.discordId, tip.Token.id, share, \"GROUP_TIP_PAYOUT\", {\n138:         guildId: tip.guildId ?? undefined,\n139:       });"
+    },
+    {
+      "file": "src/interactions/buttons/matches.ts",
+      "functionName": "handleJoin",
+      "lineNumber": 202,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "200:       // SECURITY: Use atomic debit to prevent race conditions with balance checking\n201:       try {\n202:         await debitTokenAtomicTx(tx, i.user.id, m.Token.id, wager, \"MATCH_WAGER\", {\n203:           guildId: i.guildId ?? null\n204:         });"
+    },
+    {
+      "file": "src/interactions/buttons/matches.ts",
+      "functionName": "handleJoin",
+      "lineNumber": 222,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "220:       if (outcome === 0) {\n221:         // tie → refund both, increment ties\n222:         await creditTokenTx(tx, i.user.id, m.Token.id, wager, \"MATCH_PAYOUT\", {\n223:           guildId: i.guildId ?? null\n224:         });"
+    },
+    {
+      "file": "src/interactions/buttons/matches.ts",
+      "functionName": "handleJoin",
+      "lineNumber": 228,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "226:           throw new Error(\"Match challenger not found\");\n227:         }\n228:         await creditTokenTx(tx, m.Challenger.discordId, m.Token.id, wager, \"MATCH_PAYOUT\", {\n229:           guildId: i.guildId ?? null\n230:         });"
+    },
+    {
+      "file": "src/interactions/buttons/matches.ts",
+      "functionName": "handleJoin",
+      "lineNumber": 255,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "253:           winnerUserId = m.Challenger.id;\n254: \n255:           await creditTokenTx(tx, m.Challenger.discordId, m.Token.id, payout, \"MATCH_PAYOUT\", {\n256:             guildId: i.guildId ?? null\n257:           });"
+    },
+    {
+      "file": "src/interactions/buttons/matches.ts",
+      "functionName": "handleJoin",
+      "lineNumber": 282,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "280:           winnerUserId = joiner.id;\n281: \n282:           await creditTokenTx(tx, i.user.id, m.Token.id, payout, \"MATCH_PAYOUT\", {\n283:             guildId: i.guildId ?? null\n284:           });"
+    },
+    {
+      "file": "src/interactions/buttons/matches.ts",
+      "functionName": "handleCancel",
+      "lineNumber": 490,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "488:       // refund challenger using tx-aware credit\n489:       if (!m.Challenger) throw new Error(\"Match challenger not found\");\n490:       await creditTokenTx(tx, m.Challenger.discordId, m.Token.id, wager, \"MATCH_PAYOUT\", {\n491:         guildId: i.guildId ?? null\n492:       });"
+    },
+    {
+      "file": "src/interactions/buttons/withdrawals.ts",
+      "functionName": "handleConfirmWithdraw",
+      "lineNumber": 551,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "549:     const { getAbstractRpcUrl } = await import(\"../../services/network.js\");\n550:     const { getSecureTreasuryPrivateKey } = await import(\"../../services/secure_key.js\");\n551:     const { debitToken } = await import(\"../../services/balances.js\");\n552:     const { queueNotice } = await import(\"../../services/notifier.js\");\n553: "
+    },
+    {
+      "file": "src/services/atomic_withdrawal.ts",
+      "functionName": "executeAtomicWithdrawal",
+      "lineNumber": 105,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "103:         // 6. Update balance conservation tracking\n104:         // TODO: Implement balance conservation tracking when service is available\n105:         // const { updateBalanceConservation } = await import('./balance_conservation.js');\n106:         // await updateBalanceConservation(tokenId, -amountAtomic);\n107: "
+    },
+    {
+      "file": "src/services/atomic_withdrawal.ts",
+      "functionName": "executeAtomicWithdrawal",
+      "lineNumber": 106,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "104:         // TODO: Implement balance conservation tracking when service is available\n105:         // const { updateBalanceConservation } = await import('./balance_conservation.js');\n106:         // await updateBalanceConservation(tokenId, -amountAtomic);\n107: \n108:         return {"
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "debit",
+      "lineNumber": 17,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "15: \n16:   const token = tokens[0];\n17:   return debitToken(discordId, token.id, amountAtomic, type as any);\n18: }\n19: "
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "debitToken",
+      "lineNumber": 96,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "94: \n95: /** Debit a user’s balance for a given token. Logs a Transaction. */\n96: export async function debitToken(\n97:   discordId: string,\n98:   tokenId: number,"
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "creditToken",
+      "lineNumber": 187,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "185: \n186: /** Credit a user’s balance for a given token. Logs a Transaction. */\n187: export async function creditToken(\n188:   discordId: string,\n189:   tokenId: number,"
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "transferToken",
+      "lineNumber": 236,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "234: \n235: /** Transfer a token amount between two users (optional fee charged to sender). */\n236: export async function transferToken(\n237:   fromDiscordId: string,\n238:   toDiscordId: string,"
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "debitTokenAtomicTx",
+      "lineNumber": 323,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "321: /** Debit inside an existing TX (no nested $transaction). */\n322: // SECURITY: Atomic debit function that works within existing transaction (race condition safe)\n323: export async function debitTokenAtomicTx(\n324:   tx: any, // Prisma transaction context\n325:   discordId: string,"
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "debitTokenTx",
+      "lineNumber": 417,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "415: }\n416: \n417: export async function debitTokenTx(\n418:   tx: Tx,\n419:   discordId: string,"
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "creditTokenTx",
+      "lineNumber": 475,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "473: \n474: /** Credit inside an existing TX (no nested $transaction). */\n475: export async function creditTokenTx(\n476:   tx: Tx,\n477:   discordId: string,"
+    },
+    {
+      "file": "src/services/balances.ts",
+      "functionName": "transferTokenTx",
+      "lineNumber": 523,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "521: \n522: /** Transfer inside an existing TX (no nested $transaction). */\n523: export async function transferTokenTx(\n524:   tx: Tx,\n525:   fromDiscordId: string,"
+    },
+    {
+      "file": "src/services/deposits.ts",
+      "functionName": "applyDeposit",
+      "lineNumber": 55,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "53: \n54:   // Credit balance & record\n55:   await creditToken(user.discordId, tokenRow.id, amt, \"DEPOSIT\", { txHash: input.tx });\n56: \n57:   // Check for deposit achievements (async, don't block response)"
+    },
+    {
+      "file": "src/services/group_tip_contributions.ts",
+      "functionName": "addGroupTipContribution",
+      "lineNumber": 223,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "221: \n222:       // Deduct total cost from user balance\n223:       await tx.userBalance.update({\n224:         where: {\n225:           userId_tokenId: {"
+    },
+    {
+      "file": "src/services/tip_processor.ts",
+      "functionName": "processTip",
+      "lineNumber": 173,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "171: \n172:       // Process the transfer (balance was already validated)\n173:       await transferToken(data.userId, data.targetUserId, token.id, atomic, \"TIP\", {\n174:         guildId: data.guildId,\n175:         feeAtomic,"
+    },
+    {
+      "file": "src/services/tip_processor.ts",
+      "functionName": "processTip",
+      "lineNumber": 385,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "383:         result = await prisma.$transaction(async (tx) => {\n384:         // Import the transaction-safe version\n385:         const { debitTokenTx } = await import(\"./balances.js\");\n386: \n387:         // ATOMIC: Check balance within transaction to prevent race conditions"
+    },
+    {
+      "file": "src/services/tip_processor.ts",
+      "functionName": "processTip",
+      "lineNumber": 399,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "397: \n398:         // Charge user for group tip (after confirming balance within transaction)\n399:         await debitTokenTx(tx, data.userId, token.id, atomic + feeAtomic, \"TIP\", { guildId: data.guildId });\n400: \n401:         // Create the group tip (using current schema)"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "enterTournament",
+      "lineNumber": 106,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "104: \n105:       // Deduct entry fee from user balance\n106:       await tx.userBalance.update({\n107:         where: {\n108:           userId_tokenId: { userId, tokenId: token.id }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "enterTournament",
+      "lineNumber": 123,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "121:           userId,\n122:           pipchipsStart: tournament.startingPIPChips,\n123:           pipchipsBalance: tournament.startingPIPChips,\n124:           entryTokenId: token.id,\n125:           entryAmount: new Decimal(entryFeeAmount)"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "enterTournament",
+      "lineNumber": 148,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "146:           transactionType: 'TOURNAMENT_ENTRY',\n147:           description: `Tournament starting PIPChips: ${tournament.name}`,\n148:           balanceAfter: currentUser?.pipchipsBalance || BigInt(0),\n149:           metadata: {\n150:             tournamentId,"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "placeTournamentAwareParticipation",
+      "lineNumber": 197,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "195:       const participant = user.tournamentParticipants[0];\n196: \n197:       if (participant.pipchipsBalance < amount) {\n198:         return { success: false, error: 'Insufficient tournament PIPChips' };\n199:       }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "placeTournamentAwareParticipation",
+      "lineNumber": 207,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "205:           where: { id: participant.id },\n206:           data: {\n207:             pipchipsBalance: { decrement: amount },\n208:             marketsPlayed: { increment: 1 },\n209:             totalWagered: { increment: amount }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "placeTournamentAwareParticipation",
+      "lineNumber": 246,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "244:     } else {\n245:       // USE REGULAR PIPCHIPS BALANCE\n246:       if (Number(user.pipchipsBalance) < amount) {\n247:         return { success: false, error: 'Insufficient regular PIPChips' };\n248:       }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "placeTournamentAwareParticipation",
+      "lineNumber": 256,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "254:           where: { id: userId },\n255:           data: {\n256:             pipchipsBalance: { decrement: amount },\n257:             pipchipsSpentTotal: { increment: amount }\n258:           }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "placeTournamentAwareParticipation",
+      "lineNumber": 282,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "280:             transactionType: 'BET_PLACED',\n281:             description: `Prediction participation: ${amount} PIPChips on ${side}`,\n282:             balanceAfter: updatedUser?.pipchipsBalance || BigInt(0),\n283:             metadata: { marketId, side }\n284:           }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "processWinningsWithContext",
+      "lineNumber": 337,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "335:           where: { id: participant.id },\n336:           data: {\n337:             pipchipsBalance: { increment: winnings },\n338:             correctPredictions: won ? { increment: 1 } : undefined\n339:           }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "processWinningsWithContext",
+      "lineNumber": 369,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "367:           where: { id: userId },\n368:           data: {\n369:             pipchipsBalance: { increment: winnings },\n370:             pipchipsEarnedTotal: { increment: winnings }\n371:           }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "processWinningsWithContext",
+      "lineNumber": 384,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "382:             transactionType: 'BET_WON',\n383:             description: `Prediction participation ${won ? 'won' : 'refunded'}: ${winnings} PIPChips`,\n384:             balanceAfter: updatedUser?.pipchipsBalance || BigInt(0),\n385:             metadata: { marketId, won }\n386:           }"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getTournamentLeaderboard",
+      "lineNumber": 414,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "412:       },\n413:       orderBy: [\n414:         { pipchipsBalance: 'desc' },\n415:         { correctPredictions: 'desc' },\n416:         { enteredAt: 'asc' } // Earlier entry as tiebreaker"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getTournamentLeaderboard",
+      "lineNumber": 425,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "423:       discordId: p.user.discordId,\n424:       startingChips: p.pipchipsStart,\n425:       currentChips: p.pipchipsBalance,\n426:       profit: p.pipchipsBalance - p.pipchipsStart,\n427:       profitPercent: ((p.pipchipsBalance - p.pipchipsStart) / p.pipchipsStart * 100).toFixed(1),"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getTournamentLeaderboard",
+      "lineNumber": 426,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "424:       startingChips: p.pipchipsStart,\n425:       currentChips: p.pipchipsBalance,\n426:       profit: p.pipchipsBalance - p.pipchipsStart,\n427:       profitPercent: ((p.pipchipsBalance - p.pipchipsStart) / p.pipchipsStart * 100).toFixed(1),\n428:       marketsPlayed: p.marketsPlayed,"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getTournamentLeaderboard",
+      "lineNumber": 427,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "425:       currentChips: p.pipchipsBalance,\n426:       profit: p.pipchipsBalance - p.pipchipsStart,\n427:       profitPercent: ((p.pipchipsBalance - p.pipchipsStart) / p.pipchipsStart * 100).toFixed(1),\n428:       marketsPlayed: p.marketsPlayed,\n429:       correctPredictions: p.correctPredictions,"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getUserDashboard",
+      "lineNumber": 489,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "487:       return {\n488:         mode: 'tournament',\n489:         balance: participant.pipchipsBalance,\n490:         regularBalance: Number(user.pipchipsBalance), // Show but indicate it's inactive\n491:         tournament: {"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getUserDashboard",
+      "lineNumber": 490,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "488:         mode: 'tournament',\n489:         balance: participant.pipchipsBalance,\n490:         regularBalance: Number(user.pipchipsBalance), // Show but indicate it's inactive\n491:         tournament: {\n492:           id: participant.tournament.id,"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getUserDashboard",
+      "lineNumber": 500,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "498:           leaderboard: leaderboard.slice(0, 10), // Top 10\n499:           stats: {\n500:             profit: participant.pipchipsBalance - participant.pipchipsStart,\n501:             marketsPlayed: participant.marketsPlayed,\n502:             correctPredictions: participant.correctPredictions,"
+    },
+    {
+      "file": "src/services/tournament_context.ts",
+      "functionName": "getUserDashboard",
+      "lineNumber": 514,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "512:       return {\n513:         mode: 'regular',\n514:         balance: Number(user.pipchipsBalance),\n515:         tournamentBalance: null,\n516:         nextTournament: await getNextTournament(),"
+    },
+    {
+      "file": "src/services/tournament_entry_service.ts",
+      "functionName": "enterTournamentWithPayment",
+      "lineNumber": 210,
+      "category": "LOGGED",
+      "reason": "Includes logCompleteTransaction or logTxAtomicTx",
+      "codeSnippet": "208: \n209:         // Update token balance\n210:         await tx.userBalance.update({\n211:           where: {\n212:             userId_tokenId: { userId, tokenId: token.id }"
+    },
+    {
+      "file": "src/services/tournament_entry_service.ts",
+      "functionName": "enterTournamentWithPayment",
+      "lineNumber": 268,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "266:           tournamentId,\n267:           userId,\n268:           pipchipsBalance: config.tpipAllocation, // This tracks TPIP balance\n269:           isActive: true\n270:         },"
+    },
+    {
+      "file": "src/services/tournament_entry_service.ts",
+      "functionName": "enterTournamentWithPayment",
+      "lineNumber": 273,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "271:         update: {\n272:           isActive: true,\n273:           pipchipsBalance: config.tpipAllocation\n274:         }\n275:       });"
+    },
+    {
+      "file": "src/services/tournament_integration.ts",
+      "functionName": "getUserBalanceContext",
+      "lineNumber": 130,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "128:       return {\n129:         mode: 'tournament',\n130:         balance: participant.pipchipsBalance,\n131:         tournamentInfo: {\n132:           name: participant.tournament.name,"
+    },
+    {
+      "file": "src/services/tournament_integration.ts",
+      "functionName": "getUserBalanceContext",
+      "lineNumber": 140,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "138:     return {\n139:       mode: 'regular',\n140:       balance: Number(user.pipchipsBalance)\n141:     };\n142: "
+    },
+    {
+      "file": "src/services/tournament_integration.ts",
+      "functionName": "getActiveUserTournamentStatus",
+      "lineNumber": 211,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "209:       where: {\n210:         tournamentId: tournament.id,\n211:         pipchipsBalance: { gt: participant.pipchipsBalance }\n212:       }\n213:     });"
+    },
+    {
+      "file": "src/services/tournament_integration.ts",
+      "functionName": "getActiveUserTournamentStatus",
+      "lineNumber": 221,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "219:       tournamentName: tournament.name,\n220:       rank,\n221:       balance: participant.pipchipsBalance,\n222:       profit: participant.pipchipsBalance - participant.pipchipsStart,\n223:       totalParticipants: tournament.participants.length"
+    },
+    {
+      "file": "src/services/tournament_integration.ts",
+      "functionName": "getActiveUserTournamentStatus",
+      "lineNumber": 222,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "220:       rank,\n221:       balance: participant.pipchipsBalance,\n222:       profit: participant.pipchipsBalance - participant.pipchipsStart,\n223:       totalParticipants: tournament.participants.length\n224:     };"
+    },
+    {
+      "file": "src/services/tournament_prediction_markets.ts",
+      "functionName": "placeTournamentBet",
+      "lineNumber": 108,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "106: \n107:       // Update TPIP balance\n108:       await tx.userBalance.update({\n109:         where: {\n110:           userId_tokenId: { userId, tokenId: TPIP_TOKEN_ID }"
+    },
+    {
+      "file": "src/services/tpip_service.ts",
+      "functionName": "purchaseTPIP",
+      "lineNumber": 113,
+      "category": "LOGGED",
+      "reason": "Includes logCompleteTransaction or logTxAtomicTx",
+      "codeSnippet": "111: \n112:       // 3. Update Abstract token balance (debit)\n113:       await tx.userBalance.update({\n114:         where: {\n115:           userId_tokenId: { userId, tokenId }"
+    },
+    {
+      "file": "src/services/tpip_service.ts",
+      "functionName": "resetTournamentTPIP",
+      "lineNumber": 259,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "257: \n258:         // Update UserBalance to zero\n259:         await tx.userBalance.update({\n260:           where: {\n261:             userId_tokenId: { userId, tokenId: tpipToken.id }"
+    },
+    {
+      "file": "src/services/tpip_service.ts",
+      "functionName": "transferTPIP",
+      "lineNumber": 344,
+      "category": "LOGGED",
+      "reason": "Includes logCompleteTransaction or logTxAtomicTx",
+      "codeSnippet": "342: \n343:       // Update sender balance (debit)\n344:       await tx.userBalance.update({\n345:         where: {\n346:           userId_tokenId: { userId: fromUserId, tokenId: tpipToken.id }"
+    },
+    {
+      "file": "src/web/admin/pipchips_admin.ts",
+      "functionName": "generatePIPChipsAdminHTML",
+      "lineNumber": 436,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "434:                         <tr>\n435:                             <td>${user.xUsername || user.discordId.slice(0, 8)}</td>\n436:                             <td class=\"pipchips-amount\">${Number(user.pipchipsBalance).toLocaleString()}</td>\n437:                             <td>${Number(user.pipchipsEarnedTotal).toLocaleString()}</td>\n438:                             <td>${Number(user.pipchipsSpentTotal).toLocaleString()}</td>"
+    },
+    {
+      "file": "src/web/admin/pipchips_admin.ts",
+      "functionName": "generateUserManagementHTML",
+      "lineNumber": 587,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "585:                         <tr>\n586:                             <td>${user.xUsername || user.discordId.slice(0, 8)}</td>\n587:                             <td class=\"pipchips-amount\">${Number(user.pipchipsBalance).toLocaleString()}</td>\n588:                             <td>${Number(user.pipchipsEarnedTotal).toLocaleString()}</td>\n589:                             <td>${Number(user.pipchipsSpentTotal).toLocaleString()}</td>"
+    },
+    {
+      "file": "src/web/admin/pipchips_admin.ts",
+      "functionName": "generateUserManagementHTML",
+      "lineNumber": 594,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "592:                             <td>${user.lastPipchipsDaily ? new Date(user.lastPipchipsDaily).toLocaleDateString() : 'Never'}</td>\n593:                             <td class=\"balance-actions\">\n594:                                 <button class=\"btn-small btn-credit\" onclick=\"adjustBalance('${user.discordId}', 'credit')\">+ Credit</button>\n595:                                 <button class=\"btn-small btn-debit\" onclick=\"adjustBalance('${user.discordId}', 'debit')\">- Debit</button>\n596:                             </td>"
+    },
+    {
+      "file": "src/web/admin/pipchips_admin.ts",
+      "functionName": "generateUserManagementHTML",
+      "lineNumber": 595,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "593:                             <td class=\"balance-actions\">\n594:                                 <button class=\"btn-small btn-credit\" onclick=\"adjustBalance('${user.discordId}', 'credit')\">+ Credit</button>\n595:                                 <button class=\"btn-small btn-debit\" onclick=\"adjustBalance('${user.discordId}', 'debit')\">- Debit</button>\n596:                             </td>\n597:                         </tr>"
+    },
+    {
+      "file": "src/web/admin/pipchips_admin.ts",
+      "functionName": "generateUserManagementHTML",
+      "lineNumber": 631,
+      "category": "LOGGED",
+      "reason": "Uses balance operation wrapper with transaction logging",
+      "codeSnippet": "629:             }\n630: \n631:             function adjustBalance(userId, type) {\n632:                 currentUserId = userId;\n633:                 currentType = type;"
+    },
+    {
+      "file": "src/web/admin/prediction_markets.ts",
+      "functionName": "resolveMultiChoiceMarket",
+      "lineNumber": 907,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "905:             where: { discordId: payout.userId },\n906:             data: {\n907:               pipchipsBalance: { increment: BigInt(payout.amount) },\n908:               pipchipsEarnedTotal: { increment: BigInt(payout.amount) }\n909:             }"
+    },
+    {
+      "file": "src/web/admin/prediction_markets.ts",
+      "functionName": "resolveMultiChoiceMarket",
+      "lineNumber": 917,
+      "category": "MISSING_LOG",
+      "reason": "Direct balance update without transaction logging",
+      "codeSnippet": "915:               userId: payout.userId,\n916:               amount: BigInt(payout.amount),\n917:               balanceAfter: updatedUser.pipchipsBalance,\n918:               transactionType: 'PREDICTION_WIN',\n919:               referenceId: marketId,"
+    }
+  ],
+  "summary": {
+    "passed": false,
+    "criticalIssues": 33,
+    "warnings": 0
+  }
+}

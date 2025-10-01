@@ -4,6 +4,7 @@ import { ethers, Contract } from 'ethers';
 import { prisma } from './db.js';
 import { formatAmount, toAtomicDirect } from './token.js';
 import type { TokenRow } from './token.js';
+import { logCompleteTransaction } from './tx_logger.js';
 
 interface ColdTransferParams {
   tokenId: number;
@@ -147,6 +148,32 @@ class TreasuryColdTransferService {
         record.gasUsed = receipt.gasUsed;
 
         console.log(`✅ Cold transfer completed: ${tx.hash} (Gas: ${receipt.gasUsed})`);
+
+        // Log transaction with BalanceDelta for unified tracking
+        await prisma.$transaction(async (txDb) => {
+          const idempotencyKey = `treasury_cold_transfer_${params.tokenId}_${tx.hash}`;
+
+          await logCompleteTransaction(txDb, {
+            operation: 'TREASURY_COLD_TRANSFER',
+            userId: params.adminUserId, // Optional admin user ID
+            balanceChanges: [{
+              tokenId: params.tokenId,
+              userId: undefined, // Treasury operation - no specific user
+              amountDelta: -params.amountAtomic, // Funds leaving treasury
+              reason: 'treasury_cold_transfer'
+            }],
+            metadata: {
+              destinationAddress: params.destinationAddress,
+              reason: params.reason,
+              initiatedBy: params.initiatedBy,
+              adminUserId: params.adminUserId,
+              gasUsed: receipt.gasUsed.toString()
+            },
+            blockchainTxHash: tx.hash,
+            idempotencyKey,
+            source: 'TREASURY'
+          });
+        });
 
         // Store successful transfer record
         await this.storeColdTransferRecord(record);

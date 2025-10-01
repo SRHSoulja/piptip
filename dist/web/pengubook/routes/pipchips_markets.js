@@ -361,6 +361,12 @@ function generatePIPChipsMarketsPageContent(markets, options) {
     </div>
 
     <style>
+      /* Dark theme for PIPChips interface */
+      body, html {
+        background: #0f1419 !important;
+        color: #e2e8f0 !important;
+      }
+
       .pipchips-balance-header {
         display: flex;
         justify-content: space-between;
@@ -438,16 +444,45 @@ function generatePIPChipsMarketsPageContent(markets, options) {
       }
 
       .market-card {
-        border: 1px solid #e5e7eb;
+        border: 1px solid #334155;
         border-radius: 12px;
         padding: 20px;
-        background: white;
+        background: #1e293b;
+        color: #e2e8f0;
         transition: all 0.2s;
       }
 
       .market-card:hover {
-        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        border-color: #3b82f6;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        border-color: #60a5fa;
+      }
+
+      .market-header h3 {
+        margin: 0 0 8px 0;
+      }
+
+      .market-header h3 a {
+        color: #1f2937;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .market-header h3 a:hover {
+        color: #60a5fa;
+      }
+
+      .market-meta {
+        display: flex;
+        gap: 16px;
+        color: #94a3b8;
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+
+      .market-description {
+        color: #cbd5e1;
+        line-height: 1.6;
+        margin: 12px 0;
       }
 
       .market-outcomes {
@@ -461,18 +496,21 @@ function generatePIPChipsMarketsPageContent(markets, options) {
         text-align: center;
         padding: 12px;
         border-radius: 8px;
-        background: #f3f4f6;
+        background: #334155;
+        color: #e2e8f0;
         cursor: pointer;
         transition: all 0.2s;
+        border: 1px solid #475569;
       }
 
       .outcome-chip:hover {
-        background: #e5e7eb;
+        background: #475569;
+        border-color: #60a5fa;
       }
 
       .outcome-probability {
         font-weight: bold;
-        color: #3b82f6;
+        color: #60a5fa;
         font-size: 18px;
       }
 
@@ -519,7 +557,7 @@ function generatePIPChipsMarketsPageContent(markets, options) {
 
       .create-market-header p {
         margin: 4px 0 0;
-        color: #6b7280;
+        color: #4b5563;
         font-size: 14px;
       }
 
@@ -659,7 +697,7 @@ function generatePIPChipsMarketsPageContent(markets, options) {
                 <div style="border: 1px solid #ccc; padding: 12px; margin: 8px 0; border-radius: 8px; cursor: pointer;" onclick="purchaseChips('\${option.tokenId}', \${option.pipchipsAmount})">
                   <strong>\${option.pipchipsAmount.toLocaleString()} PIPChips</strong><br>
                   <span style="color: #666;">Cost: \${option.cost} \${option.tokenSymbol}</span><br>
-                  <small style="color: #888;">Your balance: \${option.userBalance.toLocaleString()} \${option.tokenSymbol}</small>
+                  <small style="color: #4b5563;">Your balance: \${option.userBalance.toLocaleString()} \${option.tokenSymbol}</small>
                 </div>
               \`;
             });
@@ -701,6 +739,13 @@ function generatePIPChipsMarketsPageContent(markets, options) {
       async function purchaseChips(tokenId, pipchipsAmount) {
         if (!confirm(\`Purchase \${pipchipsAmount.toLocaleString()} PIPChips?\`)) return;
 
+        // TODO: The /api/buy-pipchips endpoint needs to be implemented
+        // For now, show a message that this feature is coming soon
+        alert('PIPChips purchase feature coming soon! For now, you can earn PIPChips through daily bonuses and gameplay.');
+        document.querySelector('div[style*="position: fixed"]')?.remove();
+        return;
+
+        /* Once the endpoint is implemented, uncomment this:
         try {
           const response = await fetch('/api/buy-pipchips', {
             method: 'POST',
@@ -722,6 +767,7 @@ function generatePIPChipsMarketsPageContent(markets, options) {
           console.error('Purchase error:', error);
           alert('Network error processing purchase');
         }
+        */
       }
 
       // Create Market Functions
@@ -804,18 +850,82 @@ function generateMarketCard(market) {
     const timeLeft = market.timeLeftMs;
     const hours = Math.floor(timeLeft / (1000 * 60 * 60));
     const days = Math.floor(hours / 24);
-    const timeText = days > 0 ? `${days} days` : `${hours} hours`;
+    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+    // Better time formatting
+    let timeText = '';
+    if (market.bettingClosed) {
+        timeText = 'Betting Closed';
+    }
+    else if (days > 0) {
+        timeText = `${days}d ${hours % 24}h`;
+    }
+    else if (hours > 0) {
+        timeText = `${hours}h ${minutes}m`;
+    }
+    else {
+        timeText = `${minutes}m`;
+    }
+    // Calculate prediction cutoff time (20% before resolution or from marketData)
+    const resolveAtTime = new Date(market.resolveAt).getTime();
+    const predictionCutoffTime = market.marketData?.bettingCutoffTime ||
+        market.marketData?.bettingClosesAt ||
+        Math.max(resolveAtTime - (timeLeft * 0.2), Date.now() + (5 * 60 * 1000)); // At least 5 min buffer
+    const predictionTimeLeft = predictionCutoffTime - Date.now();
+    const predictionsClosed = predictionTimeLeft <= 0;
+    let predictionStatus = '';
+    if (predictionsClosed) {
+        predictionStatus = '<span style="color: #dc2626;">🔒 Predictions closed</span>';
+    }
+    else {
+        const predictionHours = Math.floor(Math.max(0, predictionTimeLeft) / (1000 * 60 * 60));
+        const predictionMins = Math.floor((Math.max(0, predictionTimeLeft) % (1000 * 60 * 60)) / (1000 * 60));
+        if (predictionHours > 0) {
+            predictionStatus = `<span style="color: #059669;">✅ Predictions close in ${predictionHours}h ${predictionMins}m</span>`;
+        }
+        else {
+            predictionStatus = `<span style="color: #ea580c;">⚠️ Predictions close in ${predictionMins}m</span>`;
+        }
+    }
+    // Calculate how long ago market was created
+    const createdAt = new Date(market.createdAt);
+    const marketAge = Date.now() - createdAt.getTime();
+    const ageHours = Math.floor(marketAge / (1000 * 60 * 60));
+    const ageDays = Math.floor(ageHours / 24);
+    let ageText = '';
+    if (ageDays > 0) {
+        ageText = `${ageDays}d ago`;
+    }
+    else if (ageHours > 0) {
+        ageText = `${ageHours}h ago`;
+    }
+    else {
+        const ageMins = Math.floor(marketAge / (1000 * 60));
+        ageText = `${ageMins}m ago`;
+    }
+    // Market type badge
+    const marketTypeBadge = market.marketData?.templateBased ?
+        '<span class="market-badge" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">AUTO</span>' : '';
     return `
     <div class="market-card">
       <div class="market-header">
         <h3><a href="/pengubook/pipchips/market/${market.id}">${market.title}</a></h3>
         <div class="market-meta">
-          <span class="pipchips-volume">💰 ${market.totalVolume.toLocaleString()} PIPChips</span>
-          <span class="time-left">⏰ ${market.bettingClosed ? 'Ended' : timeText}</span>
+          <span class="created-time" style="color: #94a3b8; font-size: 12px;">📅 Created ${ageText}</span>
+          ${marketTypeBadge}
         </div>
       </div>
 
       <p class="market-description">${market.description}</p>
+
+      <div class="market-timing" style="background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 12px; border-radius: 8px; margin: 12px 0;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span style="color: #cbd5e1;">⏰ Resolution: <strong style="color: #f1f5f9;">${timeText}</strong></span>
+          <span style="color: #cbd5e1;">💰 Volume: <strong style="color: #f1f5f9;">${market.totalVolume.toLocaleString()} PIPChips</strong></span>
+        </div>
+        <div style="font-size: 14px;">
+          ${predictionStatus}
+        </div>
+      </div>
 
       <div class="market-outcomes">
         ${market.outcomes.map((outcome) => `
@@ -826,9 +936,10 @@ function generateMarketCard(market) {
         `).join('')}
       </div>
 
-      <div class="market-stats">
-        <span>${market.totalBets} bets</span>
-        <span>Liquidity: ${market.liquidityParameter || 1000}</span>
+      <div class="market-stats" style="display: flex; justify-content: space-between; color: #cbd5e1; font-size: 14px;">
+        <span>👥 ${market.totalBets} prediction${market.totalBets !== 1 ? 's' : ''}</span>
+        <span>💧 Liquidity: ${market.liquidityParameter || 1000}</span>
+        <span>📊 LMSR Market</span>
       </div>
     </div>
   `;
@@ -836,6 +947,227 @@ function generateMarketCard(market) {
 function generatePIPChipsMarketDetailContent(data) {
     const { market, userParticipations, userBalance, streakInfo, potentialBets } = data;
     return `
+    <style>
+      .pipchips-market-detail {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #0f1419;
+        color: #e2e8f0;
+        min-height: 100vh;
+      }
+
+      .market-header {
+        border-bottom: 2px solid #334155;
+        padding-bottom: 20px;
+        margin-bottom: 30px;
+      }
+
+      .market-header h1 {
+        margin: 0 0 10px 0;
+        color: #f8fafc;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .market-status {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .market-status.active {
+        background: #065f46;
+        color: #d1fae5;
+        border: 1px solid #10b981;
+      }
+
+      .market-status.closed {
+        background: #7f1d1d;
+        color: #fecaca;
+        border: 1px solid #ef4444;
+      }
+
+      .market-info .description {
+        color: #cbd5e1;
+        font-size: 16px;
+        line-height: 1.6;
+        margin-bottom: 20px;
+      }
+
+      .market-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 20px;
+        background: #1e293b;
+        border: 1px solid #334155;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+      }
+
+      .market-stats .stat {
+        text-align: center;
+      }
+
+      .market-stats .label {
+        display: block;
+        color: #94a3b8;
+        font-size: 14px;
+        margin-bottom: 4px;
+        font-weight: 500;
+      }
+
+      .market-stats .value {
+        display: block;
+        color: #f1f5f9;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .user-balance {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #365314;
+        border: 1px solid #65a30d;
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        color: #ecfccb;
+      }
+
+      .pipchips-logo-small {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .betting-section {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 30px;
+      }
+
+      .betting-section h3 {
+        margin: 0 0 20px 0;
+        color: #f1f5f9;
+        font-weight: 600;
+      }
+
+      .outcome-betting {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+      }
+
+      .outcome-bet-card {
+        border: 1px solid #475569;
+        border-radius: 8px;
+        padding: 20px;
+        background: #334155;
+      }
+
+      .outcome-bet-card h4 {
+        margin: 0 0 12px 0;
+        color: #f1f5f9;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .current-price {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+
+      .probability {
+        display: block;
+        font-size: 24px;
+        font-weight: bold;
+        color: #60a5fa;
+      }
+
+      .price-label {
+        display: block;
+        color: #cbd5e1;
+        font-size: 14px;
+      }
+
+      .bet-amounts {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .bet-amount-btn {
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background 0.2s;
+      }
+
+      .bet-amount-btn:hover:not(:disabled) {
+        background: #059669;
+      }
+
+      .bet-amount-btn:disabled {
+        background: #475569;
+        color: #94a3b8;
+        cursor: not-allowed;
+      }
+
+      .user-participations-section {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 24px;
+      }
+
+      .user-participations-section h3 {
+        margin: 0 0 20px 0;
+        color: #f1f5f9;
+        font-weight: 600;
+      }
+
+      .user-participation {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid #475569;
+      }
+
+      .participation-outcome {
+        background: #475569;
+        color: #e2e8f0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .participation-amount,
+      .potential-payout {
+        font-weight: 600;
+        color: #f1f5f9;
+      }
+
+      .participation-date {
+        color: #cbd5e1;
+        font-size: 14px;
+      }
+    </style>
+
     <div class="pipchips-market-detail">
       <div class="market-header">
         <h1>${market.title}</h1>
@@ -923,23 +1255,78 @@ function generatePIPChipsMarketDetailContent(data) {
 
         if (!confirm(\`Place \${amount} PIPChips on \${outcome}?\`)) return;
 
+        // Disable buttons and show loading state
+        const buttons = document.querySelectorAll('.bet-amount-btn');
+        buttons.forEach(btn => {
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+        });
+
         try {
-          const response = await fetch('/api/pipchips/participate', {
+          const response = await fetch('/api/pipchips/predict', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ marketId, outcome, pipchipsAmount: amount })
           });
 
+          // Check if response is ok
+          if (!response.ok) {
+            if (response.status === 401) {
+              alert('⚠️ You need to log in first! Please sign in with Discord to place predictions.');
+              window.location.href = '/auth/discord';
+              return;
+            } else {
+              alert(\`Server error (\${response.status}): \${response.statusText}\`);
+              // Re-enable buttons on error
+              buttons.forEach(btn => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+              });
+              return;
+            }
+          }
+
           const result = await response.json();
 
           if (result.success) {
-            alert(\`Participation placed successfully! You bought \${result.participation.sharesPurchased.toFixed(2)} shares.\`);
-            location.reload();
+            // Show success message without blocking the UI
+            const successMsg = document.createElement('div');
+            successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #065f46; color: #d1fae5; padding: 16px; border-radius: 8px; border: 1px solid #10b981; z-index: 1000; font-weight: 600;';
+            successMsg.textContent = \`✅ Prediction placed successfully! Spent \${amount} PIPChips on \${outcome}\`;
+            document.body.appendChild(successMsg);
+
+            // Remove success message after 5 seconds
+            setTimeout(() => successMsg.remove(), 5000);
+
+            // Update balance display if it exists
+            const balanceElement = document.querySelector('.balance-info h2');
+            if (balanceElement && result.userBalance) {
+              balanceElement.textContent = \`\${result.userBalance.current.toLocaleString()} PIPChips\`;
+            }
+
+            // Re-enable buttons after a short delay
+            setTimeout(() => {
+              buttons.forEach(btn => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+              });
+            }, 1000);
+
           } else {
             alert('Error: ' + result.error);
+            // Re-enable buttons on error
+            buttons.forEach(btn => {
+              btn.disabled = false;
+              btn.style.opacity = '1';
+            });
           }
         } catch (error) {
           alert('Network error placing participation');
+          // Re-enable buttons on error
+          buttons.forEach(btn => {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+          });
         }
       }
     </script>

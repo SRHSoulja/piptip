@@ -3,8 +3,12 @@ import { prisma } from './db.js';
 import { Prisma, PipchipsTransactionType } from '@prisma/client';
 import { createLogger, logFinancialOperation } from '../utils/logger.js';
 import Decimal from 'decimal.js';
+import { logCompleteTransaction } from './tx_logger.js';
 
 const logger = createLogger('pipchips-service');
+
+// PIPCHIPS token ID (virtual token for prediction markets)
+const PIPCHIPS_TOKEN_ID = 2;
 
 interface PIPChipsTransaction {
   userId: string;
@@ -71,74 +75,8 @@ export class PIPChipsService {
       financialLog.start();
 
       const result = await prisma.$transaction(async (tx) => {
-        // Get current user data
-        const user = await tx.user.findUnique({
-          where: { discordId: transaction.userId },
-          select: {
-            pipchipsBalance: true,
-            pipchipsEarnedTotal: true,
-            pipchipsSpentTotal: true,
-            pipchipsBoughtTotal: true,
-          }
-        });
-
-        if (!user) {
-          throw new Error(`User ${transaction.userId} not found`);
-        }
-
-        const currentBalance = user.pipchipsBalance;
-        const amount = transaction.amount;
-
-        // Validate transaction
-        if (amount < 0 && currentBalance < -amount) {
-          throw new Error(`Insufficient balance: ${currentBalance} < ${-amount}`);
-        }
-
-        // Calculate new balance and totals
-        const newBalance = currentBalance + amount;
-        const updates: any = {
-          pipchipsBalance: newBalance,
-        };
-
-        // Update running totals based on transaction type
-        if (amount > 0) {
-          updates.pipchipsEarnedTotal = user.pipchipsEarnedTotal + amount;
-
-          if (transaction.type === 'PURCHASE') {
-            updates.pipchipsBoughtTotal = user.pipchipsBoughtTotal + amount;
-          }
-        } else {
-          updates.pipchipsSpentTotal = user.pipchipsSpentTotal + (-amount);
-        }
-
-        // Update user balance
-        await tx.user.update({
-          where: { discordId: transaction.userId },
-          data: updates
-        });
-
-        // Log transaction
-        await tx.pipchipsTransaction.create({
-          data: {
-            userId: transaction.userId,
-            amount: transaction.amount,
-            transactionType: transaction.type,
-            referenceId: transaction.referenceId,
-            balanceAfter: newBalance,
-            description: transaction.description,
-            metadata: transaction.metadata as any,
-          }
-        });
-
-        logger.info({
-          userId: transaction.userId,
-          type: transaction.type,
-          amount: amount.toString(),
-          newBalance: newBalance.toString(),
-          referenceId: transaction.referenceId,
-        }, 'PIPChips transaction processed');
-
-        return newBalance;
+        // Use the internal processor which now includes unified transaction logging
+        return await this.processTransactionInternal(tx, transaction);
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
@@ -361,6 +299,7 @@ export class PIPChipsService {
     const user = await tx.user.findUnique({
       where: { discordId: transaction.userId },
       select: {
+        id: true,
         pipchipsBalance: true,
         pipchipsEarnedTotal: true,
         pipchipsSpentTotal: true,
@@ -403,7 +342,7 @@ export class PIPChipsService {
       data: updates
     });
 
-    // Log transaction
+    // Log transaction (legacy PIPChips-specific table)
     await tx.pipchipsTransaction.create({
       data: {
         userId: transaction.userId,
@@ -416,7 +355,93 @@ export class PIPChipsService {
       }
     });
 
+    // Map PipchipsTransactionType to Transaction operation
+    const operation = this.mapPipchipsTypeToTransactionType(transaction.type);
+
+    // Log to unified transaction log system with BalanceDelta
+    try {
+      const logResult = await logCompleteTransaction(tx, {
+        source: 'BOT',
+        operation,
+        userId: user.id,
+        idempotencyKey: `pipchips_${transaction.userId}_${Date.now()}_${Math.random()}`,
+        opRef: transaction.referenceId,
+        metadata: {
+          description: transaction.description,
+          pipchipsType: transaction.type,
+          referenceId: transaction.referenceId
+        },
+        balanceChanges: [
+          {
+            tokenId: PIPCHIPS_TOKEN_ID,
+            userId: user.id,
+            amountDelta: amount,
+            reason: this.getPipchipsBalanceDeltaReason(transaction.type, amount > 0n)
+          }
+        ]
+      });
+
+      logger.info({
+        operation,
+        transactionId: logResult.transactionId,
+        balanceDeltaCount: logResult.balanceDeltaIds.length
+      }, 'PIPChips transaction logged to unified system');
+    } catch (error) {
+      logger.error({
+        error,
+        operation,
+        userId: user.id,
+        amount: amount.toString()
+      }, 'Failed to log PIPChips transaction to unified system');
+      // Don't throw - we still have the PipchipsTransaction logged
+    }
+
     return newBalance;
+  }
+
+  /**
+   * Map PipchipsTransactionType to Transaction type
+   */
+  private mapPipchipsTypeToTransactionType(type: PipchipsTransactionType): string {
+    // Map PIPChips transaction types to the unified Transaction.type
+    switch (type) {
+      case 'PREDICTION_BET':
+        return 'PIPCHIPS_BET';
+      case 'BET_WON':
+        return 'PIPCHIPS_PAYOUT';
+      case 'BET_REFUNDED':
+        return 'PIPCHIPS_REFUND';
+      case 'DAILY_BONUS':
+      case 'STREAK_BONUS':
+      case 'STARTING_BONUS':
+        return 'PIPCHIPS_BONUS';
+      case 'PURCHASE':
+        return 'PIPCHIPS_PURCHASE';
+      default:
+        return 'PIPCHIPS_OTHER';
+    }
+  }
+
+  /**
+   * Get appropriate reason for BalanceDelta
+   */
+  private getPipchipsBalanceDeltaReason(type: PipchipsTransactionType, isCredit: boolean): string {
+    if (isCredit) {
+      switch (type) {
+        case 'BET_WON': return 'prediction_won';
+        case 'BET_REFUNDED': return 'prediction_refunded';
+        case 'DAILY_BONUS': return 'daily_bonus';
+        case 'STREAK_BONUS': return 'streak_bonus';
+        case 'STARTING_BONUS': return 'welcome_bonus';
+        case 'PURCHASE': return 'pipchips_purchase';
+        default: return 'pipchips_credit';
+      }
+    } else {
+      switch (type) {
+        case 'PREDICTION_BET': return 'prediction_bet';
+        default: return 'pipchips_debit';
+      }
+    }
   }
 
   /**

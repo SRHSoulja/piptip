@@ -3,7 +3,8 @@ import "dotenv/config";
 import { Router } from "express";
 import { JsonRpcProvider, Contract } from "ethers";
 import { prisma } from "../services/db.js";
-import { getConfig, ABSTRACT_RPC_URL } from "../config.js";
+import { getConfig } from "../config.js";
+import { getAbstractRpcUrl } from "../services/network.js";
 import { registerCommandsForApprovedGuilds } from "../services/command_registry.js";
 import { getCommandsJson } from "../services/commands_def.js";
 import { getTreasurySnapshot, invalidateTreasuryCache } from "../services/treasury.js";
@@ -1606,7 +1607,7 @@ adminRouter.post("/tokens", async (req, res) => {
             return res.status(400).json({ ok: false, error: "Token already exists" });
         }
         // Fetch token info from blockchain
-        const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+        const provider = new JsonRpcProvider(getAbstractRpcUrl());
         const contract = new Contract(address, ERC20_ABI, provider);
         const [name, symbol, decimals] = await Promise.all([
             contract.name(),
@@ -2181,7 +2182,7 @@ adminRouter.get("/system/status", async (req, res) => {
         // Check RPC
         let rpc = false;
         try {
-            const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+            const provider = new JsonRpcProvider(getAbstractRpcUrl());
             await provider.getBlockNumber();
             rpc = true;
         }

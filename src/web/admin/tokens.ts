@@ -2,7 +2,7 @@
 import { Router, Request, Response } from "express";
 import { JsonRpcProvider, Contract } from "ethers";
 import { prisma } from "../../services/db.js";
-import { ABSTRACT_RPC_URL } from "../../config.js";
+import { getAbstractRpcUrl } from "../../services/network.js";
 import { priceAPI } from "../../services/price_api.js";
 import { alchemyTokenMetadata } from "../../services/alchemy_token_metadata.js";
 
@@ -40,7 +40,7 @@ tokensRouter.post("/tokens", async (req: Request, res: Response) => {
     }
 
     // Fetch token info from blockchain
-    const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+    const provider = new JsonRpcProvider(getAbstractRpcUrl());
     const contract = new Contract(address, ERC20_ABI, provider);
     
     const [name, symbol, decimals] = await Promise.all([

@@ -1,0 +1,54 @@
+# Docker Compose configuration for isolated test database
+# Usage: docker-compose -f docker-compose.test.yml up -d
+
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: piptip-test-db
+    environment:
+      POSTGRES_DB: piptip_test
+      POSTGRES_USER: piptip_test
+      POSTGRES_PASSWORD: test_password_change_in_production
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"  # Map to 5433 to avoid conflict with production DB on 5432
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./scripts/init_test_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piptip_test -d piptip_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - test-network
+
+  # Optional: Redis for test session storage (if needed)
+  redis-test:
+    image: redis:7-alpine
+    container_name: piptip-test-redis
+    ports:
+      - "6380:6379"  # Map to 6380 to avoid conflict with production Redis
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - test-network
+
+volumes:
+  postgres_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge

@@ -6,6 +6,7 @@ import { withdrawalLimiter } from "../../services/withdrawal_limiter.js";
 import { resilientDiscordUpdates } from "../../services/resilient_discord_updates.js";
 import { discordRateLimiter } from "../../services/discord_rate_limiter.js";
 import { getTimerStatus } from "../../features/group_tip_expiry.js";
+import { getAppConfig } from "../../services/app_config_cache.js";
 export const systemRouter = Router();
 // System monitoring routes
 systemRouter.get("/system/status", async (req, res) => {
@@ -77,7 +78,7 @@ systemRouter.post("/system/clear-caches", async (req, res) => {
 systemRouter.post("/emergency/pause-withdrawals", async (req, res) => {
     try {
         // Get or create app config and set withdrawal pause
-        const config = await prisma.appConfig.findFirst();
+        const config = await getAppConfig();
         if (config) {
             await prisma.appConfig.update({
                 where: { id: config.id },
@@ -100,7 +101,7 @@ systemRouter.post("/emergency/pause-withdrawals", async (req, res) => {
 systemRouter.post("/emergency/pause-tipping", async (req, res) => {
     try {
         // Get or create app config and set tipping pause
-        const config = await prisma.appConfig.findFirst();
+        const config = await getAppConfig();
         if (config) {
             await prisma.appConfig.update({
                 where: { id: config.id },
@@ -123,7 +124,7 @@ systemRouter.post("/emergency/pause-tipping", async (req, res) => {
 systemRouter.post("/emergency/enable", async (req, res) => {
     try {
         // Enable full emergency mode - pause everything
-        const config = await prisma.appConfig.findFirst();
+        const config = await getAppConfig();
         if (config) {
             await prisma.appConfig.update({
                 where: { id: config.id },
@@ -154,7 +155,7 @@ systemRouter.post("/emergency/enable", async (req, res) => {
 systemRouter.post("/emergency/resume-all", async (req, res) => {
     try {
         // Resume all operations
-        const config = await prisma.appConfig.findFirst();
+        const config = await getAppConfig();
         if (config) {
             await prisma.appConfig.update({
                 where: { id: config.id },
@@ -185,7 +186,7 @@ systemRouter.post("/emergency/resume-all", async (req, res) => {
 // Get current emergency status
 systemRouter.get("/emergency/status", async (req, res) => {
     try {
-        const config = await prisma.appConfig.findFirst();
+        const config = await getAppConfig();
         const status = {
             emergencyMode: config?.emergencyMode || false,
             withdrawalsPaused: config?.withdrawalsPaused || false,

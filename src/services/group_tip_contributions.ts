@@ -5,6 +5,7 @@ import { formatDecimal, decToBigDirect, formatAmount, toAtomicDirect, bigToDecDi
 import { PENGUIN_ERRORS, createPenguinSuccess } from "../utils/penguin_messages.js";
 import { getConfig } from "../config.js";
 import { RoleTaxBenefitService } from "./role_tax_benefits.js";
+import { logCompleteTransaction } from "./tx_logger.js";
 
 // Rate limiting: Track recent contribution attempts
 const recentContributions = new Map<string, number>();
@@ -181,6 +182,43 @@ export async function addGroupTipContribution(
 
       // 10. FINANCIAL TRANSACTION
 
+      // Calculate atomic amounts for transaction logging
+      const contributionAtomic = toAtomicDirect(contributionAmount, groupTip.Token.decimals);
+      const feeAtomicBigint = toAtomicDirect(taxAmount, groupTip.Token.decimals);
+      const totalCostAtomic = contributionAtomic + feeAtomicBigint;
+
+      // Generate idempotency key
+      const idempotencyKey = `group_contribution_${groupTipId}_${contributor.id}_${Date.now()}`;
+
+      // Log transaction with BalanceDelta
+      await logCompleteTransaction(tx, {
+        operation: 'GROUP_TIP_CONTRIBUTION',
+        userId: contributor.id,
+        guildId: groupTip.guildId || undefined,
+        balanceChanges: [
+          {
+            tokenId: groupTip.tokenId,
+            userId: contributor.id,
+            amountDelta: -totalCostAtomic, // Debit contributor (amount + fee)
+            reason: 'group_tip_contribution'
+          },
+          {
+            tokenId: groupTip.tokenId,
+            userId: undefined, // Fee to house
+            amountDelta: feeAtomicBigint,
+            reason: 'group_tip_fee'
+          }
+        ],
+        metadata: {
+          groupTipId,
+          contributionAmount,
+          taxAmount,
+          creatorId: groupTip.creatorId
+        },
+        idempotencyKey,
+        source: 'BOT'
+      });
+
       // Deduct total cost from user balance
       await tx.userBalance.update({
         where: {
@@ -211,18 +249,6 @@ export async function addGroupTipContribution(
         data: {
           contributionsTotal: { increment: contributionAmount },
           contributorsCount: { increment: 1 }
-        }
-      });
-
-      // 11. TRANSACTION LOGGING
-      await tx.transaction.create({
-        data: {
-          type: 'GROUP_TIP_CONTRIBUTION',
-          userId: contributor.id,
-          tokenId: groupTip.tokenId,
-          amount: contributionAmount,
-          fee: taxAmount,
-          metadata: `Contribution to group tip ${groupTipId}`
         }
       });
 

@@ -2,6 +2,7 @@
 import type { ButtonInteraction } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { prisma } from "../../services/db.js";
+import { parseUnits } from "ethers";
 import { formatDecimal } from "../../services/token.js";
 import { PENGUIN_ERRORS, PENGUIN_LOADING, createPenguinSuccess } from "../../utils/penguin_messages.js";
 
@@ -119,16 +120,6 @@ export async function handleConfirmPurchase(i: ButtonInteraction, tierId: number
         throw new Error(`🐧 You're already a proud member of the ${tierPrice.tier.name} colony! Your membership is still active.`);
       }
 
-      // Deduct payment from user balance
-      await tx.userBalance.update({
-        where: { userId_tokenId: { userId: user.id, tokenId } },
-        data: { 
-          amount: { 
-            decrement: tierPrice.amount 
-          }
-        }
-      });
-
       // Create membership
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + tierPrice.tier.durationDays);
@@ -142,16 +133,32 @@ export async function handleConfirmPurchase(i: ButtonInteraction, tierId: number
         }
       });
 
-      // Log transaction
-      await tx.transaction.create({
-        data: {
-          type: 'MEMBERSHIP_PURCHASE',
-          userId: user.id,
-          tokenId,
-          amount: tierPrice.amount,
-          fee: '0',
-          metadata: `${tierPrice.tier.name} membership`
-        }
+      // Deduct payment and log with BalanceDelta
+      const { logCompleteTransaction } = await import("../../services/tx_logger.js");
+      const priceAtomic = parseUnits(tierPrice.amount.toString(), token.decimals);
+
+      await logCompleteTransaction(tx, {
+        source: 'BOT',
+        operation: 'TIER_PURCHASE',
+        userId: user.id,
+        guildId: i.guildId ?? null,
+        idempotencyKey: `tier_purchase_${user.id}_${tierId}_${Date.now()}`,
+        opRef: `tier_${tierId}`,
+        metadata: {
+          tierId,
+          tierName: tierPrice.tier.name,
+          cost: tierPrice.amount.toString(),
+          tokenSymbol: token.symbol,
+          durationDays: tierPrice.tier.durationDays
+        },
+        balanceChanges: [
+          {
+            tokenId,
+            userId: user.id,
+            amountDelta: -priceAtomic, // Negative (debit)
+            reason: 'tier_purchase'
+          }
+        ]
       });
     });
 

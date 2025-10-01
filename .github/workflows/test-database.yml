@@ -1,0 +1,112 @@
+name: Test Database - Isolated Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: piptip_test
+          POSTGRES_USER: piptip_test
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      NETWORK: testnet
+      TEST_DATABASE_URL: postgresql://piptip_test:test_password@localhost:5433/piptip_test?schema=public
+      DATABASE_URL: postgresql://piptip_test:test_password@localhost:5433/piptip_test?schema=public
+      REDIS_URL: redis://localhost:6380
+      TESTNET_RPC_URL: https://api.testnet.abs.xyz
+      ADMIN_SECRET: test_admin_secret
+      SESSION_SECRET: test_session_secret
+      DISCORD_TOKEN: test_discord_token
+      DISABLE_DISCORD_BOT: true
+      DISABLE_CRON_JOBS: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://piptip_test:test_password@localhost:5433/piptip_test?schema=public
+
+      - name: Verify database connectivity
+        run: |
+          npx prisma db execute --stdin <<< "SELECT 1;"
+        env:
+          DATABASE_URL: postgresql://piptip_test:test_password@localhost:5433/piptip_test?schema=public
+
+      - name: Run markets migration validation
+        run: npm run validate:markets-migration
+
+      - name: Run markets integration tests
+        run: npm run test:markets-integration
+
+      - name: Run tournament TPIP tests
+        run: npm run test:tournament-tpip
+
+      - name: Run prediction flow tests
+        run: npm run test:prediction-flow
+
+      - name: Run TPIP validation
+        run: npm run validate:tpip
+
+      - name: Database safety check
+        run: |
+          echo "Verifying test database isolation..."
+          if echo "$DATABASE_URL" | grep -q ":5433"; then
+            echo "✅ Tests running on isolated test database (port 5433)"
+          else
+            echo "❌ ERROR: Not using test database port!"
+            exit 1
+          fi
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            *.log
+            reports/
+          retention-days: 7

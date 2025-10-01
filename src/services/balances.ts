@@ -68,7 +68,7 @@ export async function ensureUserBalanceTx(tx: Tx, userId: number, tokenId: numbe
   });
 }
 
-// ---- tx-aware transaction logger (replaces the old global logTxAtomic) ----
+// ---- tx-aware transaction logger (delegated to new tx_logger) ----
 export async function logTxAtomicTx(
   db: Tx,
   params: {
@@ -81,67 +81,13 @@ export async function logTxAtomicTx(
     amountAtomic: bigint;
     feeAtomic?: bigint;
     txHash?: string | null;
-    note?: string | null; // stored as TEXT in SQLite
-    tokenSymbol?: string; // Optional: if provided, will capture USD value
+    note?: string | null;
+    tokenSymbol?: string;
   }
 ) {
-  const {
-    userId,
-    otherUserId = null,
-    guildId = null,
-    type,
-    tokenId,
-    decimals,
-    amountAtomic,
-    feeAtomic = 0n,
-    txHash = null,
-    note = null,
-    tokenSymbol = null,
-  } = params;
-
-  // Capture USD values for tax reporting and historical context
-  let usdValue: string | null = null;
-  let usdFeeValue: string | null = null;
-  let usdPrice: string | null = null;
-  let priceSource: string | null = null;
-
-  if (tokenSymbol) {
-    try {
-      const prices = await getCachedTokenPrices([tokenSymbol]);
-      const tokenPrice = prices[tokenSymbol];
-      if (tokenPrice && tokenPrice > 0) {
-        const amountInTokens = parseFloat(toDecStr(amountAtomic, decimals));
-        const feeInTokens = parseFloat(toDecStr(feeAtomic, decimals));
-
-        usdPrice = tokenPrice.toString();
-        usdValue = (amountInTokens * tokenPrice).toString();
-        usdFeeValue = (feeInTokens * tokenPrice).toString();
-        priceSource = 'cached_global'; // Indicate this uses global cache
-      }
-    } catch (error) {
-      // Silently continue without USD values if price fetch fails
-      console.warn(`Failed to get USD values for transaction: ${error}`);
-    }
-  }
-
-  await db.transaction.create({
-    data: {
-      type,
-      userId,
-      otherUserId,
-      guildId,
-      tokenId,
-      amount: toDecStr(amountAtomic, decimals),
-      fee: toDecStr(feeAtomic, decimals),
-      txHash: txHash ?? undefined,
-      metadata: note ?? null,
-      // USD value tracking for tax reporting
-      usdValue: usdValue ? parseFloat(usdValue) : null,
-      usdFeeValue: usdFeeValue ? parseFloat(usdFeeValue) : null,
-      usdPrice: usdPrice ? parseFloat(usdPrice) : null,
-      priceSource: priceSource,
-    },
-  });
+  // Delegate to new transaction logging system
+  const { logTxAtomicTx: newLogTxAtomicTx } = await import('./tx_logger.js');
+  await newLogTxAtomicTx(db, params);
 }
 
 // ---------- public API (multi-token only, non-TX) ----------

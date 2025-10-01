@@ -1,10 +1,10 @@
 // src/services/alchemy_token_metadata.ts - Enhanced token metadata from Alchemy
 import { JsonRpcProvider } from 'ethers';
-import { ABSTRACT_RPC_URL } from '../config.js';
+import { getAbstractRpcUrl } from './network.js';
 class AlchemyTokenMetadataService {
     provider;
     constructor() {
-        this.provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+        this.provider = new JsonRpcProvider(getAbstractRpcUrl());
     }
     /**
      * Test what Alchemy methods are available for token metadata

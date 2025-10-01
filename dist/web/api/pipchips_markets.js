@@ -14,6 +14,7 @@ const setCorsHeaders = (req, res, next) => {
         'http://localhost:3001',
         'https://piptip.gg',
         'https://www.piptip.gg',
+        'https://piptip-production.up.railway.app',
         process.env.WEB_URL
     ].filter(Boolean);
     const origin = req.get('Origin');
@@ -82,7 +83,7 @@ pipchipsMarketsRouter.get("/markets", async (req, res) => {
                 return acc;
             }, {});
             const timeLeft = market.resolveAt.getTime() - Date.now();
-            const bettingClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
+            const predictionsClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
             return {
                 id: market.id,
                 title: market.title,
@@ -92,11 +93,11 @@ pipchipsMarketsRouter.get("/markets", async (req, res) => {
                 resolveAt: market.resolveAt.toISOString(),
                 timeLeftMs: Math.max(0, timeLeft),
                 status: market.status,
-                bettingClosed,
+                predictionsClosed,
                 // PIPChips info
                 currency: 'PIPCHIPS',
                 totalVolume: market.totalPipchipsVolume || 0,
-                totalBets: market._count.participations,
+                totalPredictions: market._count.participations,
                 liquidityParameter: Number(market.liquidity),
                 // Live LMSR prices
                 prices: pricesMap,
@@ -131,14 +132,14 @@ pipchipsMarketsRouter.get("/markets", async (req, res) => {
 pipchipsMarketsRouter.get("/market/:id", async (req, res) => {
     try {
         const { id } = req.params;
-        const { include_bets = "true" } = req.query;
+        const { include_predictions = "true" } = req.query;
         const market = await prisma.predictionMarket.findUnique({
             where: {
                 id
                 // PIPChips markets identified by tokenSymbol instead of currency
             },
             include: {
-                participations: include_bets === "true" ? {
+                participations: include_predictions === "true" ? {
                     where: { tokenSymbol: 'PIPCHIPS' },
                     orderBy: { createdAt: 'desc' },
                     take: 50,
@@ -187,9 +188,9 @@ pipchipsMarketsRouter.get("/market/:id", async (req, res) => {
             return acc;
         }, {});
         const timeLeft = market.resolveAt.getTime() - Date.now();
-        const bettingClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
-        // Format betting history (anonymize user IDs for privacy)
-        const participationHistory = include_bets === "true" && market.participations ?
+        const predictionsClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
+        // Format participation history (anonymize user IDs for privacy)
+        const participationHistory = include_predictions === "true" && market.participations ?
             market.participations.map(participation => ({
                 id: participation.id,
                 side: participation.side,
@@ -210,11 +211,11 @@ pipchipsMarketsRouter.get("/market/:id", async (req, res) => {
                 resolveAt: market.resolveAt.toISOString(),
                 timeLeftMs: Math.max(0, timeLeft),
                 status: market.status,
-                bettingClosed,
+                predictionsClosed,
                 // PIPChips market info
                 currency: 'PIPCHIPS',
                 totalVolume: market.totalPipchipsVolume || 0,
-                totalBets: market._count.participations,
+                totalPredictions: market._count.participations,
                 liquidityParameter: Number(market.liquidity),
                 // LMSR pricing
                 prices: pricesMap,
@@ -240,9 +241,9 @@ pipchipsMarketsRouter.get("/market/:id", async (req, res) => {
     }
 });
 /**
- * POST /api/pipchips/participate - Place PIPChips participation
+ * POST /api/pipchips/predict - Place PIPChips prediction
  */
-pipchipsMarketsRouter.post("/bet", async (req, res) => {
+pipchipsMarketsRouter.post("/predict", async (req, res) => {
     try {
         const currentUser = getCurrentUser(req);
         if (!currentUser) {
@@ -260,32 +261,39 @@ pipchipsMarketsRouter.post("/bet", async (req, res) => {
                 error: 'Missing required fields: marketId, outcome, pipchipsAmount'
             });
         }
-        const betAmount = parseInt(pipchipsAmount);
-        if (isNaN(betAmount) || betAmount <= 0) {
+        const predictionAmount = parseInt(pipchipsAmount);
+        if (isNaN(predictionAmount) || predictionAmount <= 0) {
             return res.status(400).json({
                 success: false,
                 error: 'PIPChips amount must be a positive integer'
             });
         }
-        // Minimum bet validation
-        if (betAmount < 10) {
+        // Minimum prediction validation
+        if (predictionAmount < 10) {
             return res.status(400).json({
                 success: false,
-                error: 'Minimum bet is 10 PIPChips'
+                error: 'Minimum prediction is 10 PIPChips'
             });
         }
         // Check if market exists and is active
+        console.log('🔍 Looking for market:', { marketId });
         const market = await prisma.predictionMarket.findUnique({
             where: {
-                id: marketId,
-                tokenSymbol: 'PIPCHIPS',
-                status: 'ACTIVE'
+                id: marketId
+                // Remove tokenSymbol filter for now to debug
             }
         });
+        console.log('📊 Found market:', market ? { id: market.id, tokenSymbol: market.tokenSymbol, status: market.status } : 'NOT_FOUND');
         if (!market) {
             return res.status(404).json({
                 success: false,
-                error: 'Active PIPChips market not found'
+                error: 'Market not found'
+            });
+        }
+        if (market.status !== 'ACTIVE') {
+            return res.status(400).json({
+                success: false,
+                error: 'Market is not active'
             });
         }
         if (new Date() >= market.resolveAt) {
@@ -302,45 +310,45 @@ pipchipsMarketsRouter.post("/bet", async (req, res) => {
         }
         // Check user balance
         const userBalance = await pipchipsService.getUserBalance(currentUser.discordId);
-        if (userBalance.balance < BigInt(betAmount)) {
+        if (userBalance.balance < BigInt(predictionAmount)) {
             return res.status(400).json({
                 success: false,
                 error: 'Insufficient PIPChips balance',
                 currentBalance: Number(userBalance.balance),
-                required: betAmount,
-                deficit: betAmount - Number(userBalance.balance)
+                required: predictionAmount,
+                deficit: predictionAmount - Number(userBalance.balance)
             });
         }
-        // Place the bet using the unified PredictionMarketService
-        const betResult = await predictionMarkets.placeBet({
+        // Place the prediction using the unified PredictionMarketService
+        const predictionResult = await predictionMarkets.placeBet({
             marketId,
             userId: currentUser.discordId,
             side: outcome,
-            amount: betAmount
+            amount: predictionAmount
         });
-        if (!betResult.success) {
+        if (!predictionResult.success) {
             return res.status(400).json({
                 success: false,
-                error: betResult.error || 'Failed to place bet'
+                error: predictionResult.error || 'Failed to place prediction'
             });
         }
-        const updatedMarket = betResult.market;
+        const updatedMarket = predictionResult.market;
         if (!updatedMarket) {
-            throw new Error('Market not found after bet placement');
+            throw new Error('Market not found after prediction placement');
         }
-        // Get current user balance after bet
+        // Get current user balance after prediction
         const newUserBalance = await pipchipsService.getUserBalance(currentUser.discordId);
         // Calculate current prices from the updated market data
         const currentPrices = updatedMarket.currentPrices || { YES: '0.5', NO: '0.5' };
         res.json({
             success: true,
-            message: 'PIPChips bet placed successfully',
-            bet: {
+            message: 'PIPChips prediction placed successfully',
+            prediction: {
                 marketId,
                 outcome,
-                pipchipsAmount: betAmount,
+                pipchipsAmount: predictionAmount,
                 sharesPurchased: 0, // Will be calculated based on LMSR if market uses it
-                potentialPayout: betAmount * 2, // Simplified - actual payout depends on market resolution
+                potentialPayout: predictionAmount * 2, // Simplified - actual payout depends on market resolution
                 currentPrice: parseFloat(currentPrices[outcome] || '0.5'),
                 slippage: 0, // Will be calculated properly once LMSR is fully integrated
                 timestamp: new Date().toISOString()
@@ -348,7 +356,7 @@ pipchipsMarketsRouter.post("/bet", async (req, res) => {
             updatedMarket: {
                 id: updatedMarket.id,
                 totalVolume: updatedMarket.totalPipchipsVolume || 0,
-                totalBets: updatedMarket.totalBetCount,
+                totalPredictions: updatedMarket.totalBetCount,
                 prices: currentPrices,
                 totalYes: updatedMarket.totalYesBets,
                 totalNo: updatedMarket.totalNoBets
@@ -356,15 +364,152 @@ pipchipsMarketsRouter.post("/bet", async (req, res) => {
             userBalance: {
                 previous: Number(userBalance.balance),
                 current: Number(newUserBalance.balance),
-                spent: betAmount
+                spent: predictionAmount
             }
         });
     }
     catch (error) {
-        console.error('PIPChips bet error:', error);
+        console.error('PIPChips prediction error:', error);
         res.status(500).json({
             success: false,
-            error: error?.message || 'Failed to place PIPChips bet'
+            error: error?.message || 'Failed to place PIPChips prediction'
+        });
+    }
+});
+/**
+ * POST /api/pipchips/bet - Legacy endpoint, redirects to /predict
+ */
+pipchipsMarketsRouter.post("/bet", async (req, res) => {
+    // Forward to the new predict endpoint
+    try {
+        const currentUser = getCurrentUser(req);
+        if (!currentUser) {
+            return res.status(401).json({
+                success: false,
+                error: 'Discord authentication required',
+                needsAuth: true
+            });
+        }
+        const { marketId, outcome, pipchipsAmount } = req.body;
+        // Validate input
+        if (!marketId || !outcome || !pipchipsAmount) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: marketId, outcome, pipchipsAmount'
+            });
+        }
+        const predictionAmount = parseInt(pipchipsAmount);
+        if (isNaN(predictionAmount) || predictionAmount <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'PIPChips amount must be a positive integer'
+            });
+        }
+        // Minimum prediction validation
+        if (predictionAmount < 10) {
+            return res.status(400).json({
+                success: false,
+                error: 'Minimum prediction is 10 PIPChips'
+            });
+        }
+        // Check if market exists and is active
+        console.log('🔍 Looking for market:', { marketId });
+        const market = await prisma.predictionMarket.findUnique({
+            where: {
+                id: marketId
+                // Remove tokenSymbol filter for now to debug
+            }
+        });
+        console.log('📊 Found market:', market ? { id: market.id, tokenSymbol: market.tokenSymbol, status: market.status } : 'NOT_FOUND');
+        if (!market) {
+            return res.status(404).json({
+                success: false,
+                error: 'Market not found'
+            });
+        }
+        if (market.status !== 'ACTIVE') {
+            return res.status(400).json({
+                success: false,
+                error: 'Market is not active'
+            });
+        }
+        if (new Date() >= market.resolveAt) {
+            return res.status(400).json({
+                success: false,
+                error: 'Market has expired'
+            });
+        }
+        if (!market.marketOutcomes.includes(outcome)) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid outcome. Valid outcomes: ${market.marketOutcomes.join(', ')}`
+            });
+        }
+        // Check user balance
+        const userBalance = await pipchipsService.getUserBalance(currentUser.discordId);
+        if (userBalance.balance < BigInt(predictionAmount)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Insufficient PIPChips balance',
+                currentBalance: Number(userBalance.balance),
+                required: predictionAmount,
+                deficit: predictionAmount - Number(userBalance.balance)
+            });
+        }
+        // Place the prediction using the unified PredictionMarketService
+        const predictionResult = await predictionMarkets.placeBet({
+            marketId,
+            userId: currentUser.discordId,
+            side: outcome,
+            amount: predictionAmount
+        });
+        if (!predictionResult.success) {
+            return res.status(400).json({
+                success: false,
+                error: predictionResult.error || 'Failed to place prediction'
+            });
+        }
+        const updatedMarket = predictionResult.market;
+        if (!updatedMarket) {
+            throw new Error('Market not found after prediction placement');
+        }
+        // Get current user balance after prediction
+        const newUserBalance = await pipchipsService.getUserBalance(currentUser.discordId);
+        // Calculate current prices from the updated market data
+        const currentPrices = updatedMarket.currentPrices || { YES: '0.5', NO: '0.5' };
+        res.json({
+            success: true,
+            message: 'PIPChips prediction placed successfully',
+            prediction: {
+                marketId,
+                outcome,
+                pipchipsAmount: predictionAmount,
+                sharesPurchased: 0, // Will be calculated based on LMSR if market uses it
+                potentialPayout: predictionAmount * 2, // Simplified - actual payout depends on market resolution
+                currentPrice: parseFloat(currentPrices[outcome] || '0.5'),
+                slippage: 0, // Will be calculated properly once LMSR is fully integrated
+                timestamp: new Date().toISOString()
+            },
+            updatedMarket: {
+                id: updatedMarket.id,
+                totalVolume: updatedMarket.totalPipchipsVolume || 0,
+                totalPredictions: updatedMarket.totalBetCount,
+                prices: currentPrices,
+                totalYes: updatedMarket.totalYesBets,
+                totalNo: updatedMarket.totalNoBets
+            },
+            userBalance: {
+                previous: Number(userBalance.balance),
+                current: Number(newUserBalance.balance),
+                spent: predictionAmount
+            }
+        });
+    }
+    catch (error) {
+        console.error('PIPChips prediction error (legacy endpoint):', error);
+        res.status(500).json({
+            success: false,
+            error: error?.message || 'Failed to place PIPChips prediction'
         });
     }
 });
@@ -501,14 +646,14 @@ pipchipsMarketsRouter.get("/user/participations", async (req, res) => {
             };
         });
         // Filter by status if requested
-        const filteredBets = status === 'all' ? formattedParticipations :
-            formattedParticipations.filter(bet => {
+        const filteredPredictions = status === 'all' ? formattedParticipations :
+            formattedParticipations.filter(prediction => {
                 if (status === 'active')
-                    return bet.result === 'pending';
+                    return prediction.result === 'pending';
                 if (status === 'won')
-                    return bet.result === 'won';
+                    return prediction.result === 'won';
                 if (status === 'lost')
-                    return bet.result === 'lost';
+                    return prediction.result === 'lost';
                 return true;
             });
         const total = await prisma.predictionParticipation.count({
@@ -519,7 +664,7 @@ pipchipsMarketsRouter.get("/user/participations", async (req, res) => {
         });
         res.json({
             success: true,
-            bets: filteredBets,
+            predictions: filteredPredictions,
             pagination: {
                 total,
                 limit: limitNum,
@@ -527,22 +672,22 @@ pipchipsMarketsRouter.get("/user/participations", async (req, res) => {
                 hasMore: offsetNum + limitNum < total
             },
             summary: {
-                totalBets: filteredBets.length,
-                totalSpent: filteredBets.reduce((sum, bet) => sum + bet.pipchipsAmount, 0),
-                totalWon: filteredBets
-                    .filter(bet => bet.result === 'won')
-                    .reduce((sum, bet) => sum + bet.actualPayout, 0),
-                winRate: filteredBets.length > 0 ?
-                    (filteredBets.filter(bet => bet.result === 'won').length /
-                        filteredBets.filter(bet => bet.result !== 'pending').length) * 100 : 0
+                totalPredictions: filteredPredictions.length,
+                totalSpent: filteredPredictions.reduce((sum, prediction) => sum + prediction.pipchipsAmount, 0),
+                totalWon: filteredPredictions
+                    .filter(prediction => prediction.result === 'won')
+                    .reduce((sum, prediction) => sum + prediction.actualPayout, 0),
+                winRate: filteredPredictions.length > 0 ?
+                    (filteredPredictions.filter(prediction => prediction.result === 'won').length /
+                        filteredPredictions.filter(prediction => prediction.result !== 'pending').length) * 100 : 0
             }
         });
     }
     catch (error) {
-        console.error('PIPChips bets API error:', error);
+        console.error('PIPChips predictions API error:', error);
         res.status(500).json({
             success: false,
-            error: 'Failed to fetch PIPChips betting history'
+            error: 'Failed to fetch PIPChips prediction history'
         });
     }
 });
@@ -580,10 +725,10 @@ pipchipsMarketsRouter.get("/stats", async (req, res) => {
                     active: activeMarkets,
                     resolved: totalMarkets - activeMarkets
                 },
-                betting: {
-                    totalBets,
+                predictions: {
+                    totalPredictions: totalBets,
                     totalVolume: totalVolume._sum.amount || 0,
-                    uniqueBettors: uniqueBettors.length
+                    uniquePredictors: uniqueBettors.length
                 },
                 pipchips: {
                     totalCirculation: Number(pipchipsStats.totalCirculation),

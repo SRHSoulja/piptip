@@ -103,8 +103,39 @@ Start the development server:
 
 ---
 
+## 🚀 Mainnet Launch
+
+PIPTip is production-ready for deployment to Abstract mainnet with comprehensive safety measures and monitoring.
+
+### Quick Launch Guide
+- **Summary**: See [MAINNET_LAUNCH_SUMMARY.md](docs/MAINNET_LAUNCH_SUMMARY.md) for one-page deployment guide
+- **Full Plan**: See [MAINNET_LAUNCH_PLAN.md](docs/MAINNET_LAUNCH_PLAN.md) for complete battle plan
+
+### Key Commands
+```bash
+# Dry run validation (NO GAS)
+npm run dryrun:mainnet
+
+# Deploy to mainnet (USES GAS - requires --confirm-mainnet)
+npm run deploy:mainnet
+
+# Publish first snapshot (USES GAS - requires --confirm-mainnet)
+npm run publish:mainnet
+
+# Monitor system health (NO GAS)
+npm run health
+```
+
+### Safety Features
+- ✅ Multi-layer safety checks prevent accidental mainnet operations
+- ✅ All commands are gas-free unless explicitly confirmed with `--confirm-mainnet`
+- ✅ Comprehensive rollback procedures and circuit breakers
+- ✅ Real-time monitoring and alerting systems
+
+---
+
 ## 🤝 Contributing
-Pull requests welcome! Open an issue to discuss bigger changes.  
+Pull requests welcome! Open an issue to discuss bigger changes.
 
 ---
 

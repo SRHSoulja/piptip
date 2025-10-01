@@ -510,8 +510,26 @@ export async function getCachedTokenPrice(symbol: string): Promise<number> {
 /**
  * Global cached prices getter for multiple tokens
  * Ensures consistent caching across all bot components
+ *
+ * In test mode (NODE_ENV=test or USE_MOCK_PRICES=true), returns mock prices instantly
+ * to avoid API timeouts and rate limiting during tests.
  */
 export async function getCachedTokenPrices(symbols: string[]): Promise<Record<string, number>> {
+  // Use mock prices in test mode to avoid API calls
+  const isTestMode = process.env.NODE_ENV === 'test' ||
+                     process.env.USE_MOCK_PRICES === 'true';
+
+  if (isTestMode) {
+    const { getMockTokenPrice } = await import('./test_mocks.js');
+    const mockPrices: Record<string, number> = {};
+
+    for (const symbol of symbols) {
+      mockPrices[symbol] = await getMockTokenPrice(symbol);
+    }
+
+    return mockPrices;
+  }
+
   const result = await priceAPI.getTokenPrices(symbols);
   return result.prices;
 }

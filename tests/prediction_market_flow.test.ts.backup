@@ -1,0 +1,548 @@
+#!/usr/bin/env npx tsx
+/**
+ * Prediction Market Flow Integration Test
+ *
+ * Tests complete prediction market lifecycle using REAL service methods:
+ * - Market creation via PredictionMarketService (as cron jobs do)
+ * - Multiple users place bets via placeBet()
+ * - Market resolution + payouts via resolveMarket()
+ * - Refund scenario via CANCEL outcome
+ * - Transaction + BalanceDelta integrity validation
+ * - End state matches transaction log aggregation
+ *
+ * Run: npm run test:prediction-flow
+ */
+
+import "dotenv/config";
+import { validateTestEnvironment } from "../src/services/test_db_safety.js";
+import { getTransactionTimeout } from "../src/services/test_mocks.js";
+import { prisma } from "../src/services/db.js";
+import { PredictionMarketService } from "../src/services/prediction_markets.js";
+
+// Set test environment variables
+process.env.NODE_ENV = 'test';
+process.env.USE_MOCK_PRICES = 'true';
+
+// Validate test environment before running
+validateTestEnvironment();
+
+interface TestContext {
+  testUsers: Array<{ id: number; discordId: string; initialPIPChips: bigint }>;
+  testMarkets: Array<{ id: string; title: string }>;
+  marketService: PredictionMarketService;
+  cleanup: Array<() => Promise<void>>;
+}
+
+let ctx: TestContext;
+
+async function setup(): Promise<void> {
+  console.log("🧪 Setting up prediction market test environment...\n");
+
+  ctx = {
+    testUsers: [],
+    testMarkets: [],
+    marketService: new PredictionMarketService(),
+    cleanup: []
+  };
+
+  // Get PIPCHIPS token
+  const pipchipsToken = await prisma.token.findFirst({
+    where: { symbol: "PIPCHIPS" }
+  });
+
+  if (!pipchipsToken) {
+    throw new Error("PIPCHIPS token not found - run migration first");
+  }
+
+  // Create 3 test users with PIPChips
+  const initialPIPChips = 10000n;
+  for (let i = 0; i < 3; i++) {
+    const discordId = `test_pred_user_${Date.now()}_${i}`;
+    const user = await prisma.user.create({
+      data: {
+        discordId,
+        pipchipsBalance: initialPIPChips
+      }
+    });
+
+    ctx.testUsers.push({ id: user.id, discordId, initialPIPChips });
+    ctx.cleanup.push(async () => {
+      await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+    });
+  }
+
+  console.log(`✅ Created 3 test users with ${initialPIPChips} PIPChips each`);
+  console.log();
+}
+
+async function cleanup(): Promise<void> {
+  console.log("\n🧹 Cleaning up test data...");
+
+  // Clean up markets first
+  for (const market of ctx.testMarkets) {
+    await prisma.predictionMarket.delete({ where: { id: market.id } }).catch(() => {});
+  }
+
+  // Clean up users
+  for (const cleanupFn of ctx.cleanup.reverse()) {
+    await cleanupFn().catch(err => console.error("Cleanup error:", err));
+  }
+
+  console.log("✅ Cleanup completed");
+}
+
+// Test 1: Create Market Using Real Service
+async function testCreateMarket(): Promise<boolean> {
+  console.log("1️⃣ Testing Market Creation via PredictionMarketService...");
+
+  try {
+    const creator = ctx.testUsers[0];
+    const resolveAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    // Create market exactly as cron job would
+    const market = await ctx.marketService.createMarket({
+      title: "Will this test pass?",
+      description: "Integration test prediction market",
+      resolveAt,
+      creatorId: creator.discordId,
+      guildId: "test_guild",
+      channelId: "test_channel",
+      tokenSymbol: "PIPCHIPS",
+      marketType: "BINARY",
+      marketData: { outcomes: ["YES", "NO"] },
+      rakePercentage: 3.0,
+      minBet: 1,
+      maxBet: 10000
+    });
+
+    if (!market || !market.id) {
+      console.error("   ❌ Market creation failed");
+      return false;
+    }
+
+    ctx.testMarkets.push({ id: market.id, title: market.title });
+
+    // Verify market was created with correct initial state
+    const dbMarket = await prisma.predictionMarket.findUnique({
+      where: { id: market.id }
+    });
+
+    if (!dbMarket) {
+      console.error("   ❌ Market not found in database");
+      return false;
+    }
+
+    if (dbMarket.status !== 'ACTIVE') {
+      console.error(`   ❌ Market status is ${dbMarket.status}, expected ACTIVE`);
+      return false;
+    }
+
+    if (dbMarket.totalBetCount !== 0) {
+      console.error(`   ❌ Initial bet count is ${dbMarket.totalBetCount}, expected 0`);
+      return false;
+    }
+
+    console.log(`   ✅ Created market: "${market.title}" (ID: ${market.id})`);
+    console.log(`   ✅ Status: ${dbMarket.status}`);
+    console.log(`   ✅ Rake: ${dbMarket.rakePercentage}%`);
+    console.log(`   ✅ Liquidity: ${dbMarket.liquidity} PIPChips`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 2: Place Bets Using Real Service
+async function testPlaceBets(): Promise<boolean> {
+  console.log("\n2️⃣ Testing Bet Placement via placeBet()...");
+
+  try {
+    const market = ctx.testMarkets[0];
+    if (!market) {
+      console.error("   ❌ No market available for testing");
+      return false;
+    }
+
+    // User 0 bets 1000 on YES
+    const bet1 = await ctx.marketService.placeBet({
+      marketId: market.id,
+      userId: ctx.testUsers[0].discordId,
+      side: 'YES',
+      amount: 1000
+    });
+
+    if (!bet1.success) {
+      console.error(`   ❌ Bet 1 failed: ${bet1.error}`);
+      return false;
+    }
+
+    // User 1 bets 1500 on YES
+    const bet2 = await ctx.marketService.placeBet({
+      marketId: market.id,
+      userId: ctx.testUsers[1].discordId,
+      side: 'YES',
+      amount: 1500
+    });
+
+    if (!bet2.success) {
+      console.error(`   ❌ Bet 2 failed: ${bet2.error}`);
+      return false;
+    }
+
+    // User 2 bets 2000 on NO
+    const bet3 = await ctx.marketService.placeBet({
+      marketId: market.id,
+      userId: ctx.testUsers[2].discordId,
+      side: 'NO',
+      amount: 2000
+    });
+
+    if (!bet3.success) {
+      console.error(`   ❌ Bet 3 failed: ${bet3.error}`);
+      return false;
+    }
+
+    // Verify Transaction records created
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        type: "PIPCHIPS_BET",
+        userId: { in: ctx.testUsers.map(u => u.id) },
+        createdAt: { gte: new Date(Date.now() - 10000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    if (transactions.length !== 3) {
+      console.error(`   ❌ Expected 3 bet transactions, got ${transactions.length}`);
+      return false;
+    }
+
+    // Verify each has BalanceDelta
+    for (const tx of transactions) {
+      if (tx.balanceDeltas.length === 0) {
+        console.error(`   ❌ Transaction ${tx.id} has no BalanceDeltas`);
+        return false;
+      }
+
+      // Verify amount is negative (debit)
+      const delta = tx.balanceDeltas[0];
+      if (Number(delta.amountDelta) >= 0) {
+        console.error(`   ❌ Bet BalanceDelta should be negative, got: ${delta.amountDelta}`);
+        return false;
+      }
+    }
+
+    // Verify User.pipchipsBalance decreased
+    for (let i = 0; i < 3; i++) {
+      const user = await prisma.user.findUnique({
+        where: { id: ctx.testUsers[i].id },
+        select: { pipchipsBalance: true }
+      });
+
+      const expectedAmounts = [9000n, 8500n, 8000n]; // After bets
+      if (user!.pipchipsBalance !== expectedAmounts[i]) {
+        console.error(`   ❌ User ${i} balance mismatch: expected ${expectedAmounts[i]}, got ${user!.pipchipsBalance}`);
+        return false;
+      }
+    }
+
+    console.log(`   ✅ Placed 3 bets (1000 YES, 1500 YES, 2000 NO)`);
+    console.log(`   ✅ Created 3 transactions with BalanceDeltas`);
+    console.log(`   ✅ User balances decreased correctly`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 3: Market Resolution with Payouts
+async function testMarketResolution(): Promise<boolean> {
+  console.log("\n3️⃣ Testing Market Resolution via resolveMarket()...");
+
+  try {
+    const market = ctx.testMarkets[0];
+    if (!market) {
+      console.error("   ❌ No market available for testing");
+      return false;
+    }
+
+    // Resolve market: YES wins
+    const resolution = await ctx.marketService.resolveMarket(market.id, 'YES');
+
+    if (!resolution.success) {
+      console.error(`   ❌ Resolution failed: ${resolution.error}`);
+      return false;
+    }
+
+    if (!resolution.payouts || resolution.payouts.length === 0) {
+      console.error("   ❌ No payouts generated");
+      return false;
+    }
+
+    console.log(`   ✅ Market resolved with ${resolution.payouts.length} payouts`);
+
+    // Verify payout transactions
+    const payoutTxs = await prisma.transaction.findMany({
+      where: {
+        type: "PIPCHIPS_PAYOUT",
+        createdAt: { gte: new Date(Date.now() - 10000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    if (payoutTxs.length !== resolution.payouts.length) {
+      console.error(`   ❌ Expected ${resolution.payouts.length} payout transactions, got ${payoutTxs.length}`);
+      return false;
+    }
+
+    // Verify each has BalanceDelta
+    for (const tx of payoutTxs) {
+      if (tx.balanceDeltas.length === 0) {
+        console.error(`   ❌ Payout transaction ${tx.id} has no BalanceDeltas`);
+        return false;
+      }
+
+      // Verify amount is positive (credit)
+      const delta = tx.balanceDeltas[0];
+      if (Number(delta.amountDelta) <= 0) {
+        console.error(`   ❌ Payout BalanceDelta should be positive, got: ${delta.amountDelta}`);
+        return false;
+      }
+    }
+
+    // Verify market status
+    const dbMarket = await prisma.predictionMarket.findUnique({
+      where: { id: market.id }
+    });
+
+    if (dbMarket?.status !== 'RESOLVED') {
+      console.error(`   ❌ Market status is ${dbMarket?.status}, expected RESOLVED`);
+      return false;
+    }
+
+    if (dbMarket?.outcome !== 'YES') {
+      console.error(`   ❌ Market outcome is ${dbMarket?.outcome}, expected YES`);
+      return false;
+    }
+
+    console.log(`   ✅ Created ${payoutTxs.length} payout transactions`);
+    console.log(`   ✅ All payouts have positive BalanceDeltas`);
+    console.log(`   ✅ Market status: RESOLVED, outcome: YES`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 4: BalanceDelta Reconciliation
+async function testBalanceDeltaReconciliation(): Promise<boolean> {
+  console.log("\n4️⃣ Testing BalanceDelta Reconciliation...");
+
+  try {
+    // Get PIPCHIPS token
+    const pipchipsToken = await prisma.token.findFirst({
+      where: { symbol: "PIPCHIPS" }
+    });
+
+    if (!pipchipsToken) {
+      throw new Error("PIPCHIPS token not found");
+    }
+
+    // Verify each user's balance matches sum of BalanceDeltas
+    for (let i = 0; i < ctx.testUsers.length; i++) {
+      const user = ctx.testUsers[i];
+
+      // Get all BalanceDeltas for this user
+      const deltas = await prisma.balanceDelta.findMany({
+        where: {
+          userId: user.id,
+          tokenId: pipchipsToken.id
+        }
+      });
+
+      // Sum BalanceDeltas
+      const deltaSum = deltas.reduce((sum, delta) =>
+        sum + BigInt(delta.amountDelta.toString()), 0n
+      );
+
+      // Get current balance
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { pipchipsBalance: true }
+      });
+
+      // Expected: initial + sum of deltas
+      const expected = user.initialPIPChips + deltaSum;
+      const actual = currentUser!.pipchipsBalance;
+
+      if (expected !== actual) {
+        console.error(`   ❌ User ${i} reconciliation failed:`);
+        console.error(`      Initial: ${user.initialPIPChips}`);
+        console.error(`      Delta sum: ${deltaSum}`);
+        console.error(`      Expected: ${expected}`);
+        console.error(`      Actual: ${actual}`);
+        return false;
+      }
+
+      console.log(`   ✅ User ${i}: Balance matches initial + ΣBalanceDeltas (${actual} PIPChips)`);
+    }
+
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 5: Market Cancellation/Refund
+async function testMarketCancellation(): Promise<boolean> {
+  console.log("\n5️⃣ Testing Market Cancellation/Refund...");
+
+  try {
+    const creator = ctx.testUsers[0];
+    const resolveAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    // Create new market for refund test
+    const market = await ctx.marketService.createMarket({
+      title: "Refund Test Market",
+      description: "This market will be cancelled",
+      resolveAt,
+      creatorId: creator.discordId,
+      guildId: "test_guild",
+      channelId: "test_channel",
+      tokenSymbol: "PIPCHIPS",
+      marketType: "BINARY",
+      marketData: { outcomes: ["YES", "NO"] },
+      rakePercentage: 3.0
+    });
+
+    ctx.testMarkets.push({ id: market.id, title: market.title });
+
+    // Get balances before bets
+    const balancesBefore = await Promise.all(
+      ctx.testUsers.slice(0, 2).map(u => prisma.user.findUnique({
+        where: { id: u.id },
+        select: { pipchipsBalance: true }
+      }))
+    );
+
+    // Users place bets
+    await ctx.marketService.placeBet({
+      marketId: market.id,
+      userId: ctx.testUsers[0].discordId,
+      side: 'YES',
+      amount: 500
+    });
+
+    await ctx.marketService.placeBet({
+      marketId: market.id,
+      userId: ctx.testUsers[1].discordId,
+      side: 'NO',
+      amount: 300
+    });
+
+    // Cancel market (triggers refunds)
+    const cancellation = await ctx.marketService.resolveMarket(market.id, 'CANCEL');
+
+    if (!cancellation.success) {
+      console.error(`   ❌ Cancellation failed: ${cancellation.error}`);
+      return false;
+    }
+
+    // Verify balances returned to original
+    const balancesAfter = await Promise.all(
+      ctx.testUsers.slice(0, 2).map(u => prisma.user.findUnique({
+        where: { id: u.id },
+        select: { pipchipsBalance: true }
+      }))
+    );
+
+    for (let i = 0; i < 2; i++) {
+      if (balancesBefore[i]!.pipchipsBalance !== balancesAfter[i]!.pipchipsBalance) {
+        console.error(`   ❌ User ${i} balance not restored after refund`);
+        console.error(`      Before: ${balancesBefore[i]!.pipchipsBalance}`);
+        console.error(`      After: ${balancesAfter[i]!.pipchipsBalance}`);
+        return false;
+      }
+    }
+
+    // Verify refund transactions created
+    const refundTxs = await prisma.transaction.findMany({
+      where: {
+        type: "PIPCHIPS_REFUND",
+        userId: { in: [ctx.testUsers[0].id, ctx.testUsers[1].id] },
+        createdAt: { gte: new Date(Date.now() - 10000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    if (refundTxs.length !== 2) {
+      console.error(`   ❌ Expected 2 refund transactions, got ${refundTxs.length}`);
+      return false;
+    }
+
+    console.log(`   ✅ Market cancelled successfully`);
+    console.log(`   ✅ Created 2 refund transactions`);
+    console.log(`   ✅ User balances restored to original amounts`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Main test runner
+async function runTests(): Promise<void> {
+  console.log("╔════════════════════════════════════════════════════════════╗");
+  console.log("║   Prediction Market Flow Integration Test Suite           ║");
+  console.log("║   Using REAL PredictionMarketService Methods              ║");
+  console.log("╚════════════════════════════════════════════════════════════╝\n");
+
+  try {
+    await setup();
+
+    const results = {
+      createMarket: await testCreateMarket(),
+      placeBets: await testPlaceBets(),
+      marketResolution: await testMarketResolution(),
+      balanceDeltaReconciliation: await testBalanceDeltaReconciliation(),
+      marketCancellation: await testMarketCancellation()
+    };
+
+    // Summary
+    const passed = Object.values(results).filter(r => r).length;
+    const total = Object.values(results).length;
+
+    console.log("\n╔════════════════════════════════════════════════════════════╗");
+    console.log("║   Test Results                                             ║");
+    console.log("╚════════════════════════════════════════════════════════════╝\n");
+    console.log(`Total Tests: ${total}`);
+    console.log(`Passed: ${passed}`);
+    console.log(`Failed: ${total - passed}`);
+    console.log(`\nOverall: ${passed === total ? "✅ ALL TESTS PASSED" : "❌ SOME TESTS FAILED"}\n`);
+
+    if (passed !== total) {
+      process.exit(1);
+    }
+
+  } catch (error) {
+    console.error("❌ Test suite failed:", error);
+    process.exit(1);
+  } finally {
+    await cleanup();
+    await prisma.$disconnect();
+  }
+}
+
+// Run if executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runTests();
+}

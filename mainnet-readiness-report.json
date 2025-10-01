@@ -1,0 +1,29 @@
+{
+  "network": "🚀 Abstract Mainnet (Chain ID: 2741)",
+  "timestamp": "2025-09-27T07:05:39.719Z",
+  "readiness": {
+    "ready": true,
+    "issues": []
+  },
+  "contract": {
+    "name": "MerkleRegistry",
+    "bytecodeHash": "88fa8afd6a46e2295325babec43c77b6cb2af5354461303a53d2799b6a1e6982",
+    "abiChecksum": "df36100589e77fc93e4ebd6bad6d8f8f329924e65a90af2daf58f86f828cb44e",
+    "deploymentSize": 6006
+  },
+  "environment": {
+    "rpcUrl": "https://abstract-mainnet.g.alchemy.com/v2/***",
+    "chainId": 2741,
+    "walletAddress": "0xCbBD2Df1B3cD2Ce32438E2d553B49f9eF825C0C2",
+    "walletBalance": "0.0007462672749125"
+  },
+  "safety": {
+    "confirmationRequired": true,
+    "noTransactionsSent": true,
+    "dryRunOnly": true
+  },
+  "explorer": {
+    "baseUrl": "https://explorer.abs.xyz",
+    "verificationSupported": true
+  }
+}

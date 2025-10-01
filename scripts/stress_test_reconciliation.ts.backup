@@ -1,0 +1,626 @@
+#!/usr/bin/env npx tsx
+/**
+ * 24-Hour Style Reconciliation Stress Test
+ *
+ * Simulates a full day of platform activity including:
+ * - Tips (P2P transfers)
+ * - Matches (with wins/ties/cancels)
+ * - Prediction markets (with resolutions/cancellations)
+ * - Tier purchases
+ * - Treasury operations
+ * - Withdrawals and deposits
+ *
+ * Runs continuous reconciliation checks and logs JSON drift reports.
+ *
+ * Run: npm run test:stress-reconciliation
+ */
+
+import "dotenv/config";
+import { validateTestEnvironment } from "../src/services/test_db_safety.js";
+import { getTransactionTimeout } from "../src/services/test_mocks.js";
+import { prisma } from "../src/services/db.js";
+import { debitTokenAtomicTx, creditTokenTx } from "../src/services/balances.js";
+import { pipchipsService } from "../src/services/pipchips_service.js";
+import { PredictionMarketService } from "../src/services/prediction_markets.js";
+import { Decimal } from "@prisma/client/runtime/library";
+import { parseUnits, formatUnits } from "ethers";
+import fs from "fs";
+import path from "path";
+
+// Set test environment variables
+process.env.NODE_ENV = 'test';
+process.env.USE_MOCK_PRICES = 'true';
+
+// Validate test environment before running
+validateTestEnvironment();
+
+// Check for short mode flag
+const isShortMode = process.argv.includes('--short');
+
+// Stress test configuration
+const CONFIG = {
+  durationHours: isShortMode ? 0.5 : 24, // 30 minutes vs 24 hours
+  testUserCount: isShortMode ? 20 : 50,
+  operationsPerHour: 100,
+  initialBalance: 50000,
+  tipProbability: 0.3,
+  matchProbability: 0.3,
+  predictionProbability: 0.2,
+  tierProbability: 0.1,
+  treasuryProbability: 0.1,
+  tieProbability: 0.15, // 15% of matches tie
+  cancelProbability: 0.1, // 10% of markets cancel
+  reconciliationIntervalOps: 50, // Check every 50 operations
+};
+
+// Calculate total operations based on mode
+const totalOperations = isShortMode
+  ? 150  // Short mode: 150 operations
+  : CONFIG.durationHours * CONFIG.operationsPerHour; // Full mode: 2400 operations
+
+interface StressTestStats {
+  startTime: Date;
+  endTime?: Date;
+  duration: number;
+  operations: {
+    tips: number;
+    matches: number;
+    matchTies: number;
+    predictions: number;
+    marketCancellations: number;
+    tierPurchases: number;
+    treasuryOps: number;
+    total: number;
+  };
+  reconciliations: {
+    total: number;
+    passed: number;
+    failed: number;
+    driftReports: Array<DriftReport>;
+  };
+  errors: string[];
+}
+
+interface DriftReport {
+  timestamp: string;
+  operationCount: number;
+  checks: {
+    balanceDrift: boolean;
+    operationCoverage: boolean;
+    rakeValidation: boolean;
+  };
+  driftDetails: Array<{
+    tokenSymbol: string;
+    expected: string;
+    actual: string;
+    drift: string;
+    driftPercentage: number;
+  }>;
+}
+
+let stats: StressTestStats;
+let testUsers: Array<{ id: number; discordId: string }> = [];
+let testToken: { id: number; symbol: string; decimals: number };
+let predictionMarketService: PredictionMarketService;
+let isRunning = true;
+
+/**
+ * Setup test environment
+ */
+async function setup(): Promise<void> {
+  console.log("🚀 Setting up 24-hour stress test environment...\n");
+
+  stats = {
+    startTime: new Date(),
+    duration: CONFIG.durationHours,
+    operations: {
+      tips: 0,
+      matches: 0,
+      matchTies: 0,
+      predictions: 0,
+      marketCancellations: 0,
+      tierPurchases: 0,
+      treasuryOps: 0,
+      total: 0
+    },
+    reconciliations: {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      driftReports: []
+    },
+    errors: []
+  };
+
+  predictionMarketService = new PredictionMarketService();
+
+  // Get token
+  const token = await prisma.token.findFirst({
+    where: { active: true },
+    select: { id: true, symbol: true, decimals: true }
+  });
+
+  if (!token) {
+    throw new Error("No active token found");
+  }
+
+  testToken = token;
+  console.log(`✅ Using token: ${token.symbol}`);
+
+  // Create test users
+  console.log(`\n📝 Creating ${CONFIG.testUserCount} test users...`);
+  for (let i = 0; i < CONFIG.testUserCount; i++) {
+    const discordId = `stress_user_${Date.now()}_${i}`;
+    const user = await prisma.user.create({
+      data: { discordId }
+    });
+
+    // Initialize balances
+    await prisma.userBalance.create({
+      data: {
+        userId: user.id,
+        tokenId: token.id,
+        amount: new Decimal(CONFIG.initialBalance)
+      }
+    });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { pipchipsBalance: BigInt(CONFIG.initialBalance * 100) }
+    });
+
+    testUsers.push({ id: user.id, discordId });
+  }
+
+  console.log(`✅ Created ${testUsers.length} test users\n`);
+}
+
+/**
+ * Cleanup test data
+ */
+async function cleanup(): Promise<void> {
+  console.log("\n🧹 Cleaning up stress test data...");
+
+  for (const user of testUsers) {
+    await prisma.balanceDelta.deleteMany({ where: { userId: user.id } });
+    await prisma.transaction.deleteMany({ where: { userId: user.id } });
+    await prisma.pipchipsTransaction.deleteMany({ where: { userId: user.discordId } });
+    await prisma.userBalance.deleteMany({ where: { userId: user.id } });
+    await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+  }
+
+  console.log("✅ Cleanup completed");
+}
+
+/**
+ * Simulate random tip operation
+ */
+async function simulateTip(): Promise<void> {
+  try {
+    const sender = testUsers[Math.floor(Math.random() * testUsers.length)];
+    const recipient = testUsers[Math.floor(Math.random() * testUsers.length)];
+
+    if (sender.id === recipient.id) return;
+
+    const amount = Math.floor(Math.random() * 100) + 10;
+    const amountAtomic = parseUnits(amount.toString(), testToken.decimals);
+
+    await prisma.$transaction(async (tx) => {
+      await debitTokenAtomicTx(tx, sender.discordId, testToken.id, amountAtomic, "TIP", {
+        guildId: "stress_guild",
+        otherUserId: recipient.id
+      });
+
+      await creditTokenTx(tx, recipient.discordId, testToken.id, amountAtomic, "TIP", {
+        guildId: "stress_guild",
+        otherUserId: sender.id
+      });
+    });
+
+    stats.operations.tips++;
+    stats.operations.total++;
+  } catch (error) {
+    stats.errors.push(`Tip failed: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Simulate random match
+ */
+async function simulateMatch(): Promise<void> {
+  try {
+    const challenger = testUsers[Math.floor(Math.random() * testUsers.length)];
+    const joiner = testUsers[Math.floor(Math.random() * testUsers.length)];
+
+    if (challenger.id === joiner.id) return;
+
+    const wager = Math.floor(Math.random() * 500) + 50;
+    const wagerAtomic = parseUnits(wager.toString(), testToken.decimals);
+
+    // Determine outcome
+    const isTie = Math.random() < CONFIG.tieProbability;
+    const challengerWins = Math.random() > 0.5;
+
+    await prisma.$transaction(async (tx) => {
+      // Both wager
+      await debitTokenAtomicTx(tx, challenger.discordId, testToken.id, wagerAtomic, "MATCH_WAGER", {
+        guildId: "stress_guild"
+      });
+
+      await debitTokenAtomicTx(tx, joiner.discordId, testToken.id, wagerAtomic, "MATCH_WAGER", {
+        guildId: "stress_guild"
+      });
+
+      if (isTie) {
+        // Refund both
+        await creditTokenTx(tx, challenger.discordId, testToken.id, wagerAtomic, "MATCH_PAYOUT", {
+          guildId: "stress_guild"
+        });
+
+        await creditTokenTx(tx, joiner.discordId, testToken.id, wagerAtomic, "MATCH_PAYOUT", {
+          guildId: "stress_guild"
+        });
+
+        stats.operations.matchTies++;
+      } else {
+        // Winner takes pot minus 2% rake
+        const pot = 2n * wagerAtomic;
+        const rake = (pot * 200n) / 10000n;
+        const payout = pot - rake;
+
+        const winner = challengerWins ? challenger : joiner;
+        await creditTokenTx(tx, winner.discordId, testToken.id, payout, "MATCH_PAYOUT", {
+          guildId: "stress_guild"
+        });
+
+        // Log rake
+        if (rake > 0n) {
+          const { logCompleteTransaction } = await import("../src/services/tx_logger.js");
+          await logCompleteTransaction(tx, {
+            source: 'BOT',
+            operation: 'TREASURY_RAKE',
+            userId: null,
+            guildId: "stress_guild",
+            idempotencyKey: `rake_stress_${Date.now()}_${Math.random()}`,
+            opRef: `stress_match`,
+            metadata: { rakeAmount: rake.toString(), description: 'Stress test match rake' },
+            balanceChanges: [{
+              tokenId: testToken.id,
+              userId: undefined,
+              amountDelta: rake,
+              reason: 'match_rake_collected'
+            }]
+          });
+        }
+      }
+    });
+
+    stats.operations.matches++;
+    stats.operations.total++;
+  } catch (error) {
+    stats.errors.push(`Match failed: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Simulate random prediction market
+ */
+async function simulatePrediction(): Promise<void> {
+  try {
+    const creator = testUsers[Math.floor(Math.random() * testUsers.length)];
+
+    // Create market
+    const market = await predictionMarketService.createMarket({
+      title: `Stress Test Market ${Date.now()}`,
+      description: `Stress test prediction market`,
+      resolveAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      creatorId: creator.discordId,
+      guildId: "stress_guild",
+      channelId: "stress_channel",
+      tokenSymbol: "PIPCHIPS",
+      marketType: "custom",
+      marketData: {},
+      minBet: 10,
+      maxBet: 500
+    });
+
+    // 3-7 random bets
+    const betCount = Math.floor(Math.random() * 5) + 3;
+    for (let i = 0; i < betCount; i++) {
+      const bettor = testUsers[Math.floor(Math.random() * testUsers.length)];
+      const side = Math.random() > 0.5 ? 'YES' : 'NO';
+      const amount = Math.floor(Math.random() * 400) + 50;
+
+      await predictionMarketService.placeBet({
+        marketId: market.id,
+        userId: bettor.discordId,
+        side,
+        amount
+      });
+    }
+
+    // Resolve or cancel
+    const shouldCancel = Math.random() < CONFIG.cancelProbability;
+    const outcome = shouldCancel
+      ? 'CANCEL'
+      : (Math.random() > 0.5 ? 'YES' : 'NO');
+
+    await predictionMarketService.resolveMarket(market.id, outcome);
+
+    if (shouldCancel) {
+      stats.operations.marketCancellations++;
+    }
+
+    stats.operations.predictions++;
+    stats.operations.total++;
+  } catch (error) {
+    stats.errors.push(`Prediction failed: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Simulate tier purchase
+ */
+async function simulateTierPurchase(): Promise<void> {
+  try {
+    const user = testUsers[Math.floor(Math.random() * testUsers.length)];
+    const amount = 1000;
+    const amountAtomic = parseUnits(amount.toString(), testToken.decimals);
+
+    await prisma.$transaction(async (tx) => {
+      await debitTokenAtomicTx(tx, user.discordId, testToken.id, amountAtomic, "TIER_PURCHASE" as any, {
+        guildId: "stress_guild"
+      });
+    });
+
+    stats.operations.tierPurchases++;
+    stats.operations.total++;
+  } catch (error) {
+    stats.errors.push(`Tier purchase failed: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Simulate treasury operation
+ */
+async function simulateTreasuryOp(): Promise<void> {
+  try {
+    const amount = Math.floor(Math.random() * 5000) + 1000;
+    const amountAtomic = BigInt(amount * (10 ** testToken.decimals));
+
+    const { logCompleteTransaction } = await import("../src/services/tx_logger.js");
+
+    await prisma.$transaction(async (tx) => {
+      await logCompleteTransaction(tx, {
+        source: 'BOT',
+        operation: 'TREASURY_SWAP',
+        userId: null,
+        guildId: "stress_guild",
+        idempotencyKey: `treasury_stress_${Date.now()}_${Math.random()}`,
+        opRef: `stress_treasury`,
+        metadata: { description: 'Stress test treasury operation' },
+        balanceChanges: [{
+          tokenId: testToken.id,
+          userId: undefined,
+          amountDelta: amountAtomic,
+          reason: 'treasury_swap'
+        }]
+      });
+    });
+
+    stats.operations.treasuryOps++;
+    stats.operations.total++;
+  } catch (error) {
+    stats.errors.push(`Treasury op failed: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Run quick reconciliation check
+ */
+async function runReconciliationCheck(): Promise<DriftReport> {
+  const report: DriftReport = {
+    timestamp: new Date().toISOString(),
+    operationCount: stats.operations.total,
+    checks: {
+      balanceDrift: true,
+      operationCoverage: true,
+      rakeValidation: true
+    },
+    driftDetails: []
+  };
+
+  try {
+    // Check balance drift
+    const userBalances = await prisma.userBalance.groupBy({
+      by: ['tokenId'],
+      where: { tokenId: testToken.id },
+      _sum: { amount: true }
+    });
+
+    const totalUserBalance = userBalances[0]?._sum?.amount
+      ? parseUnits(userBalances[0]._sum.amount.toString(), testToken.decimals)
+      : 0n;
+
+    const balanceDeltas = await prisma.balanceDelta.findMany({
+      where: { tokenId: testToken.id },
+      select: { amountDelta: true }
+    });
+
+    const totalDeltas = balanceDeltas.reduce((sum, delta) => {
+      return sum + parseUnits(delta.amountDelta.toString(), 0);
+    }, 0n);
+
+    const drift = totalUserBalance > totalDeltas
+      ? totalUserBalance - totalDeltas
+      : totalDeltas - totalUserBalance;
+
+    const driftPercentage = totalUserBalance > 0n
+      ? Number((drift * 10000n) / totalUserBalance) / 100
+      : 0;
+
+    if (driftPercentage > 0.01) {
+      report.checks.balanceDrift = false;
+      report.driftDetails.push({
+        tokenSymbol: testToken.symbol,
+        expected: formatUnits(totalDeltas, testToken.decimals),
+        actual: formatUnits(totalUserBalance, testToken.decimals),
+        drift: formatUnits(drift, testToken.decimals),
+        driftPercentage
+      });
+    }
+
+    // Check operation coverage
+    const orphanedTransactions = await prisma.transaction.count({
+      where: {
+        balanceDeltas: { none: {} }
+      }
+    });
+
+    if (orphanedTransactions > 0) {
+      report.checks.operationCoverage = false;
+    }
+
+    stats.reconciliations.total++;
+
+    if (report.checks.balanceDrift && report.checks.operationCoverage) {
+      stats.reconciliations.passed++;
+    } else {
+      stats.reconciliations.failed++;
+      stats.reconciliations.driftReports.push(report);
+    }
+  } catch (error) {
+    report.checks.balanceDrift = false;
+    report.checks.operationCoverage = false;
+    report.driftDetails.push({
+      tokenSymbol: 'ERROR',
+      expected: '0',
+      actual: '0',
+      drift: (error as Error).message,
+      driftPercentage: 0
+    });
+
+    stats.reconciliations.failed++;
+    stats.reconciliations.driftReports.push(report);
+  }
+
+  return report;
+}
+
+/**
+ * Main stress test loop
+ */
+async function runStressTest(): Promise<void> {
+  console.log("╔════════════════════════════════════════════════════════════╗");
+  console.log("║   24-Hour Reconciliation Stress Test                      ║");
+  console.log("╚════════════════════════════════════════════════════════════╝\n");
+
+  await setup();
+
+  console.log(`🔄 Running ${totalOperations} operations${isShortMode ? ' (SHORT MODE)' : ` over ${CONFIG.durationHours} hours`}...`);
+  console.log(`   Reconciliation checks every ${CONFIG.reconciliationIntervalOps} operations\n`);
+
+  for (let i = 0; i < totalOperations && isRunning; i++) {
+    const rand = Math.random();
+
+    if (rand < CONFIG.tipProbability) {
+      await simulateTip();
+    } else if (rand < CONFIG.tipProbability + CONFIG.matchProbability) {
+      await simulateMatch();
+    } else if (rand < CONFIG.tipProbability + CONFIG.matchProbability + CONFIG.predictionProbability) {
+      await simulatePrediction();
+    } else if (rand < CONFIG.tipProbability + CONFIG.matchProbability + CONFIG.predictionProbability + CONFIG.tierProbability) {
+      await simulateTierPurchase();
+    } else {
+      await simulateTreasuryOp();
+    }
+
+    // Run reconciliation check periodically
+    if ((i + 1) % CONFIG.reconciliationIntervalOps === 0) {
+      const report = await runReconciliationCheck();
+      const passed = report.checks.balanceDrift && report.checks.operationCoverage;
+      console.log(
+        `   [${i + 1}/${totalOperations}] Reconciliation: ${passed ? "✅" : "❌"} ` +
+        `(Drift: ${report.driftDetails[0]?.driftPercentage.toFixed(4) || 0}%)`
+      );
+    }
+
+    // Progress indicator
+    if ((i + 1) % 100 === 0) {
+      const progress = ((i + 1) / totalOperations * 100).toFixed(1);
+      console.log(`   Progress: ${progress}% (${i + 1}/${totalOperations} operations)`);
+    }
+  }
+
+  stats.endTime = new Date();
+
+  // Final reconciliation
+  console.log("\n🔍 Running final reconciliation check...");
+  const finalReport = await runReconciliationCheck();
+
+  // Print summary
+  console.log("\n╔════════════════════════════════════════════════════════════╗");
+  console.log("║   Stress Test Results                                      ║");
+  console.log("╚════════════════════════════════════════════════════════════╝\n");
+  console.log(`Duration: ${CONFIG.durationHours} hours (simulated)`);
+  console.log(`Start: ${stats.startTime.toISOString()}`);
+  console.log(`End: ${stats.endTime?.toISOString()}`);
+  console.log(`\nOperations:`);
+  console.log(`   Tips: ${stats.operations.tips}`);
+  console.log(`   Matches: ${stats.operations.matches} (${stats.operations.matchTies} ties)`);
+  console.log(`   Predictions: ${stats.operations.predictions} (${stats.operations.marketCancellations} cancelled)`);
+  console.log(`   Tier Purchases: ${stats.operations.tierPurchases}`);
+  console.log(`   Treasury Ops: ${stats.operations.treasuryOps}`);
+  console.log(`   Total: ${stats.operations.total}`);
+  console.log(`\nReconciliation:`);
+  console.log(`   Total Checks: ${stats.reconciliations.total}`);
+  console.log(`   Passed: ${stats.reconciliations.passed}`);
+  console.log(`   Failed: ${stats.reconciliations.failed}`);
+  console.log(`   Success Rate: ${((stats.reconciliations.passed / stats.reconciliations.total) * 100).toFixed(2)}%`);
+  console.log(`\nErrors: ${stats.errors.length}`);
+
+  if (stats.errors.length > 0) {
+    console.log(`\nFirst 10 errors:`);
+    stats.errors.slice(0, 10).forEach((err, i) => console.log(`   ${i + 1}. ${err}`));
+  }
+
+  // Save final report
+  const reportPath = path.join(process.cwd(), 'reports', `stress-test-${Date.now()}.json`);
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(reportPath, JSON.stringify({
+    ...stats,
+    finalReconciliation: finalReport
+  }, null, 2));
+
+  console.log(`\n📄 Full report saved to: ${reportPath}`);
+
+  const success = stats.reconciliations.failed === 0 && finalReport.checks.balanceDrift;
+  console.log(`\nOverall: ${success ? "✅ ALL RECONCILIATIONS PASSED" : "❌ DRIFT DETECTED"}\n`);
+
+  await cleanup();
+
+  process.exit(success ? 0 : 1);
+}
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log("\n\n⚠️  Graceful shutdown requested...");
+  isRunning = false;
+});
+
+process.on('SIGTERM', () => {
+  console.log("\n\n⚠️  Graceful shutdown requested...");
+  isRunning = false;
+});
+
+// Run if executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runStressTest()
+    .catch((error) => {
+      console.error("❌ Stress test failed:", error);
+      process.exit(1);
+    })
+    .finally(() => {
+      prisma.$disconnect();
+    });
+}

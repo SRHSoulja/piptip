@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-09-30T01:51:49.966Z",
+  "totalTransactions": 251,
+  "processedTransactions": 251,
+  "skippedTransactions": 4,
+  "createdBalanceDeltas": 347,
+  "errors": [],
+  "userBalanceRecon": [
+    {
+      "userId": 2,
+      "tokenId": 1,
+      "userBalanceAmount": "86.87",
+      "derivedAmount": "-1332.7980000000000002",
+      "difference": "1419.6680000000000002",
+      "withinTolerance": false
+    },
+    {
+      "userId": 1,
+      "tokenId": 1,
+      "userBalanceAmount": "431.71",
+      "derivedAmount": "-640.4",
+      "difference": "1072.11",
+      "withinTolerance": false
+    },
+    {
+      "userId": 3,
+      "tokenId": 1,
+      "userBalanceAmount": "36.45",
+      "derivedAmount": "-76.9",
+      "difference": "113.35",
+      "withinTolerance": false
+    }
+  ]
+}

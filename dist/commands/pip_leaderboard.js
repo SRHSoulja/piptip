@@ -2,7 +2,7 @@ import { EmbedBuilder, MessageFlags } from "discord.js";
 import { prisma } from "../services/db.js";
 import { getStreakLeaderboard } from "../services/streaks.js";
 import { formatDecimalWithUSD } from "../services/token.js";
-import { priceAPI } from "../services/price_api.js";
+import { getCachedTokenPrices } from "../services/price_api.js";
 import { cacheWithMetrics, CacheKeys, CacheTTL } from "../services/cache.js";
 import { withTiming } from "../services/performance.js";
 export default async function pipLeaderboard(i) {
@@ -338,9 +338,9 @@ async function buildWealthLeaderboard(limit) {
     });
     // Group by user and calculate real USD value
     const userWealth = new Map();
-    // Get all unique token symbols for price lookup
+    // Get all unique token symbols for price lookup using global cache
     const tokenSymbols = [...new Set(usersWithBalances.map(b => b.Token.symbol))];
-    const priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+    const prices = await getCachedTokenPrices(tokenSymbols);
     for (const balance of usersWithBalances) {
         const userId = balance.User.discordId;
         const current = userWealth.get(userId) || {
@@ -349,7 +349,7 @@ async function buildWealthLeaderboard(limit) {
             breakdown: []
         };
         const tokenAmount = Number(balance.amount);
-        const tokenPrice = priceResult.prices[balance.Token.symbol] || 0;
+        const tokenPrice = prices[balance.Token.symbol] || 0;
         const usdValue = tokenAmount * tokenPrice;
         current.totalUSDValue += usdValue;
         // Format with USD value

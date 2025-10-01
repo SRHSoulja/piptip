@@ -5,6 +5,7 @@ import { prisma } from "../../services/db.js";
 import { decToBigDirect, formatAmount, formatDecimal, toAtomicDirect } from "../../services/token.js";
 import { withdrawalLimiter } from "../../services/withdrawal_limiter.js";
 import { PENGUIN_ERRORS, PENGUIN_LOADING, PENGUIN_SUCCESS } from "../../utils/penguin_messages.js";
+import { getAppConfig } from "../../services/app_config_cache.js";
 
 export async function handleWithdrawToken(i: ButtonInteraction, parts: string[]) {
   await i.deferUpdate().catch(() => {});
@@ -42,8 +43,8 @@ export async function handleWithdrawToken(i: ButtonInteraction, parts: string[])
     const balance = formatDecimal(holding.amount, token.symbol);
     const maxAmount = Number(holding.amount);
 
-    // Get withdrawal limits and config
-    const config = await prisma.appConfig.findFirst();
+    // Get withdrawal limits and config (cached)
+    const config = await getAppConfig();
     const minWithdraw = Number(token.minWithdraw);
     const maxPerTxHuman = token.withdrawMaxPerTx != null 
       ? Number(token.withdrawMaxPerTx) 
@@ -358,7 +359,7 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
   
   try {
     // Check for emergency mode first
-    const emergencyConfig = await prisma.appConfig.findFirst();
+    const emergencyConfig = await getAppConfig();
     
     if (emergencyConfig?.withdrawalsPaused || emergencyConfig?.emergencyMode) {
       return i.editReply({
@@ -383,7 +384,7 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
         select: { id: true, agwAddress: true }
       }),
       prisma.token.findUnique({ where: { id: tokenId } }),
-      prisma.appConfig.findFirst()
+      getAppConfig()
     ]);
 
     if (!user || !token) {
@@ -545,7 +546,8 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
 
     // Import required modules for transaction processing
     const { JsonRpcProvider, Wallet, Contract } = await import("ethers");
-    const { ABSTRACT_RPC_URL, TREASURY_AGW_ADDRESS } = await import("../../config.js");
+    const { TREASURY_AGW_ADDRESS } = await import("../../config.js");
+    const { getAbstractRpcUrl } = await import("../../services/network.js");
     const { getSecureTreasuryPrivateKey } = await import("../../services/secure_key.js");
     const { debitToken } = await import("../../services/balances.js");
     const { queueNotice } = await import("../../services/notifier.js");
@@ -556,7 +558,7 @@ export async function handleConfirmWithdraw(i: ButtonInteraction, parts: string[
     ];
 
     // Setup blockchain connection
-    const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+    const provider = new JsonRpcProvider(getAbstractRpcUrl());
     const signer = new Wallet(getSecureTreasuryPrivateKey(), provider);
     const signerAddr = (await signer.getAddress()).toLowerCase();
 
@@ -686,7 +688,7 @@ export async function handleWithdrawCustom(i: ButtonInteraction, parts: string[]
     // Get token info for limits
     const [token, config] = await Promise.all([
       prisma.token.findUnique({ where: { id: tokenId } }),
-      prisma.appConfig.findFirst()
+      getAppConfig()
     ]);
 
     if (!token) {
@@ -755,7 +757,7 @@ export async function handleWithdrawCustomModal(i: ModalSubmitInteraction, parts
     // Get token and config for validation
     const [token, config, user] = await Promise.all([
       prisma.token.findUnique({ where: { id: tokenId } }),
-      prisma.appConfig.findFirst(),
+      getAppConfig(),
       prisma.user.findUnique({
         where: { discordId: i.user.id },
         select: { id: true, agwAddress: true }

@@ -434,8 +434,44 @@ export class PredictionMarketService {
           }
         }
 
-        // Add house rake to treasury (optional - depends on your tokenomics)
-        // This could go to a treasury wallet or be distributed to token holders
+        // Log explicit rake to treasury (for non-LMSR markets)
+        if (!market.lmsrShares) {
+          const totalPaidOut = payouts.reduce((sum, p) => sum + p.amount, 0);
+          const rakeAmount = totalPool * (market.rakePercentage / 100);
+
+          if (rakeAmount > 0) {
+            const { logCompleteTransaction } = await import('./tx_logger.js');
+
+            // Get system user for treasury operations
+            const systemUser = await tx.user.findFirst({
+              where: { discordId: 'SYSTEM' }
+            });
+
+            await logCompleteTransaction(tx, {
+              source: 'BOT',
+              operation: 'TREASURY_RAKE',
+              userId: systemUser?.id ?? null,
+              guildId: market.guildId,
+              idempotencyKey: `rake_market_${marketId}`,
+              opRef: `market_${marketId}`,
+              metadata: {
+                marketId,
+                rakeAmount: Math.floor(rakeAmount),
+                rakePercentage: market.rakePercentage,
+                totalPool,
+                description: 'Prediction market house rake collection'
+              },
+              balanceChanges: [
+                {
+                  tokenId: 2, // PIPCHIPS token ID
+                  userId: systemUser?.id, // Treasury
+                  amountDelta: BigInt(Math.floor(rakeAmount)), // Positive delta to treasury
+                  reason: 'market_rake_collected'
+                }
+              ]
+            });
+          }
+        }
       });
 
       // Calculate rake for logging (LMSR markets don't have traditional rake)

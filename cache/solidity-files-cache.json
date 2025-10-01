@@ -1,0 +1,75 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "/home/arson/builds/piptip/contracts/MerkleRegistry.sol": {
+      "lastModificationDate": 1758950317766,
+      "contentHash": "ce89da5f6d0101a08f721d09a461381e",
+      "sourceName": "contracts/MerkleRegistry.sol",
+      "solcConfig": {
+        "version": "0.8.19",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.19"
+      ],
+      "artifacts": [
+        "MerkleRegistry"
+      ]
+    },
+    "/home/arson/builds/piptip/contracts/SimpleTest.sol": {
+      "lastModificationDate": 1758950999762,
+      "contentHash": "769a9da229c7c73d46c8b9a1c5172053",
+      "sourceName": "contracts/SimpleTest.sol",
+      "solcConfig": {
+        "version": "0.8.19",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.19"
+      ],
+      "artifacts": [
+        "SimpleTest"
+      ]
+    }
+  }
+}

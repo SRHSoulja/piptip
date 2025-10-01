@@ -31,6 +31,7 @@ import { predictionMarketsRouter } from "./admin/prediction_markets.js";
 import { automationAdminRouter } from "./admin/automation.js";
 import pipchipsAdminRouter from "./admin/pipchips_admin.js";
 import { tournamentsRouter } from "./admin/tournaments.js";
+import { adminMarketsRouter } from "./admin_markets.js";
 import { prisma } from "../services/db.js";
 import { getTreasurySnapshot } from "../services/treasury.js";
 import { priceAPI } from "../services/price_api.js";
@@ -1348,6 +1349,7 @@ adminRouter.use(predictionMarketsRouter);
 adminRouter.use("/automation", automationAdminRouter);
 adminRouter.use("/pipchips", pipchipsAdminRouter);
 adminRouter.use("/tournaments", tournamentsRouter);
+adminRouter.use(adminMarketsRouter);
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */
 /* ------------------------------------------------------------------------ */

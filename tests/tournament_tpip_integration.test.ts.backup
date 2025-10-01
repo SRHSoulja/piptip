@@ -1,0 +1,578 @@
+#!/usr/bin/env npx tsx
+/**
+ * Tournament TPIP Integration Test
+ *
+ * Tests complete TPIP lifecycle as a separate currency from PIPChips:
+ * 1. Purchase TPIP with Abstract tokens
+ * 2. Use TPIP for tournament betting
+ * 3. Tournament resolution and payouts in TPIP
+ * 4. TPIP reset to zero at tournament conclusion
+ * 5. Verify TPIP never overlaps with PIPChips
+ */
+
+import "dotenv/config";
+import { validateTestEnvironment } from "../src/services/test_db_safety.js";
+import { getTransactionTimeout } from "../src/services/test_mocks.js";
+import { prisma } from "../src/services/db.js";
+import {
+  purchaseTPIP,
+  getTPIPBalance,
+  resetTournamentTPIP
+} from "../src/services/tpip_service.js";
+import {
+  placeTournamentBet,
+  resolveTournamentMarket
+} from "../src/services/tournament_prediction_markets.js";
+
+// Set test environment
+process.env.NODE_ENV = 'test';
+process.env.USE_MOCK_PRICES = 'true';
+validateTestEnvironment();
+
+interface TestContext {
+  testUsers: Array<{ id: number; discordId: string; initialABSTR: bigint }>;
+  tournamentId: string;
+  marketId: string;
+  abstrToken: { id: number; symbol: string; decimals: number };
+  tpipToken: { id: number; symbol: string; decimals: number };
+  cleanup: Array<() => Promise<void>>;
+}
+
+let ctx: TestContext;
+
+async function setup(): Promise<void> {
+  console.log("🧪 Setting up tournament TPIP test environment...\n");
+
+  ctx = {
+    testUsers: [],
+    tournamentId: `test_tournament_${Date.now()}`,
+    marketId: `test_market_${Date.now()}`,
+    abstrToken: { id: 0, symbol: '', decimals: 0 },
+    tpipToken: { id: 0, symbol: '', decimals: 0 },
+    cleanup: []
+  };
+
+  // Get tokens
+  const [abstr, tpip] = await Promise.all([
+    prisma.token.findFirst({ where: { symbol: "ABSTER" } }),
+    prisma.token.findFirst({ where: { symbol: "TPIP" } })
+  ]);
+
+  if (!abstr || !tpip) {
+    throw new Error("Required tokens not found");
+  }
+
+  ctx.abstrToken = { id: abstr.id, symbol: abstr.symbol, decimals: abstr.decimals };
+  ctx.tpipToken = { id: tpip.id, symbol: tpip.symbol, decimals: tpip.decimals };
+
+  // Create 3 test users with ABSTER tokens
+  const initialABSTR = 10000n * (10n ** BigInt(abstr.decimals));
+
+  for (let i = 0; i < 3; i++) {
+    const discordId = `test_tpip_user_${Date.now()}_${i}`;
+    const user = await prisma.user.create({
+      data: { discordId }
+    });
+
+    // Give them ABSTER balance
+    await prisma.userBalance.create({
+      data: {
+        userId: user.id,
+        tokenId: abstr.id,
+        amount: initialABSTR.toString()
+      }
+    });
+
+    ctx.testUsers.push({ id: user.id, discordId, initialABSTR });
+    ctx.cleanup.push(async () => {
+      await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+    });
+  }
+
+  console.log(`✅ Created 3 test users with ${initialABSTR} ${abstr.symbol} each`);
+  console.log(`✅ TPIP Token ID: ${tpip.id}, ABSTR Token ID: ${abstr.id}`);
+  console.log();
+}
+
+async function cleanup(): Promise<void> {
+  console.log("\n🧹 Cleaning up test data...");
+
+  // Clean up market
+  await prisma.predictionMarket.delete({ where: { id: ctx.marketId } }).catch(() => {});
+
+  // Clean up users
+  for (const cleanupFn of ctx.cleanup.reverse()) {
+    await cleanupFn().catch(err => console.error("Cleanup error:", err));
+  }
+
+  console.log("✅ Cleanup completed");
+}
+
+// Test 1: Purchase TPIP with Abstract tokens
+async function testTPIPPurchase(): Promise<boolean> {
+  console.log("1️⃣ Testing TPIP Purchase with Abstract Tokens...");
+
+  try {
+    const user = ctx.testUsers[0];
+    const purchaseAmount = 1000n * (10n ** BigInt(ctx.abstrToken.decimals));
+
+    // Purchase TPIP
+    const result = await purchaseTPIP({
+      userId: user.id,
+      discordId: user.discordId,
+      tokenId: ctx.abstrToken.id,
+      amount: purchaseAmount,
+      guildId: "test_guild"
+    });
+
+    if (!result.success) {
+      console.error(`   ❌ TPIP purchase failed: ${result.error}`);
+      return false;
+    }
+
+    // Verify ABSTER balance decreased
+    const abstrBalance = await prisma.userBalance.findUnique({
+      where: {
+        userId_tokenId: { userId: user.id, tokenId: ctx.abstrToken.id }
+      }
+    });
+
+    const expected = user.initialABSTR - purchaseAmount;
+    if (abstrBalance && BigInt(abstrBalance.amount.toFixed(0)) !== expected) {
+      console.error(`   ❌ ABSTER balance mismatch: expected ${expected}, got ${abstrBalance.amount}`);
+      return false;
+    }
+
+    // Verify TPIP balance increased
+    // TPIP has 0 decimals, so expected amount is the decimal value (1000), not atomic
+    const expectedTPIP = purchaseAmount / (10n ** BigInt(ctx.abstrToken.decimals));
+    const tpipBalance = await getTPIPBalance(user.id);
+    if (tpipBalance !== expectedTPIP) {
+      console.error(`   ❌ TPIP balance mismatch: expected ${expectedTPIP}, got ${tpipBalance}`);
+      return false;
+    }
+
+    // Verify Transaction + BalanceDelta records
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: { in: ['TPIP_PURCHASE', 'TPIP_CREDIT'] },
+        createdAt: { gte: new Date(Date.now() - 10000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    if (transactions.length !== 2) {
+      console.error(`   ❌ Expected 2 transactions (debit + credit), got ${transactions.length}`);
+      return false;
+    }
+
+    for (const tx of transactions) {
+      if (tx.balanceDeltas.length === 0) {
+        console.error(`   ❌ Transaction ${tx.id} has no BalanceDeltas`);
+        return false;
+      }
+    }
+
+    console.log(`   ✅ Purchased ${purchaseAmount} TPIP with ${purchaseAmount} ABSTER`);
+    console.log(`   ✅ ABSTER balance: ${abstrBalance?.amount}`);
+    console.log(`   ✅ TPIP balance: ${tpipBalance}`);
+    console.log(`   ✅ Created 2 transactions with BalanceDeltas`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 2: Tournament betting with TPIP
+async function testTournamentBetting(): Promise<boolean> {
+  console.log("\n2️⃣ Testing Tournament Betting with TPIP...");
+
+  try {
+    // Create tournament market
+    const resolveAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const market = await prisma.predictionMarket.create({
+      data: {
+        id: ctx.marketId,
+        title: "TPIP Tournament Test Market",
+        description: "Testing TPIP-only betting",
+        resolveAt,
+        creatorId: ctx.testUsers[0].discordId,
+        guildId: "test_guild",
+        channelId: "test_channel",
+        tokenSymbol: "TPIP",
+        marketType: "BINARY",
+        marketData: { outcomes: ["YES", "NO"] },
+        status: "ACTIVE"
+      }
+    });
+
+    ctx.marketId = market.id;
+
+    // Put users in tournament mode
+    for (const user of ctx.testUsers) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          inTournamentMode: true,
+          activeTournamentId: ctx.tournamentId
+        }
+      });
+    }
+
+    // User 0: bet 500 TPIP on YES
+    const bet1 = await placeTournamentBet({
+      marketId: ctx.marketId,
+      userId: ctx.testUsers[0].id,
+      discordId: ctx.testUsers[0].discordId,
+      side: 'YES',
+      amount: 500,
+      tournamentId: ctx.tournamentId,
+      guildId: "test_guild"
+    });
+
+    if (!bet1.success) {
+      console.error(`   ❌ Bet 1 failed: ${bet1.error}`);
+      return false;
+    }
+
+    // User 1: buy TPIP and bet 300 on YES
+    await purchaseTPIP({
+      userId: ctx.testUsers[1].id,
+      discordId: ctx.testUsers[1].discordId,
+      tokenId: ctx.abstrToken.id,
+      amount: 1000n * (10n ** BigInt(ctx.abstrToken.decimals)),
+      guildId: "test_guild"
+    });
+
+    await prisma.user.update({
+      where: { id: ctx.testUsers[1].id },
+      data: {
+        inTournamentMode: true,
+        activeTournamentId: ctx.tournamentId
+      }
+    });
+
+    const bet2 = await placeTournamentBet({
+      marketId: ctx.marketId,
+      userId: ctx.testUsers[1].id,
+      discordId: ctx.testUsers[1].discordId,
+      side: 'YES',
+      amount: 300,
+      tournamentId: ctx.tournamentId,
+      guildId: "test_guild"
+    });
+
+    if (!bet2.success) {
+      console.error(`   ❌ Bet 2 failed: ${bet2.error}`);
+      return false;
+    }
+
+    // User 2: buy TPIP and bet 400 on NO
+    await purchaseTPIP({
+      userId: ctx.testUsers[2].id,
+      discordId: ctx.testUsers[2].discordId,
+      tokenId: ctx.abstrToken.id,
+      amount: 1000n * (10n ** BigInt(ctx.abstrToken.decimals)),
+      guildId: "test_guild"
+    });
+
+    await prisma.user.update({
+      where: { id: ctx.testUsers[2].id },
+      data: {
+        inTournamentMode: true,
+        activeTournamentId: ctx.tournamentId
+      }
+    });
+
+    const bet3 = await placeTournamentBet({
+      marketId: ctx.marketId,
+      userId: ctx.testUsers[2].id,
+      discordId: ctx.testUsers[2].discordId,
+      side: 'NO',
+      amount: 400,
+      tournamentId: ctx.tournamentId,
+      guildId: "test_guild"
+    });
+
+    if (!bet3.success) {
+      console.error(`   ❌ Bet 3 failed: ${bet3.error}`);
+      return false;
+    }
+
+    // Verify all bets logged with TPIP token
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        type: 'TOURNAMENT_WAGER',
+        userId: { in: ctx.testUsers.map(u => u.id) },
+        createdAt: { gte: new Date(Date.now() - 20000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    if (transactions.length !== 3) {
+      console.error(`   ❌ Expected 3 wager transactions, got ${transactions.length}`);
+      return false;
+    }
+
+    // Verify all use TPIP token (ID 4)
+    for (const tx of transactions) {
+      const tpipDelta = tx.balanceDeltas.find(d => d.tokenId === ctx.tpipToken.id);
+      if (!tpipDelta) {
+        console.error(`   ❌ Transaction ${tx.id} doesn't use TPIP token`);
+        return false;
+      }
+      if (Number(tpipDelta.amountDelta) >= 0) {
+        console.error(`   ❌ Wager should be negative delta, got ${tpipDelta.amountDelta}`);
+        return false;
+      }
+    }
+
+    console.log(`   ✅ Placed 3 bets using TPIP (500 YES, 300 YES, 400 NO)`);
+    console.log(`   ✅ All transactions use TPIP token (ID: ${ctx.tpipToken.id})`);
+    console.log(`   ✅ No PIPChips involved in betting`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 3: Tournament resolution and TPIP payouts
+async function testTournamentResolution(): Promise<boolean> {
+  console.log("\n3️⃣ Testing Tournament Resolution with TPIP Payouts...");
+
+  try {
+    // Resolve market: YES wins
+    const resolution = await resolveTournamentMarket(
+      ctx.marketId,
+      'YES',
+      ctx.tournamentId
+    );
+
+    if (!resolution.success) {
+      console.error(`   ❌ Resolution failed: ${resolution.error}`);
+      return false;
+    }
+
+    if (!resolution.payouts || resolution.payouts.length === 0) {
+      console.error("   ❌ No payouts generated");
+      return false;
+    }
+
+    // Verify payout transactions use TPIP
+    const payoutTxs = await prisma.transaction.findMany({
+      where: {
+        type: 'TOURNAMENT_WIN',
+        createdAt: { gte: new Date(Date.now() - 10000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    if (payoutTxs.length !== resolution.payouts.length) {
+      console.error(`   ❌ Expected ${resolution.payouts.length} payout transactions, got ${payoutTxs.length}`);
+      return false;
+    }
+
+    // Verify all payouts use TPIP token
+    for (const tx of payoutTxs) {
+      const tpipDelta = tx.balanceDeltas.find(d => d.tokenId === ctx.tpipToken.id);
+      if (!tpipDelta) {
+        console.error(`   ❌ Payout transaction ${tx.id} doesn't use TPIP token`);
+        return false;
+      }
+      if (Number(tpipDelta.amountDelta) <= 0) {
+        console.error(`   ❌ Payout should be positive delta, got ${tpipDelta.amountDelta}`);
+        return false;
+      }
+    }
+
+    console.log(`   ✅ Market resolved with ${resolution.payouts.length} payouts`);
+    console.log(`   ✅ All payouts in TPIP (no PIPChips)`);
+    console.log(`   ✅ Winners received TPIP winnings`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 4: TPIP reset to zero
+async function testTPIPReset(): Promise<boolean> {
+  console.log("\n4️⃣ Testing TPIP Reset to Zero...");
+
+  try {
+    // Get current TPIP balances before reset
+    const balancesBefore = await Promise.all(
+      ctx.testUsers.map(u => getTPIPBalance(u.id))
+    );
+
+    console.log(`   💰 TPIP balances before reset: ${balancesBefore.join(', ')}`);
+
+    // Reset all TPIP to zero
+    const reset = await resetTournamentTPIP({
+      tournamentId: ctx.tournamentId,
+      participantUserIds: ctx.testUsers.map(u => u.id),
+      guildId: "test_guild"
+    });
+
+    if (!reset.success) {
+      console.error(`   ❌ Reset failed: ${reset.error}`);
+      return false;
+    }
+
+    // Verify all TPIP balances are now zero
+    const balancesAfter = await Promise.all(
+      ctx.testUsers.map(u => getTPIPBalance(u.id))
+    );
+
+    for (let i = 0; i < balancesAfter.length; i++) {
+      if (balancesAfter[i] !== 0n) {
+        console.error(`   ❌ User ${i} TPIP balance not zero: ${balancesAfter[i]}`);
+        return false;
+      }
+    }
+
+    // Verify reset transactions logged
+    const resetTxs = await prisma.transaction.findMany({
+      where: {
+        type: 'TOURNAMENT_TPIP_RESET',
+        userId: { in: ctx.testUsers.map(u => u.id) },
+        createdAt: { gte: new Date(Date.now() - 10000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    if (resetTxs.length === 0) {
+      console.error("   ❌ No reset transactions found");
+      return false;
+    }
+
+    // Verify all reset deltas are negative (debit to zero)
+    for (const tx of resetTxs) {
+      const tpipDelta = tx.balanceDeltas.find(d => d.tokenId === ctx.tpipToken.id);
+      if (!tpipDelta) {
+        console.error(`   ❌ Reset transaction ${tx.id} doesn't use TPIP token`);
+        return false;
+      }
+      if (Number(tpipDelta.amountDelta) >= 0) {
+        console.error(`   ❌ Reset should be negative delta, got ${tpipDelta.amountDelta}`);
+        return false;
+      }
+    }
+
+    console.log(`   ✅ Reset ${reset.resetCount} TPIP balances to zero`);
+    console.log(`   ✅ All users now have 0 TPIP`);
+    console.log(`   ✅ Reset transactions logged with negative deltas`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Test 5: Verify TPIP-PIPChips separation
+async function testTPIPPIPChipsSeparation(): Promise<boolean> {
+  console.log("\n5️⃣ Testing TPIP-PIPChips Separation...");
+
+  try {
+    // Verify no PIPChips transactions during tournament
+    const pipchipsTransactions = await prisma.transaction.findMany({
+      where: {
+        userId: { in: ctx.testUsers.map(u => u.id) },
+        type: { in: ['PIPCHIPS_BET', 'PIPCHIPS_PAYOUT', 'PIPCHIPS_REFUND'] },
+        createdAt: { gte: new Date(Date.now() - 30000) }
+      }
+    });
+
+    if (pipchipsTransactions.length > 0) {
+      console.error(`   ❌ Found ${pipchipsTransactions.length} PIPChips transactions during TPIP tournament`);
+      return false;
+    }
+
+    // Verify all tournament transactions use TPIP token
+    const allTournamentTxs = await prisma.transaction.findMany({
+      where: {
+        userId: { in: ctx.testUsers.map(u => u.id) },
+        type: { in: ['TOURNAMENT_WAGER', 'TOURNAMENT_WIN', 'TOURNAMENT_TPIP_RESET'] },
+        createdAt: { gte: new Date(Date.now() - 30000) }
+      },
+      include: { balanceDeltas: true }
+    });
+
+    for (const tx of allTournamentTxs) {
+      const hasPIPChipsDelta = tx.balanceDeltas.some(d => d.tokenId === 2); // PIPChips token ID
+      if (hasPIPChipsDelta) {
+        console.error(`   ❌ Tournament transaction ${tx.id} uses PIPChips token`);
+        return false;
+      }
+
+      const hasTPIPDelta = tx.balanceDeltas.some(d => d.tokenId === ctx.tpipToken.id);
+      if (!hasTPIPDelta) {
+        console.error(`   ❌ Tournament transaction ${tx.id} doesn't use TPIP token`);
+        return false;
+      }
+    }
+
+    console.log(`   ✅ No PIPChips transactions during tournament`);
+    console.log(`   ✅ All tournament transactions use TPIP exclusively`);
+    console.log(`   ✅ Complete separation between TPIP and PIPChips economies`);
+    return true;
+
+  } catch (error) {
+    console.error("   ❌ Error:", (error as Error).message);
+    return false;
+  }
+}
+
+// Main test runner
+async function runTests(): Promise<void> {
+  console.log("╔════════════════════════════════════════════════════════════╗");
+  console.log("║   Tournament TPIP Integration Test Suite                  ║");
+  console.log("║   TPIP as Separate Currency from PIPChips                 ║");
+  console.log("╚════════════════════════════════════════════════════════════╝\n");
+
+  try {
+    await setup();
+
+    const results = {
+      tpipPurchase: await testTPIPPurchase(),
+      tournamentBetting: await testTournamentBetting(),
+      tournamentResolution: await testTournamentResolution(),
+      tpipReset: await testTPIPReset(),
+      tpipPipchipsSeparation: await testTPIPPIPChipsSeparation()
+    };
+
+    const passed = Object.values(results).filter(r => r).length;
+    const total = Object.values(results).length;
+
+    console.log("\n╔════════════════════════════════════════════════════════════╗");
+    console.log("║   Test Results                                             ║");
+    console.log("╚════════════════════════════════════════════════════════════╝\n");
+    console.log(`Total Tests: ${total}`);
+    console.log(`Passed: ${passed}`);
+    console.log(`Failed: ${total - passed}`);
+    console.log(`\nOverall: ${passed === total ? "✅ ALL TESTS PASSED" : "❌ SOME TESTS FAILED"}\n`);
+
+    if (passed !== total) {
+      process.exit(1);
+    }
+
+  } catch (error) {
+    console.error("❌ Test suite failed:", error);
+    process.exit(1);
+  } finally {
+    await cleanup();
+    await prisma.$disconnect();
+  }
+}
+
+// Run if executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runTests();
+}

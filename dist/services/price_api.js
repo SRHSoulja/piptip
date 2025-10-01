@@ -34,6 +34,11 @@ class PriceAPIService {
      */
     async getTokenPrices(symbols) {
         try {
+            // EMERGENCY CIRCUIT BREAKER - Skip all API calls if enabled
+            if (process.env.EMERGENCY_DISABLE_PRICE_API === 'true') {
+                console.warn(`🚨 EMERGENCY: Price API completely disabled - returning fallback prices only`);
+                return this.getFallbackPrices(symbols);
+            }
             // Log call source for debugging multiple calls
             const stack = new Error().stack;
             const caller = stack?.split('\n')[2]?.trim() || 'Unknown';
@@ -41,10 +46,34 @@ class PriceAPIService {
             // Global rate limiting - prevent rapid successive calls
             const now = Date.now();
             const cacheKey = symbols.sort().join(','); // Create consistent key
-            // Check if we've fetched these symbols very recently (within 1 second)
+            // ULTRA-AGGRESSIVE: Check if we've fetched these symbols very recently (within 5 seconds)
+            const globalKey = symbols.sort().join(',');
+            const lastGlobalCall = this.globalRateLimit.get(globalKey) || 0;
+            if (now - lastGlobalCall < this.GLOBAL_RATE_LIMIT) { // 3 second HARD limit
+                console.log(`🚫 GLOBAL Price API rate limited (${symbols.join(',')}) - ${now - lastGlobalCall}ms ago`);
+                // Return cached prices immediately - no API call
+                const prices = {};
+                symbols.forEach(symbol => {
+                    const cached = this.cache.get(symbol);
+                    if (cached) {
+                        prices[symbol] = cached.price;
+                    }
+                    else {
+                        // Use fallback price if no cache
+                        const fallbackPrices = {
+                            'PGU': 0.001, 'ICE': 0.0005, 'PEB': 0.0002, 'ABSTER': 0.019
+                        };
+                        prices[symbol] = fallbackPrices[symbol] || 0.001;
+                    }
+                });
+                return { success: true, prices, source: 'fallback' };
+            }
+            // Record this global call to prevent immediate duplicates
+            this.globalRateLimit.set(globalKey, now);
+            // Check individual symbol cache (legacy check)
             if (this.cache.has(cacheKey)) {
                 const cached = this.cache.get(cacheKey);
-                if (now - cached.timestamp < 1000) { // 1 second aggressive rate limit
+                if (now - cached.timestamp < 1000) { // 1 second legacy rate limit
                     console.log(`🚫 Price API rate limited (${symbols.join(',')}) - using recent cache`);
                     // Return cached prices in the correct format
                     const prices = {};
@@ -127,10 +156,13 @@ class PriceAPIService {
                                     // Find symbol for this address
                                     const symbol = Object.keys(tokenAddresses).find(sym => tokenAddresses[sym].toLowerCase() === address);
                                     if (symbol) {
-                                        prices[symbol] = priceUsd;
-                                        change24h[symbol] = priceChange24h;
-                                        this.updateCache(symbol, priceUsd, priceChange24h);
-                                        console.log(`✅ DexScreener price for ${symbol}: $${priceUsd} (24h: ${priceChange24h}%)`);
+                                        // Only update if this is a better (higher) price or first price found
+                                        if (!prices[symbol] || priceUsd > prices[symbol]) {
+                                            prices[symbol] = priceUsd;
+                                            change24h[symbol] = priceChange24h;
+                                            this.updateCache(symbol, priceUsd, priceChange24h);
+                                            console.log(`✅ DexScreener best price for ${symbol}: $${priceUsd} (24h: ${priceChange24h}%) from ${pair.dexId || 'Unknown'}`);
+                                        }
                                     }
                                 }
                             }
@@ -309,7 +341,8 @@ class PriceAPIService {
         const fallbackPrices = {
             'PGU': 0.001, // Penguin token estimate
             'ICE': 0.0005, // Ice token estimate
-            'PEB': 0.0002 // Pebble token estimate
+            'PEB': 0.0002, // Pebble token estimate
+            'ABSTER': 0.019 // ABSTER token estimate based on logs
         };
         const prices = {};
         symbols.forEach(symbol => {
@@ -378,4 +411,35 @@ class PriceAPIService {
         };
     }
 }
+// Global singleton instance to ensure consistent caching across the entire application
 export const priceAPI = new PriceAPIService();
+/**
+ * Global cached price getter - use this throughout the codebase
+ * Ensures all parts of the bot (Discord, web, admin, workers) use the same cached prices
+ */
+export async function getCachedTokenPrice(symbol) {
+    const result = await priceAPI.getTokenPrices([symbol]);
+    return result.prices[symbol] || 0;
+}
+/**
+ * Global cached prices getter for multiple tokens
+ * Ensures consistent caching across all bot components
+ *
+ * In test mode (NODE_ENV=test or USE_MOCK_PRICES=true), returns mock prices instantly
+ * to avoid API timeouts and rate limiting during tests.
+ */
+export async function getCachedTokenPrices(symbols) {
+    // Use mock prices in test mode to avoid API calls
+    const isTestMode = process.env.NODE_ENV === 'test' ||
+        process.env.USE_MOCK_PRICES === 'true';
+    if (isTestMode) {
+        const { getMockTokenPrice } = await import('./test_mocks.js');
+        const mockPrices = {};
+        for (const symbol of symbols) {
+            mockPrices[symbol] = await getMockTokenPrice(symbol);
+        }
+        return mockPrices;
+    }
+    const result = await priceAPI.getTokenPrices(symbols);
+    return result.prices;
+}

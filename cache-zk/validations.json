@@ -1,0 +1,597 @@
+{
+  "version": "3.4",
+  "log": [
+    {
+      "contracts/MerkleRegistry.sol:MerkleRegistry": {
+        "src": "contracts/MerkleRegistry.sol:9",
+        "version": {
+          "withMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "withoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "linkedWithoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "publishSnapshot(bytes32,string,uint256)",
+          "getLatestSnapshot()",
+          "isValidSnapshot(bytes32)",
+          "authorizePublisher(address)",
+          "revokePublisher(address)",
+          "isAuthorizedPublisher(address)",
+          "getSnapshotCount()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MerkleRegistry",
+            "src": "contracts/MerkleRegistry.sol:47"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "MerkleRegistry",
+              "label": "latestSnapshot",
+              "type": "t_struct(Snapshot)11_storage",
+              "src": "contracts/MerkleRegistry.sol:18"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "publishedSnapshots",
+              "type": "t_mapping(t_bytes32,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:19"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "authorizedPublishers",
+              "type": "t_mapping(t_address,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:20"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "owner",
+              "type": "t_address",
+              "src": "contracts/MerkleRegistry.sol:21"
+            }
+          ],
+          "types": {
+            "t_struct(Snapshot)11_storage": {
+              "label": "struct MerkleRegistry.Snapshot",
+              "members": [
+                {
+                  "label": "merkleRoot",
+                  "type": "t_bytes32"
+                },
+                {
+                  "label": "ipfsHash",
+                  "type": "t_string_storage"
+                },
+                {
+                  "label": "timestamp",
+                  "type": "t_uint256"
+                },
+                {
+                  "label": "publisher",
+                  "type": "t_address"
+                }
+              ]
+            },
+            "t_bytes32": {
+              "label": "bytes32"
+            },
+            "t_string_storage": {
+              "label": "string"
+            },
+            "t_uint256": {
+              "label": "uint256"
+            },
+            "t_address": {
+              "label": "address"
+            },
+            "t_mapping(t_bytes32,t_bool)": {
+              "label": "mapping(bytes32 => bool)"
+            },
+            "t_bool": {
+              "label": "bool"
+            },
+            "t_mapping(t_address,t_bool)": {
+              "label": "mapping(address => bool)"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/SimpleTest.sol:SimpleTest": {
+        "src": "contracts/SimpleTest.sol:4",
+        "version": {
+          "withMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "withoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "linkedWithoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "setValue(uint256)",
+          "getValue()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "SimpleTest",
+            "src": "contracts/SimpleTest.sol:7"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "SimpleTest",
+              "label": "value",
+              "type": "t_uint256",
+              "src": "contracts/SimpleTest.sol:5"
+            }
+          ],
+          "types": {
+            "t_uint256": {
+              "label": "uint256"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      }
+    },
+    {
+      "contracts/MerkleRegistry.sol:MerkleRegistry": {
+        "src": "contracts/MerkleRegistry.sol:9",
+        "version": {
+          "withMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "withoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "linkedWithoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "publishSnapshot(bytes32,string,uint256)",
+          "getLatestSnapshot()",
+          "isValidSnapshot(bytes32)",
+          "authorizePublisher(address)",
+          "revokePublisher(address)",
+          "isAuthorizedPublisher(address)",
+          "getSnapshotCount()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MerkleRegistry",
+            "src": "contracts/MerkleRegistry.sol:47"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "MerkleRegistry",
+              "label": "latestSnapshot",
+              "type": "t_struct(Snapshot)11_storage",
+              "src": "contracts/MerkleRegistry.sol:18"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "publishedSnapshots",
+              "type": "t_mapping(t_bytes32,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:19"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "authorizedPublishers",
+              "type": "t_mapping(t_address,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:20"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "owner",
+              "type": "t_address",
+              "src": "contracts/MerkleRegistry.sol:21"
+            }
+          ],
+          "types": {
+            "t_struct(Snapshot)11_storage": {
+              "label": "struct MerkleRegistry.Snapshot",
+              "members": [
+                {
+                  "label": "merkleRoot",
+                  "type": "t_bytes32"
+                },
+                {
+                  "label": "ipfsHash",
+                  "type": "t_string_storage"
+                },
+                {
+                  "label": "timestamp",
+                  "type": "t_uint256"
+                },
+                {
+                  "label": "publisher",
+                  "type": "t_address"
+                }
+              ]
+            },
+            "t_bytes32": {
+              "label": "bytes32"
+            },
+            "t_string_storage": {
+              "label": "string"
+            },
+            "t_uint256": {
+              "label": "uint256"
+            },
+            "t_address": {
+              "label": "address"
+            },
+            "t_mapping(t_bytes32,t_bool)": {
+              "label": "mapping(bytes32 => bool)"
+            },
+            "t_bool": {
+              "label": "bool"
+            },
+            "t_mapping(t_address,t_bool)": {
+              "label": "mapping(address => bool)"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/SimpleTest.sol:SimpleTest": {
+        "src": "contracts/SimpleTest.sol:4",
+        "version": {
+          "withMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "withoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "linkedWithoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "setValue(uint256)",
+          "getValue()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "SimpleTest",
+            "src": "contracts/SimpleTest.sol:7"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "SimpleTest",
+              "label": "value",
+              "type": "t_uint256",
+              "src": "contracts/SimpleTest.sol:5"
+            }
+          ],
+          "types": {
+            "t_uint256": {
+              "label": "uint256"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      }
+    },
+    {
+      "contracts/MerkleRegistry.sol:MerkleRegistry": {
+        "src": "contracts/MerkleRegistry.sol:9",
+        "version": {
+          "withMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "withoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "linkedWithoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "publishSnapshot(bytes32,string,uint256)",
+          "getLatestSnapshot()",
+          "isValidSnapshot(bytes32)",
+          "authorizePublisher(address)",
+          "revokePublisher(address)",
+          "isAuthorizedPublisher(address)",
+          "getSnapshotCount()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MerkleRegistry",
+            "src": "contracts/MerkleRegistry.sol:47"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "MerkleRegistry",
+              "label": "latestSnapshot",
+              "type": "t_struct(Snapshot)11_storage",
+              "src": "contracts/MerkleRegistry.sol:18"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "publishedSnapshots",
+              "type": "t_mapping(t_bytes32,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:19"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "authorizedPublishers",
+              "type": "t_mapping(t_address,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:20"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "owner",
+              "type": "t_address",
+              "src": "contracts/MerkleRegistry.sol:21"
+            }
+          ],
+          "types": {
+            "t_struct(Snapshot)11_storage": {
+              "label": "struct MerkleRegistry.Snapshot",
+              "members": [
+                {
+                  "label": "merkleRoot",
+                  "type": "t_bytes32"
+                },
+                {
+                  "label": "ipfsHash",
+                  "type": "t_string_storage"
+                },
+                {
+                  "label": "timestamp",
+                  "type": "t_uint256"
+                },
+                {
+                  "label": "publisher",
+                  "type": "t_address"
+                }
+              ]
+            },
+            "t_bytes32": {
+              "label": "bytes32"
+            },
+            "t_string_storage": {
+              "label": "string"
+            },
+            "t_uint256": {
+              "label": "uint256"
+            },
+            "t_address": {
+              "label": "address"
+            },
+            "t_mapping(t_bytes32,t_bool)": {
+              "label": "mapping(bytes32 => bool)"
+            },
+            "t_bool": {
+              "label": "bool"
+            },
+            "t_mapping(t_address,t_bool)": {
+              "label": "mapping(address => bool)"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/SimpleTest.sol:SimpleTest": {
+        "src": "contracts/SimpleTest.sol:4",
+        "version": {
+          "withMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "withoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "linkedWithoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "setValue(uint256)",
+          "getValue()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "SimpleTest",
+            "src": "contracts/SimpleTest.sol:7"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "SimpleTest",
+              "label": "value",
+              "type": "t_uint256",
+              "src": "contracts/SimpleTest.sol:5"
+            }
+          ],
+          "types": {
+            "t_uint256": {
+              "label": "uint256"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      }
+    },
+    {
+      "contracts/MerkleRegistry.sol:MerkleRegistry": {
+        "src": "contracts/MerkleRegistry.sol:9",
+        "version": {
+          "withMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "withoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1",
+          "linkedWithoutMetadata": "23899e010e8ef08075b72583a654f749ee1b21d52e1b053a4fa9f9e0d0fd96e1"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "publishSnapshot(bytes32,string,uint256)",
+          "getLatestSnapshot()",
+          "isValidSnapshot(bytes32)",
+          "authorizePublisher(address)",
+          "revokePublisher(address)",
+          "isAuthorizedPublisher(address)",
+          "getSnapshotCount()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MerkleRegistry",
+            "src": "contracts/MerkleRegistry.sol:47"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "MerkleRegistry",
+              "label": "latestSnapshot",
+              "type": "t_struct(Snapshot)11_storage",
+              "src": "contracts/MerkleRegistry.sol:18"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "publishedSnapshots",
+              "type": "t_mapping(t_bytes32,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:19"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "authorizedPublishers",
+              "type": "t_mapping(t_address,t_bool)",
+              "src": "contracts/MerkleRegistry.sol:20"
+            },
+            {
+              "contract": "MerkleRegistry",
+              "label": "owner",
+              "type": "t_address",
+              "src": "contracts/MerkleRegistry.sol:21"
+            }
+          ],
+          "types": {
+            "t_struct(Snapshot)11_storage": {
+              "label": "struct MerkleRegistry.Snapshot",
+              "members": [
+                {
+                  "label": "merkleRoot",
+                  "type": "t_bytes32"
+                },
+                {
+                  "label": "ipfsHash",
+                  "type": "t_string_storage"
+                },
+                {
+                  "label": "timestamp",
+                  "type": "t_uint256"
+                },
+                {
+                  "label": "publisher",
+                  "type": "t_address"
+                }
+              ]
+            },
+            "t_bytes32": {
+              "label": "bytes32"
+            },
+            "t_string_storage": {
+              "label": "string"
+            },
+            "t_uint256": {
+              "label": "uint256"
+            },
+            "t_address": {
+              "label": "address"
+            },
+            "t_mapping(t_bytes32,t_bool)": {
+              "label": "mapping(bytes32 => bool)"
+            },
+            "t_bool": {
+              "label": "bool"
+            },
+            "t_mapping(t_address,t_bool)": {
+              "label": "mapping(address => bool)"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      },
+      "contracts/SimpleTest.sol:SimpleTest": {
+        "src": "contracts/SimpleTest.sol:4",
+        "version": {
+          "withMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "withoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a",
+          "linkedWithoutMetadata": "8513ba4cbb5c7518e2cd68acfba442f94b2579e49ed091d4cb808235c45a8c7a"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "setValue(uint256)",
+          "getValue()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "SimpleTest",
+            "src": "contracts/SimpleTest.sol:7"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "contract": "SimpleTest",
+              "label": "value",
+              "type": "t_uint256",
+              "src": "contracts/SimpleTest.sol:5"
+            }
+          ],
+          "types": {
+            "t_uint256": {
+              "label": "uint256"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.19"
+      }
+    }
+  ]
+}

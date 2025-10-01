@@ -4,6 +4,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "disc
 import { prisma } from "../services/db.js";
 import { getActiveTokens, formatAmount } from "../services/token.js";
 import { PENGUIN_ERRORS, PENGUIN_LOADING, createPenguinError } from "../utils/penguin_messages.js";
+import { getAppConfig } from "../services/app_config_cache.js";
 
 export default async function pipTip(i: ChatInputCommandInteraction) {
   try {
@@ -28,7 +29,7 @@ export default async function pipTip(i: ChatInputCommandInteraction) {
     }
 
     // Check for emergency mode
-    const config = await prisma.appConfig.findFirst();
+    const config = await getAppConfig();
     
     if (config?.tippingPaused || config?.emergencyMode) {
       return i.reply({

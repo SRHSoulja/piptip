@@ -105,7 +105,7 @@ async function getApiKeyStats(userId) {
         const keys = await apiKeyManager.getUserApiKeys(userId);
         return {
             totalKeys: keys.length,
-            activeKeys: keys.filter(k => k.isActive).length,
+            activeKeys: keys.filter((k) => k.isActive).length,
             totalRequests: keys.reduce((sum, k) => sum + k.requestCount, 0),
             lastUsed: keys.length > 0 ? new Date() : null
         };

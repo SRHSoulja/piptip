@@ -4,7 +4,8 @@ import { Prisma } from "@prisma/client";
 import { Router, Request, Response } from "express";
 import { JsonRpcProvider, Contract } from "ethers";
 import { prisma } from "../services/db.js";
-import { getConfig, ABSTRACT_RPC_URL } from "../config.js";
+import { getConfig } from "../config.js";
+import { getAbstractRpcUrl } from "../services/network.js";
 import { registerCommandsForApprovedGuilds } from "../services/command_registry.js";
 import { getCommandsJson } from "../services/commands_def.js";
 import { getActiveTokens } from "../services/token.js";
@@ -1641,7 +1642,7 @@ adminRouter.post("/tokens", async (req: Request, res: Response) => {
     }
 
     // Fetch token info from blockchain
-    const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+    const provider = new JsonRpcProvider(getAbstractRpcUrl());
     const contract = new Contract(address, ERC20_ABI, provider);
     
     const [name, symbol, decimals] = await Promise.all([
@@ -2262,7 +2263,7 @@ adminRouter.get("/system/status", async (req: Request, res: Response) => {
     // Check RPC
     let rpc = false;
     try {
-      const provider = new JsonRpcProvider(ABSTRACT_RPC_URL);
+      const provider = new JsonRpcProvider(getAbstractRpcUrl());
       await provider.getBlockNumber();
       rpc = true;
     } catch {}

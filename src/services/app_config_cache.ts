@@ -1,0 +1,62 @@
+// src/services/app_config_cache.ts - Cached AppConfig access to reduce DB queries
+import { prisma } from './db.js';
+import type { AppConfig } from '@prisma/client';
+
+// Cache configuration
+const CACHE_TTL_MS = 60 * 1000; // 1 minute - config rarely changes
+let cachedConfig: AppConfig | null = null;
+let cacheTimestamp = 0;
+
+/**
+ * Get AppConfig with caching to prevent repeated database queries
+ * AppConfig is a singleton table that gets hit on every withdrawal/deposit
+ */
+export async function getAppConfig(): Promise<AppConfig> {
+  const now = Date.now();
+
+  // Return cached config if still valid
+  if (cachedConfig && (now - cacheTimestamp) < CACHE_TTL_MS) {
+    return cachedConfig;
+  }
+
+  // Fetch fresh config from database
+  const config = await prisma.appConfig.findFirst();
+
+  if (!config) {
+    throw new Error('AppConfig not initialized. Run scripts/init_app_config.ts');
+  }
+
+  // Update cache
+  cachedConfig = config;
+  cacheTimestamp = now;
+
+  return config;
+}
+
+/**
+ * Force refresh the cache (call after updating AppConfig)
+ */
+export async function refreshAppConfigCache(): Promise<AppConfig> {
+  cachedConfig = null;
+  cacheTimestamp = 0;
+  return getAppConfig();
+}
+
+/**
+ * Clear the cache (for testing)
+ */
+export function clearAppConfigCache(): void {
+  cachedConfig = null;
+  cacheTimestamp = 0;
+}
+
+/**
+ * Get cache stats for monitoring
+ */
+export function getAppConfigCacheStats() {
+  return {
+    cached: cachedConfig !== null,
+    age_ms: cachedConfig ? Date.now() - cacheTimestamp : 0,
+    ttl_ms: CACHE_TTL_MS
+  };
+}

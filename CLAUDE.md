@@ -26,6 +26,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Init Config**: `npx tsx scripts/init_app_config.ts` - Initialize AppConfig with emergency controls
 - **Auto-Fix Sync**: Set `AUTO_FIX_SYNC=true` environment variable for automatic sync repair
 
+## Network & Database Switching
+
+- **Test Database Switching**: `npx tsx scripts/test_database_switching.ts` - Test automatic database switching between networks
+- **Network Configuration**: Set `NETWORK=testnet` or `NETWORK=mainnet` to switch RPC, chain ID, and database
+- **Database Isolation**: Set `TEST_DATABASE_URL` for testnet data isolation from production database
+- **Setup Instructions**:
+  1. Create test database: `CREATE DATABASE piptip_test;`
+  2. Set `TEST_DATABASE_URL` in `.env` file
+  3. Run migrations on test DB: `NETWORK=testnet npx prisma migrate deploy`
+
+## Contract Deployment
+
+- **Registry Contract**: `contracts/MerkleRegistry.sol` - Solidity contract for storing merkle tree snapshots
+- **Deploy Instructions**: `NETWORK=testnet npx tsx scripts/deploy_registry.ts` - Deploy registry to Abstract testnet
+- **Contract Setup**:
+  1. Compile contract with Hardhat/Foundry
+  2. Deploy to testnet with sufficient ETH balance
+  3. Set `TESTNET_REGISTRY_CONTRACT_ADDRESS` in `.env`
+  4. Test with: `npx tsx scripts/test_merkle_publisher.ts publish`
+
 ## Achievement System Management
 
 ### Dynamic Achievement System

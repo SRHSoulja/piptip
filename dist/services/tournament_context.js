@@ -1,6 +1,7 @@
 // src/services/tournament_context.ts - Context-based tournament system with isolated PIPChips
 import { prisma } from "./db.js";
 import { Decimal } from "@prisma/client/runtime/library";
+import { logCompleteTransaction } from "./tx_logger.js";
 /**
  * Enter a tournament with token payment and isolated PIPChips balance
  */
@@ -49,6 +50,29 @@ export async function enterTournament(params) {
         }
         // Process tournament entry in transaction
         await prisma.$transaction(async (tx) => {
+            // Calculate atomic entry fee amount
+            const entryFeeAtomic = BigInt(Math.round(entryFeeAmount * (10 ** token.decimals)));
+            // Generate idempotency key for tournament entry
+            const idempotencyKey = `tournament_entry_${tournamentId}_${userId}`;
+            // Log transaction with BalanceDelta (entry fee payment only)
+            await logCompleteTransaction(tx, {
+                operation: 'TOURNAMENT_ENTRY',
+                userId,
+                balanceChanges: [{
+                        tokenId: token.id,
+                        userId,
+                        amountDelta: -entryFeeAtomic,
+                        reason: 'tournament_entry_fee'
+                    }],
+                metadata: {
+                    tournamentId,
+                    tournamentName: tournament.name,
+                    startingPIPChips: tournament.startingPIPChips,
+                    tokenType
+                },
+                idempotencyKey,
+                source: 'BOT'
+            });
             // Deduct entry fee from user balance
             await tx.userBalance.update({
                 where: {
@@ -79,22 +103,9 @@ export async function enterTournament(params) {
                     activeTournamentId: tournamentId
                 }
             });
-            // Log entry fee transaction
-            await tx.transaction.create({
-                data: {
-                    userId,
-                    tokenId: token.id,
-                    amount: new Decimal(-entryFeeAmount),
-                    type: 'TOURNAMENT_ENTRY',
-                    metadata: JSON.stringify({
-                        tournamentId,
-                        tournamentName: tournament.name
-                    })
-                }
-            });
             // Get user's current balance for PIPChips transaction
             const currentUser = await tx.user.findUnique({ where: { id: userId } });
-            // Log PIPChips allocation
+            // Log PIPChips allocation (separate from entry fee - tournament PIPChips are isolated)
             await tx.pipchipsTransaction.create({
                 data: {
                     userId: userId.toString(),

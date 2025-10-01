@@ -2,12 +2,14 @@ import "dotenv/config";
 import { ethers, JsonRpcProvider } from "ethers";
 import { PrismaClient } from "@prisma/client";
 import { bigToDecDirect } from "../services/token.js";
+import { getAbstractRpcUrl, getAbstractChainId } from "../services/network.js";
+import { TOKEN_ADDR_LOWER } from "../config.js";
 const prisma = new PrismaClient();
-const RPC = process.env.ABSTRACT_RPC_URL;
-const TOKEN = process.env.TOKEN_ADDRESS.toLowerCase();
+const RPC = getAbstractRpcUrl();
+const TOKEN = TOKEN_ADDR_LOWER;
 const TREASURY = process.env.TREASURY_AGW_ADDRESS.toLowerCase();
 const DECIMALS = Number(process.env.TOKEN_DECIMALS || "18");
-const CHAIN_ID = Number(process.env.ABSTRACT_CHAIN_ID || "2741"); // Abstract mainnet
+const CHAIN_ID = getAbstractChainId();
 // Single JSON-RPC provider (Alchemy). Static network avoids auto-detect issues.
 const provider = new JsonRpcProvider(RPC, { chainId: CHAIN_ID, name: "abstract" });
 // Minimal ERC20 ABI and Transfer topic

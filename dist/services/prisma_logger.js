@@ -1,6 +1,7 @@
 // src/services/prisma_logger.ts - Prisma slow query logging
 import { PrismaClient } from '@prisma/client';
 import { incrementSlowQueries } from './metrics.js';
+import { getDatabaseUrl } from './network.js';
 const SLOW_QUERY_THRESHOLD_MS = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || '300');
 // Create Prisma client with logging configuration and optimized connection handling
 export const prismaWithLogging = new PrismaClient({
@@ -22,10 +23,10 @@ export const prismaWithLogging = new PrismaClient({
             level: 'error',
         },
     ],
-    // EMERGENCY FIX: Optimize connection handling for claims
+    // Dynamic database URL based on network (testnet/mainnet isolation)
     datasources: {
         db: {
-            url: process.env.DATABASE_URL,
+            url: getDatabaseUrl(),
         },
     },
 });

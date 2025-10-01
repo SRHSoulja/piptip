@@ -1,9 +1,9 @@
 // src/commands/pip_tip_new.ts - Enhanced button-based tip interface
 import { MessageFlags } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
-import { prisma } from "../services/db.js";
 import { getActiveTokens } from "../services/token.js";
 import { PENGUIN_ERRORS } from "../utils/penguin_messages.js";
+import { getAppConfig } from "../services/app_config_cache.js";
 export default async function pipTip(i) {
     try {
         // Analyze user behavior for anomaly detection
@@ -26,7 +26,7 @@ export default async function pipTip(i) {
             console.warn('Anomaly detection analysis failed for tip command:', behaviorError);
         }
         // Check for emergency mode
-        const config = await prisma.appConfig.findFirst();
+        const config = await getAppConfig();
         if (config?.tippingPaused || config?.emergencyMode) {
             return i.reply({
                 content: [

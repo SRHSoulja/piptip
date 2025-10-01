@@ -2,9 +2,11 @@ import "dotenv/config";
 import { JsonRpcProvider } from "ethers";
 import { PrismaClient } from "@prisma/client";
 import { bigToDecDirect } from "../services/token.js";
+import { getAbstractRpcUrl } from "../services/network.js";
+import { TOKEN_ADDR_LOWER } from "../config.js";
 const prisma = new PrismaClient();
-const RPC = process.env.ABSTRACT_RPC_URL;
-const TOKEN = process.env.TOKEN_ADDRESS.toLowerCase();
+const RPC = getAbstractRpcUrl();
+const TOKEN = TOKEN_ADDR_LOWER;
 const TREASURY = process.env.TREASURY_AGW_ADDRESS.toLowerCase();
 const DECIMALS = Number(process.env.TOKEN_DECIMALS || "18");
 // Alchemy JSON-RPC (no need to pass chain id for Transfers API)
