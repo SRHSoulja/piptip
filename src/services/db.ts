@@ -11,7 +11,27 @@ export async function ensurePrisma() {
     const url = new URL(process.env.DATABASE_URL);
     console.log(`🔍 Connecting to: ${url.hostname}:${url.port}`);
   }
-  await prisma.$connect();
-  // Keep connection alive with a test query
-  await prisma.$queryRaw`SELECT 1 as keepalive`;
+
+  // Retry connection with exponential backoff
+  let retries = 3;
+  let delay = 1000;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      await prisma.$connect();
+      // Keep connection alive with a test query
+      await prisma.$queryRaw`SELECT 1 as keepalive`;
+      console.log(`✅ Database connection established`);
+      return;
+    } catch (error: any) {
+      console.warn(`⚠️ Connection attempt ${i + 1}/${retries} failed: ${error.message}`);
+      if (i < retries - 1) {
+        console.log(`   Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+      } else {
+        throw error;
+      }
+    }
+  }
 }
