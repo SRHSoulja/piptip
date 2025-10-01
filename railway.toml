@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm ci --omit=dev && npx prisma generate && npm run build"
+buildCommand = "rm -rf node_modules && npm ci --omit=dev && npx prisma generate && npm run build"
 
 [deploy]
 startCommand = "node dist/index.js"
