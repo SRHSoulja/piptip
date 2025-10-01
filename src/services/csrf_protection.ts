@@ -236,6 +236,13 @@ export function provideCSRFToken(req: Request, res: Response, next: NextFunction
  * Uses Double Submit Cookie pattern for enhanced security
  */
 export function verifyCSRFToken(req: Request, res: Response, next: NextFunction) {
+  // ALWAYS log entry to verify middleware is being called
+  console.log('🔍 CSRF verifyCSRFToken called:', {
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl
+  });
+
   // Skip CSRF for safe methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
