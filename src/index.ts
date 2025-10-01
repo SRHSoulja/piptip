@@ -61,6 +61,9 @@ const TOKEN = process.env.DISCORD_TOKEN!;
 // Replit compatibility: Use port 5000 if in Replit environment
 const PORT = Number(process.env.PORT || (process.env.REPLIT_DB_URL ? 5000 : 3000));
 
+// Build marker to verify Railway is compiling new code
+console.log('🚀 PIPTip v2.1.0 - Grand Reset CSRF fix applied');
+
 // ---------- Express (REST) ----------
 const app = express();
 
