@@ -249,18 +249,21 @@ export function verifyCSRFToken(req: Request, res: Response, next: NextFunction)
 
   // Skip CSRF for admin bearer-authenticated requests (bearer tokens prevent CSRF)
   const authHeader = req.headers.authorization;
-  console.log('🔍 CSRF check:', {
-    hasAuth: !!authHeader,
-    isBearer: authHeader?.startsWith('Bearer '),
-    path: req.path,
-    originalUrl: req.originalUrl
-  });
-
   if (authHeader && authHeader.startsWith('Bearer ')) {
     // Check both originalUrl and path since path might be relative to router mount point
     const fullPath = req.originalUrl || req.path;
-    if (fullPath.includes('/admin/') || req.path.startsWith('/system/')) {
-      console.log('🔓 Skipping CSRF for admin bearer-auth request to', req.path);
+    console.log('🔍 CSRF bearer check:', {
+      hasAuth: true,
+      fullPath,
+      path: req.path,
+      includesAdmin: fullPath.includes('/admin/'),
+      pathStartsWithSystem: req.path.startsWith('/system/')
+    });
+
+    // Skip CSRF for admin bearer-authenticated endpoints
+    // Bearer token authentication provides equivalent CSRF protection
+    if (fullPath.includes('/admin/')) {
+      console.log('🔓 Skipping CSRF for admin bearer-auth request:', fullPath);
       return next();
     }
   }
