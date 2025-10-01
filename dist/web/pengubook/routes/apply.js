@@ -2,27 +2,24 @@ import { getCurrentUser } from "../../auth.js";
 import { getUnreadMessageCount } from "../../../interactions/buttons/pengubook.js";
 import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
-export async function applyHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Check if user has any pending applications
-        const pendingApplications = await prisma.serverApplication.findMany({
-            where: {
-                applicantId: currentUser.discordId,
-                status: 'PENDING'
-            },
-            orderBy: { submittedAt: 'desc' }
-        });
-        // Check if user has any approved servers
-        const approvedServers = await prisma.approvedServer.findMany({
-            where: { enabled: true }
-        });
-        const content = `
+async function applyHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const pendingApplications = await prisma.serverApplication.findMany({
+      where: {
+        applicantId: currentUser.discordId,
+        status: "PENDING"
+      },
+      orderBy: { submittedAt: "desc" }
+    });
+    const approvedServers = await prisma.approvedServer.findMany({
+      where: { enabled: true }
+    });
+    const content = `
     <div class="pg-container">
-        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">🏢 Server Application</h1>
+        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u{1F3E2} Server Application</h1>
 
         <!-- Information Section -->
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
@@ -35,7 +32,7 @@ export async function applyHandler(req, res) {
                 </p>
 
                 <div style="background: rgba(96, 165, 250, 0.1); border: 1px solid var(--pg-primary-300); border-radius: var(--pg-radius-md); padding: var(--pg-space-4); margin: var(--pg-space-4) 0;">
-                    <h3 style="margin: 0 0 var(--pg-space-3) 0; color: var(--pg-primary-700);">✨ What You Get</h3>
+                    <h3 style="margin: 0 0 var(--pg-space-3) 0; color: var(--pg-primary-700);">\u2728 What You Get</h3>
                     <ul style="margin: 0; color: var(--pg-dark-700); line-height: 1.6;">
                         <li><strong>Multi-Token Tipping:</strong> PENGUIN, ICE, and PEBBLE support</li>
                         <li><strong>Rock Paper Scissors Gaming:</strong> Wager matches with crypto prizes</li>
@@ -50,9 +47,9 @@ export async function applyHandler(req, res) {
         ${pendingApplications.length > 0 ? `
         <!-- Pending Applications -->
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
-            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">⏳ Your Pending Applications</h2>
+            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u23F3 Your Pending Applications</h2>
 
-            ${pendingApplications.map(app => `
+            ${pendingApplications.map((app) => `
                 <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid var(--pg-yellow-300); border-radius: var(--pg-radius-md); padding: var(--pg-space-4); margin-bottom: var(--pg-space-3);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-2);">
                         <span style="font-weight: 600; color: var(--pg-dark-800);">Server ID: ${app.guildId}</span>
@@ -68,21 +65,21 @@ export async function applyHandler(req, res) {
                         <strong style="color: var(--pg-dark-700);">Description:</strong>
                         <p style="margin: 0.25rem 0 0 0; color: var(--pg-dark-600);">${app.description}</p>
                     </div>
-                    ` : ''}
+                    ` : ""}
                 </div>
-            `).join('')}
+            `).join("")}
 
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid var(--pg-green-300); border-radius: var(--pg-radius-md); padding: var(--pg-space-3); margin-top: var(--pg-space-4);">
                 <p style="margin: 0; color: var(--pg-green-700); font-size: var(--pg-text-sm);">
-                    ℹ️ Applications are typically reviewed within 24-48 hours. You'll be notified when your application status changes.
+                    \u2139\uFE0F Applications are typically reviewed within 24-48 hours. You'll be notified when your application status changes.
                 </p>
             </div>
         </div>
-        ` : ''}
+        ` : ""}
 
         <!-- Application Form -->
         <div class="pg-card">
-            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">📝 Submit New Application</h2>
+            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u{1F4DD} Submit New Application</h2>
 
             <form id="applicationForm" style="display: flex; flex-direction: column; gap: var(--pg-space-4);">
                 <div>
@@ -173,10 +170,10 @@ export async function applyHandler(req, res) {
 
                 <div style="display: flex; gap: var(--pg-space-3); flex-wrap: wrap;">
                     <button type="submit" class="pg-btn pg-btn--primary">
-                        📤 Submit Application
+                        \u{1F4E4} Submit Application
                     </button>
                     <a href="/pengubook" class="pg-btn pg-btn--secondary">
-                        ← Back to Home
+                        \u2190 Back to Home
                     </a>
                 </div>
             </form>
@@ -184,7 +181,7 @@ export async function applyHandler(req, res) {
 
         <!-- Alternative Methods -->
         <div class="pg-card" style="margin-top: var(--pg-space-6);">
-            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">🎮 Alternative: Discord Command</h2>
+            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u{1F3AE} Alternative: Discord Command</h2>
             <p style="margin-bottom: var(--pg-space-3); color: var(--pg-dark-700);">
                 You can also apply directly from Discord using the slash command:
             </p>
@@ -203,7 +200,7 @@ export async function applyHandler(req, res) {
 
             const submitBtn = e.target.querySelector('button[type="submit"]');
             const originalText = submitBtn.textContent;
-            submitBtn.textContent = '📤 Submitting...';
+            submitBtn.textContent = '\u{1F4E4} Submitting...';
             submitBtn.disabled = true;
 
             try {
@@ -225,14 +222,14 @@ export async function applyHandler(req, res) {
                 const result = await response.json();
 
                 if (result.success) {
-                    submitBtn.textContent = '✅ Application Submitted!';
+                    submitBtn.textContent = '\u2705 Application Submitted!';
                     submitBtn.style.background = 'var(--pg-green-600)';
 
                     // Show success message
                     const successMsg = document.createElement('div');
                     successMsg.style.cssText = 'background: rgba(16, 185, 129, 0.1); border: 1px solid var(--pg-green-300); border-radius: var(--pg-radius-md); padding: var(--pg-space-4); margin-top: var(--pg-space-4); color: var(--pg-green-700);';
                     successMsg.innerHTML = \`
-                        <strong>🎉 Application Submitted Successfully!</strong><br>
+                        <strong>\u{1F389} Application Submitted Successfully!</strong><br>
                         <p style="margin: 0.5rem 0 0 0;">Your application has been submitted for review. You'll be notified when the status changes.</p>
                     \`;
                     e.target.appendChild(successMsg);
@@ -245,14 +242,14 @@ export async function applyHandler(req, res) {
                     throw new Error(result.error || 'Failed to submit application');
                 }
             } catch (error) {
-                submitBtn.textContent = '❌ Error';
+                submitBtn.textContent = '\u274C Error';
                 submitBtn.style.background = 'var(--pg-red-600)';
 
                 // Show error message
                 const errorMsg = document.createElement('div');
                 errorMsg.style.cssText = 'background: rgba(239, 68, 68, 0.1); border: 1px solid var(--pg-red-300); border-radius: var(--pg-radius-md); padding: var(--pg-space-4); margin-top: var(--pg-space-4); color: var(--pg-red-700);';
                 errorMsg.innerHTML = \`
-                    <strong>❌ Submission Failed</strong><br>
+                    <strong>\u274C Submission Failed</strong><br>
                     <p style="margin: 0.5rem 0 0 0;">\${error.message}</p>
                 \`;
                 e.target.appendChild(errorMsg);
@@ -267,105 +264,109 @@ export async function applyHandler(req, res) {
             }
         });
     </script>`;
-        res.send(generateBaseHTML(content, '🏢 Server Application - PenguBook', 'apply', {
-            user: currentUser,
-            unreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook apply error:", error);
-        res.status(500).send("Error loading application page");
-    }
+    res.send(generateBaseHTML(content, "\u{1F3E2} Server Application - PenguBook", "apply", {
+      user: currentUser,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook apply error:", error);
+    res.status(500).send("Error loading application page");
+  }
 }
-export async function applyPostHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const { guildId, guildName, contactEmail, description, useCase } = req.body;
-        // Validation
-        if (!guildId || !guildName || !description || !useCase) {
-            return res.status(400).json({
-                success: false,
-                error: "Guild ID, guild name, description, and use case are required"
-            });
-        }
-        if (!/^\d{17,20}$/.test(guildId)) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid Discord server ID format"
-            });
-        }
-        if (description.length < 50 || description.length > 500) {
-            return res.status(400).json({
-                success: false,
-                error: "Description must be between 50 and 500 characters"
-            });
-        }
-        if (useCase.length < 30 || useCase.length > 400) {
-            return res.status(400).json({
-                success: false,
-                error: "Use case must be between 30 and 400 characters"
-            });
-        }
-        if (guildName.length < 1 || guildName.length > 100) {
-            return res.status(400).json({
-                success: false,
-                error: "Guild name must be between 1 and 100 characters"
-            });
-        }
-        // Check for existing application for this server
-        const existingApplication = await prisma.serverApplication.findFirst({
-            where: {
-                guildId: guildId,
-                status: { in: ['PENDING', 'APPROVED'] }
-            }
-        });
-        if (existingApplication) {
-            return res.status(400).json({
-                success: false,
-                error: "An application for this server already exists"
-            });
-        }
-        // Check if server is already approved
-        const approvedServer = await prisma.approvedServer.findFirst({
-            where: { guildId: guildId, enabled: true }
-        });
-        if (approvedServer) {
-            return res.status(400).json({
-                success: false,
-                error: "This server is already approved for PIPTip"
-            });
-        }
-        // Create application
-        await prisma.serverApplication.create({
-            data: {
-                guildId: guildId,
-                guildName: guildName.trim(),
-                applicantId: currentUser.discordId,
-                applicantTag: currentUser.username || currentUser.discordId, // Use username or fall back to ID
-                applicantRoles: null, // Cannot determine from web context
-                applicantPermissions: null, // Cannot determine from web context
-                isServerOwner: false, // Cannot determine from web context
-                contactInfo: contactEmail || null,
-                serverSize: null, // Cannot determine from web context
-                description: description.trim(),
-                useCase: useCase.trim(),
-                status: 'PENDING',
-                submittedAt: new Date()
-            }
-        });
-        res.json({
-            success: true,
-            message: "Application submitted successfully"
-        });
+async function applyPostHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Server application submission error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to submit application"
-        });
+    const { guildId, guildName, contactEmail, description, useCase } = req.body;
+    if (!guildId || !guildName || !description || !useCase) {
+      return res.status(400).json({
+        success: false,
+        error: "Guild ID, guild name, description, and use case are required"
+      });
     }
+    if (!/^\d{17,20}$/.test(guildId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid Discord server ID format"
+      });
+    }
+    if (description.length < 50 || description.length > 500) {
+      return res.status(400).json({
+        success: false,
+        error: "Description must be between 50 and 500 characters"
+      });
+    }
+    if (useCase.length < 30 || useCase.length > 400) {
+      return res.status(400).json({
+        success: false,
+        error: "Use case must be between 30 and 400 characters"
+      });
+    }
+    if (guildName.length < 1 || guildName.length > 100) {
+      return res.status(400).json({
+        success: false,
+        error: "Guild name must be between 1 and 100 characters"
+      });
+    }
+    const existingApplication = await prisma.serverApplication.findFirst({
+      where: {
+        guildId,
+        status: { in: ["PENDING", "APPROVED"] }
+      }
+    });
+    if (existingApplication) {
+      return res.status(400).json({
+        success: false,
+        error: "An application for this server already exists"
+      });
+    }
+    const approvedServer = await prisma.approvedServer.findFirst({
+      where: { guildId, enabled: true }
+    });
+    if (approvedServer) {
+      return res.status(400).json({
+        success: false,
+        error: "This server is already approved for PIPTip"
+      });
+    }
+    await prisma.serverApplication.create({
+      data: {
+        guildId,
+        guildName: guildName.trim(),
+        applicantId: currentUser.discordId,
+        applicantTag: currentUser.username || currentUser.discordId,
+        // Use username or fall back to ID
+        applicantRoles: null,
+        // Cannot determine from web context
+        applicantPermissions: null,
+        // Cannot determine from web context
+        isServerOwner: false,
+        // Cannot determine from web context
+        contactInfo: contactEmail || null,
+        serverSize: null,
+        // Cannot determine from web context
+        description: description.trim(),
+        useCase: useCase.trim(),
+        status: "PENDING",
+        submittedAt: /* @__PURE__ */ new Date()
+      }
+    });
+    res.json({
+      success: true,
+      message: "Application submitted successfully"
+    });
+  } catch (error) {
+    console.error("Server application submission error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to submit application"
+    });
+  }
 }
+export {
+  applyHandler,
+  applyPostHandler
+};
+//# sourceMappingURL=apply.js.map

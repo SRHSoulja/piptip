@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/web/public_tiers.ts"],
+  "sourcesContent": ["// src/web/public_tiers.ts\nimport { Router, Request, Response } from \"express\";\nimport { purchaseTierByBalance } from \"../services/tier_purchase.js\"; // extracted core logic\n\nexport const publicTierRouter = Router();\n\npublicTierRouter.post(\"/tiers/:tierId/purchase\", async (req: Request, res: Response) => {\n  const { discordId } = req.body;\n  const tierId = Number(req.params.tierId);\n  if (!discordId || !tierId) return res.status(400).json({ ok:false, error:\"discordId and tierId required\" });\n\n  try {\n    const result = await purchaseTierByBalance({ discordId, tierId });\n    res.json({ ok:true, ...result });\n  } catch (e:any) {\n    res.status(400).json({ ok:false, error: e?.message || \"Purchase failed\" });\n  }\n});\n"],
+  "mappings": "AACA,SAAS,cAAiC;AAC1C,SAAS,6BAA6B;AAE/B,MAAM,mBAAmB,OAAO;AAEvC,iBAAiB,KAAK,2BAA2B,OAAO,KAAc,QAAkB;AACtF,QAAM,EAAE,UAAU,IAAI,IAAI;AAC1B,QAAM,SAAS,OAAO,IAAI,OAAO,MAAM;AACvC,MAAI,CAAC,aAAa,CAAC,OAAQ,QAAO,IAAI,OAAO,GAAG,EAAE,KAAK,EAAE,IAAG,OAAO,OAAM,gCAAgC,CAAC;AAE1G,MAAI;AACF,UAAM,SAAS,MAAM,sBAAsB,EAAE,WAAW,OAAO,CAAC;AAChE,QAAI,KAAK,EAAE,IAAG,MAAM,GAAG,OAAO,CAAC;AAAA,EACjC,SAAS,GAAO;AACd,QAAI,OAAO,GAAG,EAAE,KAAK,EAAE,IAAG,OAAO,OAAO,GAAG,WAAW,kBAAkB,CAAC;AAAA,EAC3E;AACF,CAAC;",
+  "names": []
+}

@@ -1,4 +1,3 @@
-// src/web/pengubook.ts - Web PenguBook interface
 import { Router } from "express";
 import { requireAuth, getCurrentUser } from "./auth.js";
 import { prisma } from "../services/db.js";
@@ -10,413 +9,363 @@ import { getDiscordClient } from "../services/discord_users.js";
 import { getConfig } from "../config.js";
 import { getReferralStats, createReferralCode } from "../services/referrals.js";
 import { priceAPI } from "../services/price_api.js";
-export const pengubookRouter = Router();
-// Middleware to require authentication for all PenguBook routes
+const pengubookRouter = Router();
 pengubookRouter.use(requireAuth);
-// GET /pengubook - Main PenguBook page
 pengubookRouter.get("/", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        const referralCode = req.query.ref;
-        if (!currentUser) {
-            // If there's a referral code, store it in session for after auth
-            if (referralCode) {
-                req.session.pendingReferralCode = referralCode;
-            }
-            return res.redirect("/auth/discord");
-        }
-        const user = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Process referral code if present and user just authenticated
-        if (referralCode || req.session.pendingReferralCode) {
-            const codeToProcess = referralCode || req.session.pendingReferralCode;
-            if (codeToProcess) {
-                const { processReferralSignup } = await import("../services/referrals.js");
-                const success = await processReferralSignup(codeToProcess, currentUser.discordId);
-                if (success) {
-                    // Clear the session referral code
-                    delete req.session.pendingReferralCode;
-                    // Redirect to profile page with success message
-                    return res.redirect("/pengubook/profile?referred=true");
-                }
-                // Clear invalid referral code from session
-                delete req.session.pendingReferralCode;
-            }
-        }
-        res.send(generatePenguBookHTML({
-            user: currentUser,
-            dbUser: user,
-            unreadCount,
-            page: "home"
-        }));
+  try {
+    const currentUser = getCurrentUser(req);
+    const referralCode = req.query.ref;
+    if (!currentUser) {
+      if (referralCode) {
+        req.session.pendingReferralCode = referralCode;
+      }
+      return res.redirect("/auth/discord");
     }
-    catch (error) {
-        console.error("PenguBook home error:", error);
-        res.status(500).send("Error loading PenguBook");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    if (referralCode || req.session.pendingReferralCode) {
+      const codeToProcess = referralCode || req.session.pendingReferralCode;
+      if (codeToProcess) {
+        const { processReferralSignup } = await import("../services/referrals.js");
+        const success = await processReferralSignup(codeToProcess, currentUser.discordId);
+        if (success) {
+          delete req.session.pendingReferralCode;
+          return res.redirect("/pengubook/profile?referred=true");
+        }
+        delete req.session.pendingReferralCode;
+      }
     }
+    res.send(generatePenguBookHTML({
+      user: currentUser,
+      dbUser: user,
+      unreadCount,
+      page: "home"
+    }));
+  } catch (error) {
+    console.error("PenguBook home error:", error);
+    res.status(500).send("Error loading PenguBook");
+  }
 });
-// GET /pengubook/inbox - Messages inbox
 pengubookRouter.get("/inbox", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        // Get messages with sender info
-        const messages = await prisma.penguBookMessage.findMany({
-            where: { toUserId: user.id },
-            include: {
-                from: true,
-                tip: {
-                    include: { Token: true }
-                }
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 50
-        });
-        // Mark messages as read
-        await prisma.penguBookMessage.updateMany({
-            where: { toUserId: user.id, read: false },
-            data: { read: true }
-        });
-        res.send(generateInboxHTML({
-            user: currentUser,
-            messages,
-            unreadCount: 0
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook inbox error:", error);
-        res.status(500).send("Error loading inbox");
-    }
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const messages = await prisma.penguBookMessage.findMany({
+      where: { toUserId: user.id },
+      include: {
+        from: true,
+        tip: {
+          include: { Token: true }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    await prisma.penguBookMessage.updateMany({
+      where: { toUserId: user.id, read: false },
+      data: { read: true }
+    });
+    res.send(generateInboxHTML({
+      user: currentUser,
+      messages,
+      unreadCount: 0
+    }));
+  } catch (error) {
+    console.error("PenguBook inbox error:", error);
+    res.status(500).send("Error loading inbox");
+  }
 });
-// GET /pengubook/tip - Tipping interface
 pengubookRouter.get("/browse", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get all users who show in PenguBook (excluding current user)
-        const users = await prisma.user.findMany({
-            where: {
-                showInPenguBook: true,
-                id: { not: user.id }
-            },
-            select: {
-                id: true,
-                discordId: true,
-                bio: true,
-                bioLastUpdated: true,
-                bioViewCount: true,
-                xUsername: true,
-                socials: true,
-                wins: true,
-                losses: true,
-                ties: true,
-                createdAt: true
-            },
-            orderBy: { bioLastUpdated: 'desc' },
-            take: 50
-        });
-        res.send(generateBrowseHTML({
-            user: currentUser,
-            users,
-            unreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook browse error:", error);
-        res.status(500).send("Error loading browse page");
-    }
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const users = await prisma.user.findMany({
+      where: {
+        showInPenguBook: true,
+        id: { not: user.id }
+      },
+      select: {
+        id: true,
+        discordId: true,
+        bio: true,
+        bioLastUpdated: true,
+        bioViewCount: true,
+        xUsername: true,
+        socials: true,
+        wins: true,
+        losses: true,
+        ties: true,
+        createdAt: true
+      },
+      orderBy: { bioLastUpdated: "desc" },
+      take: 50
+    });
+    res.send(generateBrowseHTML({
+      user: currentUser,
+      users,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook browse error:", error);
+    res.status(500).send("Error loading browse page");
+  }
 });
-// GET /pengubook/user/:discordId - View individual user profile
 pengubookRouter.get("/user/:discordId", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const targetDiscordId = req.params.discordId;
-        const currentDbUser = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get target user's profile
-        const targetUser = await prisma.user.findUnique({
-            where: { discordId: targetDiscordId },
-            select: {
-                id: true,
-                discordId: true,
-                bio: true,
-                bioLastUpdated: true,
-                bioViewCount: true,
-                xUsername: true,
-                socials: true,
-                wins: true,
-                losses: true,
-                ties: true,
-                createdAt: true,
-                showInPenguBook: true
-            }
-        });
-        if (!targetUser || !targetUser.showInPenguBook) {
-            return res.status(404).send("User not found or profile not public");
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const targetDiscordId = req.params.discordId;
+    const currentDbUser = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const targetUser = await prisma.user.findUnique({
+      where: { discordId: targetDiscordId },
+      select: {
+        id: true,
+        discordId: true,
+        bio: true,
+        bioLastUpdated: true,
+        bioViewCount: true,
+        xUsername: true,
+        socials: true,
+        wins: true,
+        losses: true,
+        ties: true,
+        createdAt: true,
+        showInPenguBook: true
+      }
+    });
+    if (!targetUser || !targetUser.showInPenguBook) {
+      return res.status(404).send("User not found or profile not public");
+    }
+    await prisma.bioBrowse.upsert({
+      where: {
+        viewerId_profileId: {
+          viewerId: currentDbUser.id,
+          profileId: targetUser.id
         }
-        // Record profile view
-        await prisma.bioBrowse.upsert({
-            where: {
-                viewerId_profileId: {
-                    viewerId: currentDbUser.id,
-                    profileId: targetUser.id
-                }
-            },
-            update: {},
-            create: {
-                viewerId: currentDbUser.id,
-                profileId: targetUser.id
-            }
-        });
-        // Increment view count
-        await prisma.user.update({
-            where: { id: targetUser.id },
-            data: { bioViewCount: { increment: 1 } }
-        });
-        // Get tokens for tipping
-        const tokens = await getActiveTokens();
-        // Get current user's balances
-        const balances = await prisma.userBalance.findMany({
-            where: { userId: currentDbUser.id },
-            include: { Token: true }
-        });
-        // Get app config for tax rates
-        const config = await getConfig();
-        // Get achievements for the target user
-        const { getUserAchievements, getStreakStats, formatAchievementBadge } = await import("../services/streaks.js");
-        const [achievements, streakStats] = await Promise.all([
-            getUserAchievements(targetUser.discordId),
-            getStreakStats(targetUser.discordId)
-        ]);
-        res.send(generateUserProfileHTML({
-            user: currentUser,
-            targetUser,
-            tokens,
-            balances,
-            unreadCount,
-            config,
-            achievements,
-            streakStats
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook user profile error:", error);
-        res.status(500).send("Error loading user profile");
-    }
+      },
+      update: {},
+      create: {
+        viewerId: currentDbUser.id,
+        profileId: targetUser.id
+      }
+    });
+    await prisma.user.update({
+      where: { id: targetUser.id },
+      data: { bioViewCount: { increment: 1 } }
+    });
+    const tokens = await getActiveTokens();
+    const balances = await prisma.userBalance.findMany({
+      where: { userId: currentDbUser.id },
+      include: { Token: true }
+    });
+    const config = await getConfig();
+    const { getUserAchievements, getStreakStats, formatAchievementBadge } = await import("../services/streaks.js");
+    const [achievements, streakStats] = await Promise.all([
+      getUserAchievements(targetUser.discordId),
+      getStreakStats(targetUser.discordId)
+    ]);
+    res.send(generateUserProfileHTML({
+      user: currentUser,
+      targetUser,
+      tokens,
+      balances,
+      unreadCount,
+      config,
+      achievements,
+      streakStats
+    }));
+  } catch (error) {
+    console.error("PenguBook user profile error:", error);
+    res.status(500).send("Error loading user profile");
+  }
 });
-// GET /pengubook/profile - Profile settings
 pengubookRouter.get("/profile", async (req, res) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    let referralStats;
     try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get or create referral stats
-        let referralStats;
-        try {
-            referralStats = await getReferralStats(currentUser.discordId);
-            // Create referral code if user doesn't have one
-            if (!referralStats.referralCode) {
-                const newCode = await createReferralCode(currentUser.discordId);
-                referralStats = await getReferralStats(currentUser.discordId); // Refresh stats
-            }
-        }
-        catch (error) {
-            console.error("Error getting referral stats:", error);
-            referralStats = null;
-        }
-        res.send(generateProfileHTML({
-            user: currentUser,
-            dbUser: user,
-            unreadCount,
-            referralStats
-        }));
+      referralStats = await getReferralStats(currentUser.discordId);
+      if (!referralStats.referralCode) {
+        const newCode = await createReferralCode(currentUser.discordId);
+        referralStats = await getReferralStats(currentUser.discordId);
+      }
+    } catch (error) {
+      console.error("Error getting referral stats:", error);
+      referralStats = null;
     }
-    catch (error) {
-        console.error("PenguBook profile error:", error);
-        res.status(500).send("Error loading profile");
-    }
+    res.send(generateProfileHTML({
+      user: currentUser,
+      dbUser: user,
+      unreadCount,
+      referralStats
+    }));
+  } catch (error) {
+    console.error("PenguBook profile error:", error);
+    res.status(500).send("Error loading profile");
+  }
 });
-// API Endpoints for web PenguBook functionality
-// POST /pengubook/api/tip - Process a tip from web interface
 pengubookRouter.post("/api/tip", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const { recipient, token: tokenAddress, amount, message } = req.body;
-        if (!recipient || !tokenAddress || !amount) {
-            return res.status(400).json({ success: false, error: "Missing required fields" });
-        }
-        // Find recipient user
-        const recipientUser = await findOrCreateUser(recipient);
-        if (!recipientUser) {
-            return res.status(404).json({ success: false, error: "Recipient not found" });
-        }
-        // Get token info using proper token service
-        const token = await getTokenByAddress(tokenAddress);
-        if (!token) {
-            return res.status(404).json({ success: false, error: "Token not found" });
-        }
-        // Get Discord client
-        const discordClient = getDiscordClient();
-        if (!discordClient) {
-            return res.status(500).json({ success: false, error: "Discord client not available" });
-        }
-        // Process the tip using the same logic as Discord tipping
-        const tipData = {
-            amount: parseFloat(amount),
-            tipType: "direct",
-            targetUserId: recipient,
-            note: message || "",
-            tokenId: token.id,
-            userId: currentUser.discordId,
-            guildId: null, // Web tips are not guild-specific
-            channelId: null, // Web tips don't have a channel
-            fromPenguBook: true // Flag to indicate this came from PenguBook
-        };
-        const result = await processTip(tipData, discordClient);
-        if (!result.success) {
-            return res.status(400).json({ success: false, error: result.message });
-        }
-        res.json({
-            success: true,
-            message: result.message
-        });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Web tip error:", error);
-        res.status(500).json({ success: false, error: "Failed to process tip" });
+    const { recipient, token: tokenAddress, amount, message } = req.body;
+    if (!recipient || !tokenAddress || !amount) {
+      return res.status(400).json({ success: false, error: "Missing required fields" });
     }
+    const recipientUser = await findOrCreateUser(recipient);
+    if (!recipientUser) {
+      return res.status(404).json({ success: false, error: "Recipient not found" });
+    }
+    const token = await getTokenByAddress(tokenAddress);
+    if (!token) {
+      return res.status(404).json({ success: false, error: "Token not found" });
+    }
+    const discordClient = getDiscordClient();
+    if (!discordClient) {
+      return res.status(500).json({ success: false, error: "Discord client not available" });
+    }
+    const tipData = {
+      amount: parseFloat(amount),
+      tipType: "direct",
+      targetUserId: recipient,
+      note: message || "",
+      tokenId: token.id,
+      userId: currentUser.discordId,
+      guildId: null,
+      // Web tips are not guild-specific
+      channelId: null,
+      // Web tips don't have a channel
+      fromPenguBook: true
+      // Flag to indicate this came from PenguBook
+    };
+    const result = await processTip(tipData, discordClient);
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.message });
+    }
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error("Web tip error:", error);
+    res.status(500).json({ success: false, error: "Failed to process tip" });
+  }
 });
-// POST /pengubook/api/profile - Update user profile
 pengubookRouter.post("/api/profile", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const { bio, socials } = req.body;
-        const user = await findOrCreateUser(currentUser.discordId);
-        const updateData = {};
-        if (bio !== undefined) {
-            updateData.bio = bio.trim() || null;
-        }
-        if (socials !== undefined) {
-            updateData.socials = socials.length > 0 ? JSON.stringify(socials) : null;
-        }
-        await prisma.user.update({
-            where: { id: user.id },
-            data: updateData
-        });
-        res.json({ success: true });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Profile update error:", error);
-        res.status(500).json({ success: false, error: "Failed to update profile" });
+    const { bio, socials } = req.body;
+    const user = await findOrCreateUser(currentUser.discordId);
+    const updateData = {};
+    if (bio !== void 0) {
+      updateData.bio = bio.trim() || null;
     }
+    if (socials !== void 0) {
+      updateData.socials = socials.length > 0 ? JSON.stringify(socials) : null;
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: updateData
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Profile update error:", error);
+    res.status(500).json({ success: false, error: "Failed to update profile" });
+  }
 });
-// Balance cache for PenguBook API
-const balanceCache = new Map();
-const BALANCE_CACHE_TTL = 30 * 1000; // 30 seconds cache
-// GET /pengubook/api/balance - Get current user's balance
+const balanceCache = /* @__PURE__ */ new Map();
+const BALANCE_CACHE_TTL = 30 * 1e3;
 pengubookRouter.get("/api/balance", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const cacheKey = `balance_${currentUser.discordId}`;
-        const cached = balanceCache.get(cacheKey);
-        // Return cached data if still fresh
-        if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
-            return res.json(cached.data);
-        }
-        const user = await findOrCreateUser(currentUser.discordId);
-        const balances = await prisma.userBalance.findMany({
-            where: { userId: user.id },
-            include: { Token: true },
-            orderBy: { Token: { symbol: "asc" } }
-        });
-        const tokenSymbols = Array.from(new Set(balances.map(balance => balance.Token.symbol)));
-        let priceResult = null;
-        if (tokenSymbols.length > 0) {
-            try {
-                priceResult = await priceAPI.getTokenPrices(tokenSymbols);
-            }
-            catch (error) {
-                console.warn("Failed to fetch USD prices for balances:", error);
-            }
-        }
-        const priceMap = priceResult?.prices ?? {};
-        const priceSource = priceResult?.source ?? "fallback";
-        const formattedBalances = balances.map(balance => {
-            const amountNumber = Number(balance.amount.toString());
-            const amount = amountNumber.toFixed(2).replace(/\.?0+$/, "");
-            const priceUSD = priceMap[balance.Token.symbol] ?? 0;
-            const usdValue = priceUSD > 0 ? amountNumber * priceUSD : 0;
-            let formattedUSD = null;
-            if (priceUSD > 0) {
-                if (usdValue === 0) {
-                    formattedUSD = "$0.00";
-                }
-                else if (usdValue < 0.01) {
-                    formattedUSD = "< $0.01";
-                }
-                else {
-                    formattedUSD = `$${usdValue.toFixed(2)}`;
-                }
-            }
-            return {
-                ...balance,
-                amount,
-                priceUSD: priceUSD > 0 ? priceUSD : null,
-                usdValue,
-                formattedUSD
-            };
-        });
-        const totalUSD = formattedBalances.reduce((sum, balance) => sum + (balance.usdValue || 0), 0);
-        const formattedTotalUSD = totalUSD > 0 ? `$${totalUSD.toFixed(2)}` : null;
-        const priceDisclaimer = tokenSymbols.length > 0
-            ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}`
-            : null;
-        const response = {
-            success: true,
-            balances: formattedBalances,
-            totalUSD,
-            formattedTotalUSD,
-            priceSource,
-            priceDisclaimer
-        };
-        // Cache the response
-        balanceCache.set(cacheKey, {
-            data: response,
-            timestamp: Date.now()
-        });
-        res.json(response);
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Balance fetch error:", error);
-        res.status(500).json({ success: false, error: "Failed to fetch balance" });
+    const cacheKey = `balance_${currentUser.discordId}`;
+    const cached = balanceCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL) {
+      return res.json(cached.data);
     }
+    const user = await findOrCreateUser(currentUser.discordId);
+    const balances = await prisma.userBalance.findMany({
+      where: { userId: user.id },
+      include: { Token: true },
+      orderBy: { Token: { symbol: "asc" } }
+    });
+    const tokenSymbols = Array.from(new Set(balances.map((balance) => balance.Token.symbol)));
+    let priceResult = null;
+    if (tokenSymbols.length > 0) {
+      try {
+        priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+      } catch (error) {
+        console.warn("Failed to fetch USD prices for balances:", error);
+      }
+    }
+    const priceMap = priceResult?.prices ?? {};
+    const priceSource = priceResult?.source ?? "fallback";
+    const formattedBalances = balances.map((balance) => {
+      const amountNumber = Number(balance.amount.toString());
+      const amount = amountNumber.toFixed(2).replace(/\.?0+$/, "");
+      const priceUSD = priceMap[balance.Token.symbol] ?? 0;
+      const usdValue = priceUSD > 0 ? amountNumber * priceUSD : 0;
+      let formattedUSD = null;
+      if (priceUSD > 0) {
+        if (usdValue === 0) {
+          formattedUSD = "$0.00";
+        } else if (usdValue < 0.01) {
+          formattedUSD = "< $0.01";
+        } else {
+          formattedUSD = `$${usdValue.toFixed(2)}`;
+        }
+      }
+      return {
+        ...balance,
+        amount,
+        priceUSD: priceUSD > 0 ? priceUSD : null,
+        usdValue,
+        formattedUSD
+      };
+    });
+    const totalUSD = formattedBalances.reduce((sum, balance) => sum + (balance.usdValue || 0), 0);
+    const formattedTotalUSD = totalUSD > 0 ? `$${totalUSD.toFixed(2)}` : null;
+    const priceDisclaimer = tokenSymbols.length > 0 ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}` : null;
+    const response = {
+      success: true,
+      balances: formattedBalances,
+      totalUSD,
+      formattedTotalUSD,
+      priceSource,
+      priceDisclaimer
+    };
+    balanceCache.set(cacheKey, {
+      data: response,
+      timestamp: Date.now()
+    });
+    res.json(response);
+  } catch (error) {
+    console.error("Balance fetch error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch balance" });
+  }
 });
-// Helper function to generate HTML pages
 function generatePenguBookHTML(data) {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐧 PenguBook - Web Interface</title>
+    <title>\u{1F427} PenguBook - Web Interface</title>
     <style>
         :root {
             color-scheme: dark;
@@ -561,7 +510,7 @@ function generatePenguBookHTML(data) {
 </head>
 <body>
     <div class="header">
-        <a href="/pengubook" class="logo">🐧 PenguBook</a>
+        <a href="/pengubook" class="logo">\u{1F427} PenguBook</a>
         <div class="user-info">
             <span>Welcome, ${data.user.username}</span>
             <img src="${data.user.avatar}" alt="Avatar" class="avatar">
@@ -570,43 +519,43 @@ function generatePenguBookHTML(data) {
     </div>
     
     <nav class="nav">
-        <a href="/pengubook" class="active">🏠 Home</a>
-        <a href="/pengubook/inbox">📨 Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ''}</a>
-        <a href="/pengubook/browse">👥 Browse Users</a>
-        <a href="/pengubook/profile">⚙️ Profile</a>
-        <a href="/server">🛡️ Server Admin</a>
+        <a href="/pengubook" class="active">\u{1F3E0} Home</a>
+        <a href="/pengubook/inbox">\u{1F4E8} Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ""}</a>
+        <a href="/pengubook/browse">\u{1F465} Browse Users</a>
+        <a href="/pengubook/profile">\u2699\uFE0F Profile</a>
+        <a href="/server">\u{1F6E1}\uFE0F Server Admin</a>
     </nav>
     
     <div class="container">
         <div class="card welcome">
-            <h1>🐧 Welcome to PenguBook Web!</h1>
+            <h1>\u{1F427} Welcome to PenguBook Web!</h1>
             <p>Your crypto tipping companion is now available on the web. Send tips, manage your profile, and stay connected with your community!</p>
         </div>
         
         <div class="features">
             <div class="feature-card">
-                <div class="feature-icon">💸</div>
+                <div class="feature-icon">\u{1F4B8}</div>
                 <h3>Send Tips</h3>
                 <p>Tip users across your servers with our multi-token support</p>
                 <a href="/pengubook/browse" class="btn">Start Tipping</a>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">📨</div>
+                <div class="feature-icon">\u{1F4E8}</div>
                 <h3>Message Center</h3>
                 <p>View your tip notifications and messages in one place</p>
                 <a href="/pengubook/inbox" class="btn">View Messages</a>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">🛡️</div>
+                <div class="feature-icon">\u{1F6E1}\uFE0F</div>
                 <h3>Server Admin</h3>
                 <p>Manage PIPTip settings for your Discord servers</p>
                 <a href="/server" class="btn">Manage Servers</a>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">⚙️</div>
+                <div class="feature-icon">\u2699\uFE0F</div>
                 <h3>Profile Settings</h3>
                 <p>Manage your bio, social links, and preferences</p>
                 <a href="/pengubook/profile" class="btn">Edit Profile</a>
@@ -621,24 +570,26 @@ function generatePenguBookHTML(data) {
             <div style="margin-top: 1rem;">
                 <strong>Social Links:</strong>
                 <div style="margin-top: 0.5rem;">
-                    ${JSON.parse(data.dbUser.socials).map((social) => `<a href="${social.url}" target="_blank" style="color: #60a5fa; margin-right: 1rem;">${social.platform}</a>`).join('')}
+                    ${JSON.parse(data.dbUser.socials).map(
+    (social) => `<a href="${social.url}" target="_blank" style="color: #60a5fa; margin-right: 1rem;">${social.platform}</a>`
+  ).join("")}
                 </div>
             </div>
-            ` : ''}
+            ` : ""}
         </div>
-        ` : ''}
+        ` : ""}
         
     </div>
 </body>
 </html>`;
 }
 function generateInboxHTML(data) {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📨 Inbox - PenguBook</title>
+    <title>\u{1F4E8} Inbox - PenguBook</title>
     <style>
         /* Same base styles as above */
         :root { color-scheme: dark; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
@@ -663,7 +614,7 @@ function generateInboxHTML(data) {
 </head>
 <body>
     <div class="header">
-        <a href="/pengubook" class="logo">🐧 PenguBook</a>
+        <a href="/pengubook" class="logo">\u{1F427} PenguBook</a>
         <div class="user-info">
             <span>Welcome, ${data.user.username}</span>
             <img src="${data.user.avatar}" alt="Avatar" class="avatar">
@@ -672,47 +623,47 @@ function generateInboxHTML(data) {
     </div>
     
     <nav class="nav">
-        <a href="/pengubook">🏠 Home</a>
-        <a href="/pengubook/inbox" class="active">📨 Inbox</a>
-        <a href="/pengubook/browse">👥 Browse Users</a>
-        <a href="/pengubook/profile">⚙️ Profile</a>
-        <a href="/server">🛡️ Server Admin</a>
+        <a href="/pengubook">\u{1F3E0} Home</a>
+        <a href="/pengubook/inbox" class="active">\u{1F4E8} Inbox</a>
+        <a href="/pengubook/browse">\u{1F465} Browse Users</a>
+        <a href="/pengubook/profile">\u2699\uFE0F Profile</a>
+        <a href="/server">\u{1F6E1}\uFE0F Server Admin</a>
     </nav>
     
     <div class="container">
-        <h1>📨 Your Messages</h1>
+        <h1>\u{1F4E8} Your Messages</h1>
         
         ${data.messages.length === 0 ? `
         <div style="text-align: center; padding: 2rem; color: #9ca3af;">
-            <div style="font-size: 4rem; margin-bottom: 1rem;">📭</div>
+            <div style="font-size: 4rem; margin-bottom: 1rem;">\u{1F4ED}</div>
             <h2>No messages yet</h2>
             <p>Your tip notifications and messages will appear here!</p>
         </div>
         ` : data.messages.map((msg) => `
-        <div class="message ${msg.tip ? 'tip' : ''}">
+        <div class="message ${msg.tip ? "tip" : ""}">
             <div class="message-header">
-                <span class="message-sender">${msg.from.discordId === msg.from.id ? 'System' : `User#${msg.from.discordId.slice(-4)}`}</span>
+                <span class="message-sender">${msg.from.discordId === msg.from.id ? "System" : `User#${msg.from.discordId.slice(-4)}`}</span>
                 <span class="message-time">${new Date(msg.createdAt).toLocaleString()}</span>
             </div>
             <div class="message-content">
                 ${msg.tip ? `
-                <div class="tip-amount">💰 Received ${msg.tip.amountAtomic / Math.pow(10, msg.tip.Token.decimals)} ${msg.tip.Token.symbol}</div>
-                ` : ''}
+                <div class="tip-amount">\u{1F4B0} Received ${msg.tip.amountAtomic / Math.pow(10, msg.tip.Token.decimals)} ${msg.tip.Token.symbol}</div>
+                ` : ""}
                 ${msg.message}
             </div>
         </div>
-        `).join('')}
+        `).join("")}
     </div>
 </body>
 </html>`;
 }
 function generateBrowseHTML(data) {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>👥 Browse Users - PenguBook</title>
+    <title>\u{1F465} Browse Users - PenguBook</title>
     <style>
         /* Same base styles */
         :root { color-scheme: dark; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
@@ -746,7 +697,7 @@ function generateBrowseHTML(data) {
 </head>
 <body>
     <div class="header">
-        <a href="/pengubook" class="logo">🐧 PenguBook</a>
+        <a href="/pengubook" class="logo">\u{1F427} PenguBook</a>
         <div class="user-info">
             <span>Welcome, ${data.user.username}</span>
             <img src="${data.user.avatar}" alt="Avatar" class="avatar">
@@ -755,15 +706,15 @@ function generateBrowseHTML(data) {
     </div>
     
     <nav class="nav">
-        <a href="/pengubook">🏠 Home</a>
-        <a href="/pengubook/inbox">📨 Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ''}</a>
-        <a href="/pengubook/browse" class="active">👥 Browse Users</a>
-        <a href="/pengubook/profile">⚙️ Profile</a>
-        <a href="/server">🛡️ Server Admin</a>
+        <a href="/pengubook">\u{1F3E0} Home</a>
+        <a href="/pengubook/inbox">\u{1F4E8} Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ""}</a>
+        <a href="/pengubook/browse" class="active">\u{1F465} Browse Users</a>
+        <a href="/pengubook/profile">\u2699\uFE0F Profile</a>
+        <a href="/server">\u{1F6E1}\uFE0F Server Admin</a>
     </nav>
     
     <div class="container">
-        <h1>👥 Browse PenguBook Users</h1>
+        <h1>\u{1F465} Browse PenguBook Users</h1>
         
         ${data.users.length === 0 ? `
         <div class="empty-state">
@@ -773,9 +724,9 @@ function generateBrowseHTML(data) {
         ` : `
         <div class="user-grid">
             ${data.users.map((user) => {
-        const socials = user.socials ? JSON.parse(user.socials) : [];
-        const winRate = user.wins + user.losses > 0 ? ((user.wins / (user.wins + user.losses)) * 100).toFixed(1) : 'N/A';
-        return `
+    const socials = user.socials ? JSON.parse(user.socials) : [];
+    const winRate = user.wins + user.losses > 0 ? (user.wins / (user.wins + user.losses) * 100).toFixed(1) : "N/A";
+    return `
               <div class="user-card">
                   <div class="user-header">
                       <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png" 
@@ -801,20 +752,20 @@ function generateBrowseHTML(data) {
                       </div>
                   </div>
                   
-                  <div class="user-bio">${user.bio || 'No bio yet...'}</div>
+                  <div class="user-bio">${user.bio || "No bio yet..."}</div>
                   
                   ${socials.length > 0 ? `
                   <div class="social-links">
                       ${socials.map((social) => `
                       <a href="${social.url}" target="_blank" class="social-link">${social.platform}</a>
-                      `).join('')}
+                      `).join("")}
                   </div>
-                  ` : ''}
+                  ` : ""}
                   
                   <a href="/pengubook/user/${user.discordId}" class="view-profile-btn">View Profile & Tip</a>
               </div>
               `;
-    }).join('')}
+  }).join("")}
         </div>
         `}
     </div>
@@ -830,16 +781,15 @@ function generateBrowseHTML(data) {
                     document.getElementById('avatar-${user.discordId}').src = data.avatarURL;
                 }
             }).catch(() => {});
-        `).join('')}
+        `).join("")}
     </script>
 </body>
 </html>`;
 }
 function generateUserProfileHTML(data) {
-    const socials = data.targetUser.socials ? JSON.parse(data.targetUser.socials) : [];
-    const winRate = data.targetUser.wins + data.targetUser.losses > 0 ?
-        ((data.targetUser.wins / (data.targetUser.wins + data.targetUser.losses)) * 100).toFixed(1) : 'N/A';
-    return `<!DOCTYPE html>
+  const socials = data.targetUser.socials ? JSON.parse(data.targetUser.socials) : [];
+  const winRate = data.targetUser.wins + data.targetUser.losses > 0 ? (data.targetUser.wins / (data.targetUser.wins + data.targetUser.losses) * 100).toFixed(1) : "N/A";
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -896,7 +846,7 @@ function generateUserProfileHTML(data) {
 </head>
 <body>
     <div class="header">
-        <a href="/pengubook" class="logo">🐧 PenguBook</a>
+        <a href="/pengubook" class="logo">\u{1F427} PenguBook</a>
         <div class="user-info">
             <span>Welcome, ${data.user.username}</span>
             <img src="${data.user.avatar}" alt="Avatar" class="avatar">
@@ -905,22 +855,22 @@ function generateUserProfileHTML(data) {
     </div>
     
     <nav class="nav">
-        <a href="/pengubook">🏠 Home</a>
-        <a href="/pengubook/inbox">📨 Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ''}</a>
-        <a href="/pengubook/browse">👥 Browse Users</a>
-        <a href="/pengubook/profile">⚙️ Profile</a>
-        <a href="/server">🛡️ Server Admin</a>
+        <a href="/pengubook">\u{1F3E0} Home</a>
+        <a href="/pengubook/inbox">\u{1F4E8} Inbox${data.unreadCount > 0 ? `<span class="badge">${data.unreadCount}</span>` : ""}</a>
+        <a href="/pengubook/browse">\u{1F465} Browse Users</a>
+        <a href="/pengubook/profile">\u2699\uFE0F Profile</a>
+        <a href="/server">\u{1F6E1}\uFE0F Server Admin</a>
     </nav>
     
     <div class="container">
-        <a href="/pengubook/browse" class="back-btn">← Back to Browse</a>
+        <a href="/pengubook/browse" class="back-btn">\u2190 Back to Browse</a>
         
         <div class="profile-header">
             <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(data.targetUser.discordId.slice(-1)) % 6}.png" 
                  alt="Profile Avatar" class="profile-avatar" id="profileAvatar">
             <div class="profile-info">
                 <div class="profile-name" id="profileName">User#${data.targetUser.discordId.slice(-4)}</div>
-                <div style="color: #9ca3af;">👀 ${data.targetUser.bioViewCount} profile views</div>
+                <div style="color: #9ca3af;">\u{1F440} ${data.targetUser.bioViewCount} profile views</div>
                 
                 <div class="profile-stats">
                     <div class="stat">
@@ -945,9 +895,9 @@ function generateUserProfileHTML(data) {
                 <div class="social-links">
                     ${socials.map((social) => `
                     <a href="${social.url}" target="_blank" class="social-link">${social.platform}</a>
-                    `).join('')}
+                    `).join("")}
                 </div>
-                ` : ''}
+                ` : ""}
             </div>
         </div>
         
@@ -966,68 +916,67 @@ function generateUserProfileHTML(data) {
         <!-- Achievements Section -->
         ${data.streakStats && (data.streakStats.currentWins > 0 || data.streakStats.longestWins > 0) ? `
         <div class="achievements-section">
-            <h3>🔥 Win Streak</h3>
+            <h3>\u{1F525} Win Streak</h3>
             <div class="streak-display">
                 <div class="streak-current">${data.streakStats.currentWins}</div>
                 <div style="color: #d1d5db; margin-top: 0.25rem;">Current Streak</div>
                 ${data.streakStats.longestWins > data.streakStats.currentWins ? `
                 <div class="streak-best">Personal Best: ${data.streakStats.longestWins} wins</div>
                 ` : data.streakStats.currentWins > 1 ? `
-                <div class="streak-best">🏆 Personal Best!</div>
-                ` : ''}
+                <div class="streak-best">\u{1F3C6} Personal Best!</div>
+                ` : ""}
             </div>
         </div>
-        ` : ''}
+        ` : ""}
 
         ${data.achievements && data.achievements.length > 0 ? `
         <div class="achievements-section">
-            <h3>🏆 Achievements (${data.achievements.length})</h3>
+            <h3>\u{1F3C6} Achievements (${data.achievements.length})</h3>
             <div class="achievements-grid">
                 ${data.achievements.slice(0, 8).map((achievement) => {
-        // Simple badge parsing without requiring module
-        const badgeIcons = {
-            'win_streak': '🔥',
-            'longest_streak': '🏆',
-            'referral_count': '👥',
-            'total_tips': '💰',
-            'big_tipper': '💎',
-            'deposit_milestone': '🏦',
-            'veteran_player': '🎖️',
-            'comeback_kid': '💪',
-            'social_butterfly': '🦋'
-        };
-        const icon = badgeIcons[achievement.type] || '🎖️';
-        const name = achievement.type.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
-        return `
+    const badgeIcons = {
+      "win_streak": "\u{1F525}",
+      "longest_streak": "\u{1F3C6}",
+      "referral_count": "\u{1F465}",
+      "total_tips": "\u{1F4B0}",
+      "big_tipper": "\u{1F48E}",
+      "deposit_milestone": "\u{1F3E6}",
+      "veteran_player": "\u{1F396}\uFE0F",
+      "comeback_kid": "\u{1F4AA}",
+      "social_butterfly": "\u{1F98B}"
+    };
+    const icon = badgeIcons[achievement.type] || "\u{1F396}\uFE0F";
+    const name = achievement.type.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase());
+    return `
                   <div class="achievement-badge">
                       <div class="achievement-icon">${icon}</div>
                       <div class="achievement-name">${name} ${achievement.level}</div>
                       <div class="achievement-date">Unlocked ${new Date(achievement.unlockedAt).toLocaleDateString()}</div>
                   </div>
                   `;
-    }).join('')}
+  }).join("")}
                 ${data.achievements.length > 8 ? `
                 <div class="achievement-badge" style="opacity: 0.6;">
-                    <div class="achievement-icon">➕</div>
+                    <div class="achievement-icon">\u2795</div>
                     <div class="achievement-name">${data.achievements.length - 8} more</div>
                     <div class="achievement-date">View in Discord</div>
                 </div>
-                ` : ''}
+                ` : ""}
             </div>
         </div>
-        ` : ''}
+        ` : ""}
 
         <div class="tip-section">
-            <h3>💸 Send a Tip</h3>
+            <h3>\u{1F4B8} Send a Tip</h3>
             
             <div style="margin-bottom: 2rem;">
                 <h4>Your Balances</h4>
                 ${data.balances.map((balance) => `
                 <div class="balance-card">
                     <div>${balance.Token.symbol}</div>
-                    <div class="balance-amount">${Number(balance.amount).toFixed(2).replace(/\.?0+$/, '')}</div>
+                    <div class="balance-amount">${Number(balance.amount).toFixed(2).replace(/\.?0+$/, "")}</div>
                 </div>
-                `).join('')}
+                `).join("")}
             </div>
             
             <form id="tipForm">
@@ -1037,7 +986,7 @@ function generateUserProfileHTML(data) {
                         <option value="">Select a token</option>
                         ${data.tokens.map((token) => `
                         <option value="${token.address}">${token.symbol}</option>
-                        `).join('')}
+                        `).join("")}
                     </select>
                 </div>
                 
@@ -1053,7 +1002,7 @@ function generateUserProfileHTML(data) {
 
                 <!-- Tax Preview Section -->
                 <div id="taxPreview" style="background: rgba(96, 165, 250, 0.1); border: 1px solid #60a5fa; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; display: none;">
-                    <h4 style="color: #60a5fa; margin: 0 0 0.5rem 0;">💸 Tip Preview</h4>
+                    <h4 style="color: #60a5fa; margin: 0 0 0.5rem 0;">\u{1F4B8} Tip Preview</h4>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
                         <span>Tip Amount:</span>
                         <span id="previewAmount">-</span>
@@ -1157,7 +1106,7 @@ function generateUserProfileHTML(data) {
                 const data = await response.json();
                 
                 if (data.success) {
-                    result.innerHTML = '✅ Tip sent successfully!';
+                    result.innerHTML = '\u2705 Tip sent successfully!';
                     result.style.color = '#10b981';
                     document.getElementById('tipForm').reset();
                     taxPreview.style.display = 'none'; // Hide tax preview after reset
@@ -1165,11 +1114,11 @@ function generateUserProfileHTML(data) {
                     // Refresh balance display
                     await refreshBalance();
                 } else {
-                    result.innerHTML = '❌ ' + (data.error || 'Failed to send tip');
+                    result.innerHTML = '\u274C ' + (data.error || 'Failed to send tip');
                     result.style.color = '#ef4444';
                 }
             } catch (error) {
-                result.innerHTML = '❌ Network error';
+                result.innerHTML = '\u274C Network error';
                 result.style.color = '#ef4444';
             }
         });
@@ -1237,12 +1186,12 @@ function generateUserProfileHTML(data) {
 </html>`;
 }
 function generateProfileHTML(data) {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚙️ Profile - PenguBook</title>
+    <title>\u2699\uFE0F Profile - PenguBook</title>
     <style>
         /* Same base styles */
         :root { color-scheme: dark; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
@@ -1269,7 +1218,7 @@ function generateProfileHTML(data) {
 </head>
 <body>
     <div class="header">
-        <a href="/pengubook" class="logo">🐧 PenguBook</a>
+        <a href="/pengubook" class="logo">\u{1F427} PenguBook</a>
         <div class="user-info">
             <span>Welcome, ${data.user.username}</span>
             <img src="${data.user.avatar}" alt="Avatar" class="avatar">
@@ -1278,22 +1227,22 @@ function generateProfileHTML(data) {
     </div>
     
     <nav class="nav">
-        <a href="/pengubook">🏠 Home</a>
-        <a href="/pengubook/inbox">📨 Inbox</a>
-        <a href="/pengubook/browse">👥 Browse Users</a>
-        <a href="/pengubook/profile" class="active">⚙️ Profile</a>
-        <a href="/server">🛡️ Server Admin</a>
+        <a href="/pengubook">\u{1F3E0} Home</a>
+        <a href="/pengubook/inbox">\u{1F4E8} Inbox</a>
+        <a href="/pengubook/browse">\u{1F465} Browse Users</a>
+        <a href="/pengubook/profile" class="active">\u2699\uFE0F Profile</a>
+        <a href="/server">\u{1F6E1}\uFE0F Server Admin</a>
     </nav>
     
     <div class="container">
-        <h1>⚙️ Your Profile</h1>
+        <h1>\u2699\uFE0F Your Profile</h1>
         
         <div class="card">
             <h2>Bio</h2>
             <form id="bioForm">
                 <div class="form-group">
                     <label>About You</label>
-                    <textarea id="bio" rows="4" placeholder="Tell everyone about yourself...">${data.dbUser?.bio || ''}</textarea>
+                    <textarea id="bio" rows="4" placeholder="Tell everyone about yourself...">${data.dbUser?.bio || ""}</textarea>
                 </div>
                 <button type="submit" class="btn">Update Bio</button>
             </form>
@@ -1306,15 +1255,15 @@ function generateProfileHTML(data) {
                     ${data.dbUser?.socials ? JSON.parse(data.dbUser.socials).map((social, index) => `
                     <div class="social-link" style="display: flex; gap: 1rem; margin-bottom: 1rem;">
                         <select name="platform_${index}" style="flex: 0 0 120px;">
-                            <option value="Twitter" ${social.platform === 'Twitter' ? 'selected' : ''}>Twitter</option>
-                            <option value="GitHub" ${social.platform === 'GitHub' ? 'selected' : ''}>GitHub</option>
-                            <option value="Discord" ${social.platform === 'Discord' ? 'selected' : ''}>Discord</option>
-                            <option value="Website" ${social.platform === 'Website' ? 'selected' : ''}>Website</option>
+                            <option value="Twitter" ${social.platform === "Twitter" ? "selected" : ""}>Twitter</option>
+                            <option value="GitHub" ${social.platform === "GitHub" ? "selected" : ""}>GitHub</option>
+                            <option value="Discord" ${social.platform === "Discord" ? "selected" : ""}>Discord</option>
+                            <option value="Website" ${social.platform === "Website" ? "selected" : ""}>Website</option>
                         </select>
                         <input type="url" name="url_${index}" placeholder="https://..." value="${social.url}" style="flex: 1;">
                         <button type="button" onclick="removeSocial(this)" style="background: #ef4444;">Remove</button>
                     </div>
-                    `).join('') : ''}
+                    `).join("") : ""}
                 </div>
                 <button type="button" onclick="addSocial()" class="btn btn-secondary">Add Social Link</button>
                 <button type="submit" class="btn">Update Links</button>
@@ -1323,11 +1272,11 @@ function generateProfileHTML(data) {
 
         ${data.referralStats ? `
         <div class="card">
-            <h2>🎁 Referral System</h2>
+            <h2>\u{1F381} Referral System</h2>
             <p>Invite friends to PenguBook and reduce your tip taxes! Every 10 verified referrals earns you 1 week of tax-free tipping.</p>
 
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
-                <h3 style="color: #10b981; margin: 0 0 1rem 0;">📊 Your Referral Stats</h3>
+                <h3 style="color: #10b981; margin: 0 0 1rem 0;">\u{1F4CA} Your Referral Stats</h3>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                     <div style="text-align: center;">
                         <div style="font-size: 2rem; color: #10b981; font-weight: bold;">${data.referralStats.verifiedReferrals}</div>
@@ -1349,12 +1298,12 @@ function generateProfileHTML(data) {
             </div>
 
             <div style="background: rgba(96, 165, 250, 0.1); border: 1px solid #60a5fa; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
-                <h3 style="color: #60a5fa; margin: 0 0 1rem 0;">🔗 Your Referral Link</h3>
+                <h3 style="color: #60a5fa; margin: 0 0 1rem 0;">\u{1F517} Your Referral Link</h3>
                 <div style="display: flex; gap: 1rem; align-items: center;">
                     <input type="text" id="referralLink" readonly
-                           value="${data.referralStats.referralCode ? `${process.env.PUBLIC_BASE_URL || 'https://your-domain.com'}/pengubook?ref=${data.referralStats.referralCode}` : 'Generating...'}"
+                           value="${data.referralStats.referralCode ? `${process.env.PUBLIC_BASE_URL || "https://your-domain.com"}/pengubook?ref=${data.referralStats.referralCode}` : "Generating..."}"
                            style="flex: 1; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #4b5563; background: #374151; color: #e5e7eb;">
-                    <button onclick="copyReferralLink()" class="btn" style="white-space: nowrap;">📋 Copy Link</button>
+                    <button onclick="copyReferralLink()" class="btn" style="white-space: nowrap;">\u{1F4CB} Copy Link</button>
                 </div>
                 <div style="font-size: 0.875rem; color: #9ca3af; margin-top: 0.5rem;">
                     Share this link with friends! They'll be credited to you when they sign up via this link.
@@ -1363,26 +1312,26 @@ function generateProfileHTML(data) {
 
             ${data.referralStats.pendingReferrals.length > 0 ? `
             <div style="margin-top: 1rem;">
-                <h3>⏳ Pending Referrals</h3>
+                <h3>\u23F3 Pending Referrals</h3>
                 <div style="max-height: 200px; overflow-y: auto;">
                     ${data.referralStats.pendingReferrals.map((pending) => `
                     <div style="background: rgba(107, 114, 128, 0.1); border-radius: 0.5rem; padding: 1rem; margin: 0.5rem 0;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span>Joined: ${new Date(pending.joinedAt).toLocaleDateString()}</span>
-                            <span style="color: ${pending.progress >= 20 ? '#10b981' : '#f59e0b'};">
+                            <span style="color: ${pending.progress >= 20 ? "#10b981" : "#f59e0b"};">
                                 ${pending.progress.toFixed(1)}/20 tokens tipped
                             </span>
                         </div>
                         <div style="background: #374151; border-radius: 0.25rem; height: 0.5rem; margin-top: 0.5rem; overflow: hidden;">
-                            <div style="background: ${pending.progress >= 20 ? '#10b981' : '#f59e0b'}; height: 100%; width: ${Math.min(100, (pending.progress / 20) * 100)}%; transition: width 0.3s;"></div>
+                            <div style="background: ${pending.progress >= 20 ? "#10b981" : "#f59e0b"}; height: 100%; width: ${Math.min(100, pending.progress / 20 * 100)}%; transition: width 0.3s;"></div>
                         </div>
                     </div>
-                    `).join('')}
+                    `).join("")}
                 </div>
             </div>
-            ` : ''}
+            ` : ""}
         </div>
-        ` : ''}
+        ` : ""}
     </div>
     
     <script>
@@ -1464,7 +1413,7 @@ function generateProfileHTML(data) {
                 // Visual feedback
                 const button = event.target;
                 const originalText = button.textContent;
-                button.textContent = '✅ Copied!';
+                button.textContent = '\u2705 Copied!';
                 button.style.background = '#10b981';
 
                 setTimeout(() => {
@@ -1481,95 +1430,84 @@ function generateProfileHTML(data) {
 </body>
 </html>`;
 }
-// GET /pengubook/api/discord-users/batch - Batch fetch Discord user info
 pengubookRouter.post("/api/discord-users/batch", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        const { discordIds } = req.body;
-        if (!Array.isArray(discordIds) || discordIds.length === 0) {
-            return res.status(400).json({ success: false, error: "Invalid discord IDs array" });
-        }
-        // Limit batch size to prevent abuse
-        if (discordIds.length > 50) {
-            return res.status(400).json({ success: false, error: "Too many IDs in batch (max 50)" });
-        }
-        // Get Discord client from services
-        const { getDiscordClient } = await import("../services/discord_users.js");
-        const client = getDiscordClient();
-        const results = {};
-        if (!client) {
-            // Return fallback data for all IDs
-            for (const discordId of discordIds) {
-                results[discordId] = {
-                    username: `User#${discordId.slice(-4)}`,
-                    avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
-                };
-            }
-            return res.json({ success: true, users: results });
-        }
-        // Fetch users in parallel with error handling
-        const fetchPromises = discordIds.map(async (discordId) => {
-            try {
-                const user = await client.users.fetch(discordId);
-                results[discordId] = {
-                    username: user.username || user.displayName || `User#${discordId.slice(-4)}`,
-                    avatarURL: user.displayAvatarURL({ size: 256, extension: 'png' })
-                };
-            }
-            catch (error) {
-                // User not found or not accessible, return fallback
-                results[discordId] = {
-                    username: `User#${discordId.slice(-4)}`,
-                    avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
-                };
-            }
-        });
-        await Promise.all(fetchPromises);
-        res.json({ success: true, users: results });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.status(401).json({ success: false, error: "Not authenticated" });
+    const { discordIds } = req.body;
+    if (!Array.isArray(discordIds) || discordIds.length === 0) {
+      return res.status(400).json({ success: false, error: "Invalid discord IDs array" });
     }
-    catch (error) {
-        console.error("Discord users batch fetch error:", error);
-        res.status(500).json({ success: false, error: "Failed to fetch user info" });
+    if (discordIds.length > 50) {
+      return res.status(400).json({ success: false, error: "Too many IDs in batch (max 50)" });
     }
+    const { getDiscordClient: getDiscordClient2 } = await import("../services/discord_users.js");
+    const client = getDiscordClient2();
+    const results = {};
+    if (!client) {
+      for (const discordId of discordIds) {
+        results[discordId] = {
+          username: `User#${discordId.slice(-4)}`,
+          avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+        };
+      }
+      return res.json({ success: true, users: results });
+    }
+    const fetchPromises = discordIds.map(async (discordId) => {
+      try {
+        const user = await client.users.fetch(discordId);
+        results[discordId] = {
+          username: user.username || user.displayName || `User#${discordId.slice(-4)}`,
+          avatarURL: user.displayAvatarURL({ size: 256, extension: "png" })
+        };
+      } catch (error) {
+        results[discordId] = {
+          username: `User#${discordId.slice(-4)}`,
+          avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+        };
+      }
+    });
+    await Promise.all(fetchPromises);
+    res.json({ success: true, users: results });
+  } catch (error) {
+    console.error("Discord users batch fetch error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch user info" });
+  }
 });
-// GET /pengubook/api/discord-user/:discordId - Fetch Discord user info
 pengubookRouter.get("/api/discord-user/:discordId", async (req, res) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.status(401).json({ success: false, error: "Not authenticated" });
+    const discordId = req.params.discordId;
+    const { getDiscordClient: getDiscordClient2 } = await import("../services/discord_users.js");
+    const client = getDiscordClient2();
+    if (!client) {
+      return res.json({
+        success: true,
+        username: `User#${discordId.slice(-4)}`,
+        avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+      });
+    }
     try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        const discordId = req.params.discordId;
-        // Get Discord client from services
-        const { getDiscordClient } = await import("../services/discord_users.js");
-        const client = getDiscordClient();
-        if (!client) {
-            return res.json({
-                success: true,
-                username: `User#${discordId.slice(-4)}`,
-                avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
-            });
-        }
-        try {
-            const user = await client.users.fetch(discordId);
-            res.json({
-                success: true,
-                username: user.username || user.displayName || `User#${discordId.slice(-4)}`,
-                avatarURL: user.displayAvatarURL({ size: 256, extension: 'png' })
-            });
-        }
-        catch (error) {
-            // User not found or not accessible, return fallback
-            res.json({
-                success: true,
-                username: `User#${discordId.slice(-4)}`,
-                avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
-            });
-        }
+      const user = await client.users.fetch(discordId);
+      res.json({
+        success: true,
+        username: user.username || user.displayName || `User#${discordId.slice(-4)}`,
+        avatarURL: user.displayAvatarURL({ size: 256, extension: "png" })
+      });
+    } catch (error) {
+      res.json({
+        success: true,
+        username: `User#${discordId.slice(-4)}`,
+        avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+      });
     }
-    catch (error) {
-        console.error("Discord user fetch error:", error);
-        res.status(500).json({ success: false, error: "Failed to fetch user info" });
-    }
+  } catch (error) {
+    console.error("Discord user fetch error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch user info" });
+  }
 });
+export {
+  pengubookRouter
+};
+//# sourceMappingURL=pengubook.js.map

@@ -1,97 +1,88 @@
-import crypto from 'crypto';
-// In-memory storage for demo (use database/Redis in production)
-const admin2FAStorage = new Map();
-export async function getAdmin2FASetup(req, res) {
-    try {
-        const adminId = getAdminId(req); // Get from session/token
-        if (!adminId) {
-            return res.status(401).json({ error: 'Admin authentication required' });
-        }
-        res.send(generateAdmin2FASetupPage(adminId));
+import crypto from "crypto";
+const admin2FAStorage = /* @__PURE__ */ new Map();
+async function getAdmin2FASetup(req, res) {
+  try {
+    const adminId = getAdminId(req);
+    if (!adminId) {
+      return res.status(401).json({ error: "Admin authentication required" });
     }
-    catch (error) {
-        console.error('Admin 2FA setup error:', error);
-        res.status(500).json({ error: 'Failed to load 2FA setup' });
-    }
+    res.send(generateAdmin2FASetupPage(adminId));
+  } catch (error) {
+    console.error("Admin 2FA setup error:", error);
+    res.status(500).json({ error: "Failed to load 2FA setup" });
+  }
 }
-export async function initializeAdmin2FA(req, res) {
-    try {
-        const adminId = getAdminId(req);
-        if (!adminId) {
-            return res.status(401).json({ error: 'Admin authentication required' });
-        }
-        // Generate TOTP secret using crypto (no external dependencies)
-        const secret = crypto.randomBytes(32).toString('base64url').substring(0, 32);
-        // Generate QR code URL using external service
-        const totpUrl = `otpauth://totp/PIPTip%20Admin:${encodeURIComponent(adminId)}?secret=${secret}&issuer=PIPTip%20Admin`;
-        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUrl)}`;
-        // Generate backup codes
-        const backupCodes = Array.from({ length: 8 }, () => crypto.randomBytes(4).toString('hex').toUpperCase());
-        const setup = {
-            adminId,
-            secret,
-            qrCodeUrl,
-            backupCodes,
-            isEnabled: false
-        };
-        admin2FAStorage.set(adminId, setup);
-        res.json({
-            qrCodeUrl,
-            secret,
-            backupCodes,
-            manualEntryKey: secret
-        });
+async function initializeAdmin2FA(req, res) {
+  try {
+    const adminId = getAdminId(req);
+    if (!adminId) {
+      return res.status(401).json({ error: "Admin authentication required" });
     }
-    catch (error) {
-        console.error('Admin 2FA initialization error:', error);
-        res.status(500).json({ error: 'Failed to initialize 2FA' });
-    }
+    const secret = crypto.randomBytes(32).toString("base64url").substring(0, 32);
+    const totpUrl = `otpauth://totp/PIPTip%20Admin:${encodeURIComponent(adminId)}?secret=${secret}&issuer=PIPTip%20Admin`;
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUrl)}`;
+    const backupCodes = Array.from(
+      { length: 8 },
+      () => crypto.randomBytes(4).toString("hex").toUpperCase()
+    );
+    const setup = {
+      adminId,
+      secret,
+      qrCodeUrl,
+      backupCodes,
+      isEnabled: false
+    };
+    admin2FAStorage.set(adminId, setup);
+    res.json({
+      qrCodeUrl,
+      secret,
+      backupCodes,
+      manualEntryKey: secret
+    });
+  } catch (error) {
+    console.error("Admin 2FA initialization error:", error);
+    res.status(500).json({ error: "Failed to initialize 2FA" });
+  }
 }
-export async function verifyAdmin2FA(req, res) {
-    try {
-        const adminId = getAdminId(req);
-        const { code } = req.body;
-        if (!adminId || !code) {
-            return res.status(400).json({ error: 'Admin ID and verification code required' });
-        }
-        const setup = admin2FAStorage.get(adminId);
-        if (!setup) {
-            return res.status(404).json({ error: '2FA setup not found' });
-        }
-        // Verify TOTP code (simplified - use proper TOTP library in production)
-        const isValid = verifyTOTPCode(setup.secret, code);
-        if (isValid) {
-            setup.isEnabled = true;
-            admin2FAStorage.set(adminId, setup);
-            console.log(`✅ Admin 2FA enabled for ${adminId}`);
-            res.json({
-                success: true,
-                message: 'Admin 2FA successfully enabled',
-                backupCodes: setup.backupCodes
-            });
-        }
-        else {
-            res.status(400).json({ error: 'Invalid verification code' });
-        }
+async function verifyAdmin2FA(req, res) {
+  try {
+    const adminId = getAdminId(req);
+    const { code } = req.body;
+    if (!adminId || !code) {
+      return res.status(400).json({ error: "Admin ID and verification code required" });
     }
-    catch (error) {
-        console.error('Admin 2FA verification error:', error);
-        res.status(500).json({ error: 'Failed to verify 2FA' });
+    const setup = admin2FAStorage.get(adminId);
+    if (!setup) {
+      return res.status(404).json({ error: "2FA setup not found" });
     }
+    const isValid = verifyTOTPCode(setup.secret, code);
+    if (isValid) {
+      setup.isEnabled = true;
+      admin2FAStorage.set(adminId, setup);
+      console.log(`\u2705 Admin 2FA enabled for ${adminId}`);
+      res.json({
+        success: true,
+        message: "Admin 2FA successfully enabled",
+        backupCodes: setup.backupCodes
+      });
+    } else {
+      res.status(400).json({ error: "Invalid verification code" });
+    }
+  } catch (error) {
+    console.error("Admin 2FA verification error:", error);
+    res.status(500).json({ error: "Failed to verify 2FA" });
+  }
 }
-// Simplified TOTP verification (use proper library in production)
 function verifyTOTPCode(secret, code) {
-    // For demo purposes, accept specific test codes
-    const testCodes = ['123456', '000000', '999999'];
-    return testCodes.includes(code) || code.length === 6;
+  const testCodes = ["123456", "000000", "999999"];
+  return testCodes.includes(code) || code.length === 6;
 }
 function getAdminId(req) {
-    // Get admin ID from session, JWT token, or admin authentication
-    return req.headers['x-admin-id'] || 'admin_demo_001';
+  return req.headers["x-admin-id"] || "admin_demo_001";
 }
 function generateAdmin2FASetupPage(adminId) {
-    const existingSetup = admin2FAStorage.get(adminId);
-    return `
+  const existingSetup = admin2FAStorage.get(adminId);
+  return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -105,13 +96,13 @@ function generateAdmin2FASetupPage(adminId) {
     <body>
       <div class="setup-container">
         <div class="setup-header">
-          <h1>🔒 Admin Panel 2FA</h1>
+          <h1>\u{1F512} Admin Panel 2FA</h1>
           <p>Secure your admin.piptip.com access with two-factor authentication</p>
         </div>
 
         ${existingSetup?.isEnabled ? `
           <div class="status-card enabled">
-            <div class="status-icon">✅</div>
+            <div class="status-icon">\u2705</div>
             <div class="status-content">
               <h3>2FA Enabled</h3>
               <p>Your admin panel is protected with two-factor authentication</p>
@@ -129,15 +120,15 @@ function generateAdmin2FASetupPage(adminId) {
                 <p>Download one of these authenticator apps:</p>
                 <div class="app-grid">
                   <div class="app-item">
-                    <div class="app-icon">📱</div>
+                    <div class="app-icon">\u{1F4F1}</div>
                     <div class="app-name">Google Authenticator</div>
                   </div>
                   <div class="app-item">
-                    <div class="app-icon">🔐</div>
+                    <div class="app-icon">\u{1F510}</div>
                     <div class="app-name">Authy</div>
                   </div>
                   <div class="app-item">
-                    <div class="app-icon">🛡️</div>
+                    <div class="app-icon">\u{1F6E1}\uFE0F</div>
                     <div class="app-name">Microsoft Authenticator</div>
                   </div>
                 </div>
@@ -186,7 +177,7 @@ function generateAdmin2FASetupPage(adminId) {
               </div>
               <div class="step-content">
                 <div class="warning-box">
-                  <div class="warning-icon">⚠️</div>
+                  <div class="warning-icon">\u26A0\uFE0F</div>
                   <div>
                     <h4>Important: Save these backup codes</h4>
                     <p>Use these codes if you lose access to your authenticator app. Each code can only be used once.</p>
@@ -206,24 +197,24 @@ function generateAdmin2FASetupPage(adminId) {
         `}
 
         <div class="info-section">
-          <h3>🛡️ Why Admin 2FA?</h3>
+          <h3>\u{1F6E1}\uFE0F Why Admin 2FA?</h3>
           <div class="info-grid">
             <div class="info-item">
-              <div class="info-icon">🔒</div>
+              <div class="info-icon">\u{1F512}</div>
               <div class="info-content">
                 <h4>Protect Admin Access</h4>
                 <p>Secure your admin.piptip.com dashboard from unauthorized access</p>
               </div>
             </div>
             <div class="info-item">
-              <div class="info-icon">💰</div>
+              <div class="info-icon">\u{1F4B0}</div>
               <div class="info-content">
                 <h4>Financial Security</h4>
                 <p>Additional protection for treasury and user fund management</p>
               </div>
             </div>
             <div class="info-item">
-              <div class="info-icon">📊</div>
+              <div class="info-icon">\u{1F4CA}</div>
               <div class="info-content">
                 <h4>Data Protection</h4>
                 <p>Secure access to user data and system analytics</p>
@@ -241,7 +232,7 @@ function generateAdmin2FASetupPage(adminId) {
   `;
 }
 function getAdmin2FAStyles() {
-    return `
+  return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
@@ -577,7 +568,7 @@ function getAdmin2FAStyles() {
   `;
 }
 function getAdmin2FAScript() {
-    return `
+  return `
     let backupCodes = [];
 
     function initiate2FA() {
@@ -720,3 +711,9 @@ function getAdmin2FAScript() {
     });
   `;
 }
+export {
+  getAdmin2FASetup,
+  initializeAdmin2FA,
+  verifyAdmin2FA
+};
+//# sourceMappingURL=admin_2fa_setup.js.map

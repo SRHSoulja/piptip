@@ -1,222 +1,199 @@
-// Password Strength Meter - Interactive password security assessment
-import express from 'express';
-export const passwordStrengthRouter = express.Router();
-// Password strength assessment endpoint
-passwordStrengthRouter.post('/check-strength', (req, res) => {
-    try {
-        const { password } = req.body;
-        if (!password) {
-            return res.status(400).json({
-                success: false,
-                error: 'Password is required'
-            });
-        }
-        const assessment = assessPasswordStrength(password);
-        res.json({
-            success: true,
-            assessment
-        });
+import express from "express";
+const passwordStrengthRouter = express.Router();
+passwordStrengthRouter.post("/check-strength", (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        error: "Password is required"
+      });
     }
-    catch (error) {
-        console.error('Password strength check error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Assessment failed'
-        });
-    }
+    const assessment = assessPasswordStrength(password);
+    res.json({
+      success: true,
+      assessment
+    });
+  } catch (error) {
+    console.error("Password strength check error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Assessment failed"
+    });
+  }
 });
-// Password change page with strength meter
-passwordStrengthRouter.get('/password/:discordId', (req, res) => {
-    try {
-        const { discordId } = req.params;
-        res.send(renderPasswordChangePage({ discordId }));
-    }
-    catch (error) {
-        console.error('Password page error:', error);
-        res.status(500).send('Password page unavailable');
-    }
+passwordStrengthRouter.get("/password/:discordId", (req, res) => {
+  try {
+    const { discordId } = req.params;
+    res.send(renderPasswordChangePage({ discordId }));
+  } catch (error) {
+    console.error("Password page error:", error);
+    res.status(500).send("Password page unavailable");
+  }
 });
-// Password strength assessment function
 function assessPasswordStrength(password) {
-    let score = 0;
-    const feedback = [];
-    const requirements = {
-        length: false,
-        lowercase: false,
-        uppercase: false,
-        numbers: false,
-        symbols: false,
-        noCommon: false,
-        noPersonal: false
-    };
-    // Length check (0-25 points)
-    if (password.length >= 8) {
-        requirements.length = true;
-        score += 15;
-        if (password.length >= 12)
-            score += 5;
-        if (password.length >= 16)
-            score += 5;
-    }
-    else {
-        feedback.push('Use at least 8 characters');
-    }
-    // Lowercase letters (0-10 points)
-    if (/[a-z]/.test(password)) {
-        requirements.lowercase = true;
-        score += 10;
-    }
-    else {
-        feedback.push('Add lowercase letters (a-z)');
-    }
-    // Uppercase letters (0-10 points)
-    if (/[A-Z]/.test(password)) {
-        requirements.uppercase = true;
-        score += 10;
-    }
-    else {
-        feedback.push('Add uppercase letters (A-Z)');
-    }
-    // Numbers (0-10 points)
-    if (/[0-9]/.test(password)) {
-        requirements.numbers = true;
-        score += 10;
-    }
-    else {
-        feedback.push('Add numbers (0-9)');
-    }
-    // Special characters (0-15 points)
-    if (/[^a-zA-Z0-9]/.test(password)) {
-        requirements.symbols = true;
-        score += 15;
-    }
-    else {
-        feedback.push('Add symbols (!@#$%^&*)');
-    }
-    // Common password check (0-15 points)
-    if (!isCommonPassword(password)) {
-        requirements.noCommon = true;
-        score += 15;
-    }
-    else {
-        feedback.push('Avoid common passwords');
-        score = Math.max(0, score - 20); // Penalty for common passwords
-    }
-    // Personal info check (0-5 points)
-    if (!containsPersonalInfo(password)) {
-        requirements.noPersonal = true;
-        score += 5;
-    }
-    else {
-        feedback.push('Avoid personal information');
-    }
-    // Repetition penalty
-    if (hasRepeatedCharacters(password)) {
-        feedback.push('Avoid repeated characters');
-        score = Math.max(0, score - 10);
-    }
-    // Sequential penalty
-    if (hasSequentialCharacters(password)) {
-        feedback.push('Avoid sequential characters (abc, 123)');
-        score = Math.max(0, score - 10);
-    }
-    // Determine strength level
-    let level;
-    let color;
-    let message;
-    if (score >= 90) {
-        level = 'very_strong';
-        color = '#00c851';
-        message = 'Excellent! Your password is very strong.';
-    }
-    else if (score >= 75) {
-        level = 'strong';
-        color = '#00c851';
-        message = 'Great! Your password is strong.';
-    }
-    else if (score >= 60) {
-        level = 'good';
-        color = '#33b5e5';
-        message = 'Good password strength.';
-    }
-    else if (score >= 40) {
-        level = 'fair';
-        color = '#ffbb33';
-        message = 'Fair password. Consider improvements.';
-    }
-    else if (score >= 20) {
-        level = 'weak';
-        color = '#ff8800';
-        message = 'Weak password. Please strengthen it.';
-    }
-    else {
-        level = 'very_weak';
-        color = '#ff4444';
-        message = 'Very weak password. Please choose a stronger password.';
-    }
-    return {
-        score: Math.min(100, Math.max(0, score)),
-        level,
-        color,
-        message,
-        feedback,
-        requirements,
-        estimatedCrackTime: estimateCrackTime(password, score)
-    };
+  let score = 0;
+  const feedback = [];
+  const requirements = {
+    length: false,
+    lowercase: false,
+    uppercase: false,
+    numbers: false,
+    symbols: false,
+    noCommon: false,
+    noPersonal: false
+  };
+  if (password.length >= 8) {
+    requirements.length = true;
+    score += 15;
+    if (password.length >= 12) score += 5;
+    if (password.length >= 16) score += 5;
+  } else {
+    feedback.push("Use at least 8 characters");
+  }
+  if (/[a-z]/.test(password)) {
+    requirements.lowercase = true;
+    score += 10;
+  } else {
+    feedback.push("Add lowercase letters (a-z)");
+  }
+  if (/[A-Z]/.test(password)) {
+    requirements.uppercase = true;
+    score += 10;
+  } else {
+    feedback.push("Add uppercase letters (A-Z)");
+  }
+  if (/[0-9]/.test(password)) {
+    requirements.numbers = true;
+    score += 10;
+  } else {
+    feedback.push("Add numbers (0-9)");
+  }
+  if (/[^a-zA-Z0-9]/.test(password)) {
+    requirements.symbols = true;
+    score += 15;
+  } else {
+    feedback.push("Add symbols (!@#$%^&*)");
+  }
+  if (!isCommonPassword(password)) {
+    requirements.noCommon = true;
+    score += 15;
+  } else {
+    feedback.push("Avoid common passwords");
+    score = Math.max(0, score - 20);
+  }
+  if (!containsPersonalInfo(password)) {
+    requirements.noPersonal = true;
+    score += 5;
+  } else {
+    feedback.push("Avoid personal information");
+  }
+  if (hasRepeatedCharacters(password)) {
+    feedback.push("Avoid repeated characters");
+    score = Math.max(0, score - 10);
+  }
+  if (hasSequentialCharacters(password)) {
+    feedback.push("Avoid sequential characters (abc, 123)");
+    score = Math.max(0, score - 10);
+  }
+  let level;
+  let color;
+  let message;
+  if (score >= 90) {
+    level = "very_strong";
+    color = "#00c851";
+    message = "Excellent! Your password is very strong.";
+  } else if (score >= 75) {
+    level = "strong";
+    color = "#00c851";
+    message = "Great! Your password is strong.";
+  } else if (score >= 60) {
+    level = "good";
+    color = "#33b5e5";
+    message = "Good password strength.";
+  } else if (score >= 40) {
+    level = "fair";
+    color = "#ffbb33";
+    message = "Fair password. Consider improvements.";
+  } else if (score >= 20) {
+    level = "weak";
+    color = "#ff8800";
+    message = "Weak password. Please strengthen it.";
+  } else {
+    level = "very_weak";
+    color = "#ff4444";
+    message = "Very weak password. Please choose a stronger password.";
+  }
+  return {
+    score: Math.min(100, Math.max(0, score)),
+    level,
+    color,
+    message,
+    feedback,
+    requirements,
+    estimatedCrackTime: estimateCrackTime(password, score)
+  };
 }
-// Check if password is commonly used
 function isCommonPassword(password) {
-    const commonPasswords = [
-        'password', '123456', '123456789', 'qwerty', 'abc123', 'password123',
-        'admin', 'letmein', 'welcome', 'monkey', '1234567890', 'dragon',
-        'master', 'login', 'princess', 'qwertyuiop', 'solo', 'passw0rd',
-        'starwars', 'football', 'baseball', 'superman', 'batman', 'trustno1'
-    ];
-    return commonPasswords.includes(password.toLowerCase());
+  const commonPasswords = [
+    "password",
+    "123456",
+    "123456789",
+    "qwerty",
+    "abc123",
+    "password123",
+    "admin",
+    "letmein",
+    "welcome",
+    "monkey",
+    "1234567890",
+    "dragon",
+    "master",
+    "login",
+    "princess",
+    "qwertyuiop",
+    "solo",
+    "passw0rd",
+    "starwars",
+    "football",
+    "baseball",
+    "superman",
+    "batman",
+    "trustno1"
+  ];
+  return commonPasswords.includes(password.toLowerCase());
 }
-// Check if password contains personal information (basic check)
 function containsPersonalInfo(password) {
-    // Basic checks - in production, this would check against user's known info
-    const personalPatterns = [
-        /\b(name|user|admin|email|phone)\b/i,
-        /\b\d{4}\b/, // Years
-        /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i
-    ];
-    return personalPatterns.some(pattern => pattern.test(password));
+  const personalPatterns = [
+    /\b(name|user|admin|email|phone)\b/i,
+    /\b\d{4}\b/,
+    // Years
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i
+  ];
+  return personalPatterns.some((pattern) => pattern.test(password));
 }
-// Check for repeated characters
 function hasRepeatedCharacters(password) {
-    return /(.)\1{2,}/.test(password); // 3 or more repeated characters
+  return /(.)\1{2,}/.test(password);
 }
-// Check for sequential characters
 function hasSequentialCharacters(password) {
-    const sequences = ['abc', 'bcd', 'cde', 'def', 'efg', 'fgh', 'ghi', 'hij', 'ijk', 'jkl', 'klm', 'lmn', 'mno', 'nop', 'opq', 'pqr', 'qrs', 'rst', 'stu', 'tuv', 'uvw', 'vwx', 'wxy', 'xyz'];
-    const numberSeqs = ['123', '234', '345', '456', '567', '678', '789', '890'];
-    const lowerPassword = password.toLowerCase();
-    return sequences.some(seq => lowerPassword.includes(seq)) ||
-        numberSeqs.some(seq => password.includes(seq));
+  const sequences = ["abc", "bcd", "cde", "def", "efg", "fgh", "ghi", "hij", "ijk", "jkl", "klm", "lmn", "mno", "nop", "opq", "pqr", "qrs", "rst", "stu", "tuv", "uvw", "vwx", "wxy", "xyz"];
+  const numberSeqs = ["123", "234", "345", "456", "567", "678", "789", "890"];
+  const lowerPassword = password.toLowerCase();
+  return sequences.some((seq) => lowerPassword.includes(seq)) || numberSeqs.some((seq) => password.includes(seq));
 }
-// Estimate crack time
 function estimateCrackTime(password, score) {
-    const baseTime = Math.pow(2, password.length * 2); // Simplified calculation
-    const adjustedTime = baseTime * (score / 100);
-    if (adjustedTime < 1)
-        return 'Instantly';
-    if (adjustedTime < 60)
-        return 'Less than a minute';
-    if (adjustedTime < 3600)
-        return `${Math.round(adjustedTime / 60)} minutes`;
-    if (adjustedTime < 86400)
-        return `${Math.round(adjustedTime / 3600)} hours`;
-    if (adjustedTime < 31536000)
-        return `${Math.round(adjustedTime / 86400)} days`;
-    if (adjustedTime < 31536000000)
-        return `${Math.round(adjustedTime / 31536000)} years`;
-    return 'Centuries';
+  const baseTime = Math.pow(2, password.length * 2);
+  const adjustedTime = baseTime * (score / 100);
+  if (adjustedTime < 1) return "Instantly";
+  if (adjustedTime < 60) return "Less than a minute";
+  if (adjustedTime < 3600) return `${Math.round(adjustedTime / 60)} minutes`;
+  if (adjustedTime < 86400) return `${Math.round(adjustedTime / 3600)} hours`;
+  if (adjustedTime < 31536e3) return `${Math.round(adjustedTime / 86400)} days`;
+  if (adjustedTime < 31536e6) return `${Math.round(adjustedTime / 31536e3)} years`;
+  return "Centuries";
 }
-// Render password change page with strength meter
 function renderPasswordChangePage(data) {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -483,7 +460,7 @@ function renderPasswordChangePage(data) {
   <div class="password-container">
     <div class="header">
       <h1>
-        <span>🔑</span>
+        <span>\u{1F511}</span>
         Change Password
       </h1>
       <p>Create a strong, secure password for your PIPTip account</p>
@@ -494,7 +471,7 @@ function renderPasswordChangePage(data) {
         <label for="currentPassword">Current Password</label>
         <div class="password-input-container">
           <input type="password" id="currentPassword" class="password-input" required>
-          <button type="button" class="password-toggle" onclick="togglePassword('currentPassword')">👁️</button>
+          <button type="button" class="password-toggle" onclick="togglePassword('currentPassword')">\u{1F441}\uFE0F</button>
         </div>
       </div>
 
@@ -502,7 +479,7 @@ function renderPasswordChangePage(data) {
         <label for="newPassword">New Password</label>
         <div class="password-input-container">
           <input type="password" id="newPassword" class="password-input" required>
-          <button type="button" class="password-toggle" onclick="togglePassword('newPassword')">👁️</button>
+          <button type="button" class="password-toggle" onclick="togglePassword('newPassword')">\u{1F441}\uFE0F</button>
         </div>
 
         <div class="strength-meter" id="strengthMeter">
@@ -524,23 +501,23 @@ function renderPasswordChangePage(data) {
           <div class="requirements">
             <h4>Password Requirements:</h4>
             <div class="requirement not-met" id="req-length">
-              <span>❌</span>
+              <span>\u274C</span>
               <span>At least 8 characters</span>
             </div>
             <div class="requirement not-met" id="req-lowercase">
-              <span>❌</span>
+              <span>\u274C</span>
               <span>Lowercase letters (a-z)</span>
             </div>
             <div class="requirement not-met" id="req-uppercase">
-              <span>❌</span>
+              <span>\u274C</span>
               <span>Uppercase letters (A-Z)</span>
             </div>
             <div class="requirement not-met" id="req-numbers">
-              <span>❌</span>
+              <span>\u274C</span>
               <span>Numbers (0-9)</span>
             </div>
             <div class="requirement not-met" id="req-symbols">
-              <span>❌</span>
+              <span>\u274C</span>
               <span>Special characters (!@#$%^&*)</span>
             </div>
           </div>
@@ -559,7 +536,7 @@ function renderPasswordChangePage(data) {
         <label for="confirmPassword">Confirm New Password</label>
         <div class="password-input-container">
           <input type="password" id="confirmPassword" class="password-input" required>
-          <button type="button" class="password-toggle" onclick="togglePassword('confirmPassword')">👁️</button>
+          <button type="button" class="password-toggle" onclick="togglePassword('confirmPassword')">\u{1F441}\uFE0F</button>
         </div>
       </div>
 
@@ -569,25 +546,25 @@ function renderPasswordChangePage(data) {
     </form>
 
     <div class="tips">
-      <h3>💡 Password Tips</h3>
+      <h3>\u{1F4A1} Password Tips</h3>
       <div class="tip">
-        <span>🎯</span>
+        <span>\u{1F3AF}</span>
         <span>Use a unique password that you don't use anywhere else</span>
       </div>
       <div class="tip">
-        <span>🔀</span>
+        <span>\u{1F500}</span>
         <span>Mix uppercase and lowercase letters, numbers, and symbols</span>
       </div>
       <div class="tip">
-        <span>📏</span>
+        <span>\u{1F4CF}</span>
         <span>Longer passwords are generally more secure</span>
       </div>
       <div class="tip">
-        <span>🚫</span>
+        <span>\u{1F6AB}</span>
         <span>Avoid personal information like names, birthdays, or addresses</span>
       </div>
       <div class="tip">
-        <span>💾</span>
+        <span>\u{1F4BE}</span>
         <span>Consider using a password manager to generate and store strong passwords</span>
       </div>
     </div>
@@ -657,10 +634,10 @@ function renderPasswordChangePage(data) {
         if (element) {
           if (assessment.requirements[req]) {
             element.className = 'requirement met';
-            element.querySelector('span').textContent = '✅';
+            element.querySelector('span').textContent = '\u2705';
           } else {
             element.className = 'requirement not-met';
-            element.querySelector('span').textContent = '❌';
+            element.querySelector('span').textContent = '\u274C';
           }
         }
       });
@@ -718,10 +695,10 @@ function renderPasswordChangePage(data) {
 
       if (field.type === 'password') {
         field.type = 'text';
-        button.textContent = '🙈';
+        button.textContent = '\u{1F648}';
       } else {
         field.type = 'password';
-        button.textContent = '👁️';
+        button.textContent = '\u{1F441}\uFE0F';
       }
     }
 
@@ -750,4 +727,8 @@ function renderPasswordChangePage(data) {
 </body>
 </html>`;
 }
-export { assessPasswordStrength };
+export {
+  assessPasswordStrength,
+  passwordStrengthRouter
+};
+//# sourceMappingURL=password_strength.js.map

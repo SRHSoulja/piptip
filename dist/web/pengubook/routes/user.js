@@ -3,46 +3,38 @@ import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { getUnreadMessageCount } from "../../../interactions/buttons/pengubook.js";
 import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
-// HTML escaping function to prevent XSS
 function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+  return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-export async function userHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const targetDiscordId = req.params.discordId;
-        const currentDbUser = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get target user's profile
-        const targetUser = await prisma.user.findUnique({
-            where: { discordId: targetDiscordId },
-            select: {
-                id: true,
-                discordId: true,
-                bio: true,
-                bioLastUpdated: true,
-                bioViewCount: true,
-                xUsername: true,
-                socials: true,
-                wins: true,
-                losses: true,
-                ties: true,
-                createdAt: true,
-                showInPenguBook: true
-            }
-        });
-        if (!targetUser || !targetUser.showInPenguBook) {
-            const content = `
+async function userHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const targetDiscordId = req.params.discordId;
+    const currentDbUser = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const targetUser = await prisma.user.findUnique({
+      where: { discordId: targetDiscordId },
+      select: {
+        id: true,
+        discordId: true,
+        bio: true,
+        bioLastUpdated: true,
+        bioViewCount: true,
+        xUsername: true,
+        socials: true,
+        wins: true,
+        losses: true,
+        ties: true,
+        createdAt: true,
+        showInPenguBook: true
+      }
+    });
+    if (!targetUser || !targetUser.showInPenguBook) {
+      const content2 = `
       <div class="pg-container">
         <div class="pg-empty-state">
-          <div class="pg-empty-state__icon">😔</div>
+          <div class="pg-empty-state__icon">\u{1F614}</div>
           <h2 class="pg-empty-state__title">User Not Found</h2>
           <p class="pg-empty-state__description">
             This user either doesn't exist or hasn't made their profile public yet.
@@ -52,23 +44,20 @@ export async function userHandler(req, res) {
           </div>
         </div>
       </div>`;
-            return res.send(generateBaseHTML(content, '❌ User Not Found - PenguBook', 'browse', {
-                user: currentUser,
-                unreadCount
-            }));
-        }
-        // Record profile view and increment view count (only if not viewing own profile)
-        if (targetUser.discordId !== currentUser.discordId) {
-            await prisma.user.update({
-                where: { id: targetUser.id },
-                data: { bioViewCount: { increment: 1 } }
-            });
-        }
-        const socials = targetUser.socials ? JSON.parse(targetUser.socials) : [];
-        const winRate = targetUser.wins + targetUser.losses > 0
-            ? ((targetUser.wins / (targetUser.wins + targetUser.losses)) * 100).toFixed(1)
-            : 'N/A';
-        const content = `
+      return res.send(generateBaseHTML(content2, "\u274C User Not Found - PenguBook", "browse", {
+        user: currentUser,
+        unreadCount
+      }));
+    }
+    if (targetUser.discordId !== currentUser.discordId) {
+      await prisma.user.update({
+        where: { id: targetUser.id },
+        data: { bioViewCount: { increment: 1 } }
+      });
+    }
+    const socials = targetUser.socials ? JSON.parse(targetUser.socials) : [];
+    const winRate = targetUser.wins + targetUser.losses > 0 ? (targetUser.wins / (targetUser.wins + targetUser.losses) * 100).toFixed(1) : "N/A";
+    const content = `
     <div class="pg-container">
         <div style="display: flex; align-items: center; gap: var(--pg-space-4); margin-bottom: var(--pg-space-6);">
             <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(targetUser.discordId.slice(-1)) % 6}.png"
@@ -82,7 +71,7 @@ export async function userHandler(req, res) {
                     User#${targetUser.discordId.slice(-4)}
                 </h1>
                 <div style="color: var(--pg-dark-600);">
-                    👀 ${targetUser.bioViewCount} profile views
+                    \u{1F440} ${targetUser.bioViewCount} profile views
                 </div>
             </div>
         </div>
@@ -94,7 +83,7 @@ export async function userHandler(req, res) {
                 ${escapeHtml(targetUser.bio)}
             </div>
         </div>
-        ` : ''}
+        ` : ""}
 
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
             <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">Stats</h2>
@@ -121,30 +110,30 @@ export async function userHandler(req, res) {
 
         <!-- Social Reactions -->
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
-            <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">⚡ Quick Reactions</h3>
+            <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u26A1 Quick Reactions</h3>
             <div class="pg-reaction-bar">
-                <button onclick="sendReaction('👍', 'like')" class="pg-reaction-btn" data-reaction="like">
-                    <span class="pg-reaction-emoji">👍</span>
+                <button onclick="sendReaction('\u{1F44D}', 'like')" class="pg-reaction-btn" data-reaction="like">
+                    <span class="pg-reaction-emoji">\u{1F44D}</span>
                     <span class="pg-reaction-label">Like</span>
                     <span class="pg-reaction-count" id="like-count">0</span>
                 </button>
-                <button onclick="sendReaction('🔥', 'fire')" class="pg-reaction-btn" data-reaction="fire">
-                    <span class="pg-reaction-emoji">🔥</span>
+                <button onclick="sendReaction('\u{1F525}', 'fire')" class="pg-reaction-btn" data-reaction="fire">
+                    <span class="pg-reaction-emoji">\u{1F525}</span>
                     <span class="pg-reaction-label">Fire</span>
                     <span class="pg-reaction-count" id="fire-count">0</span>
                 </button>
-                <button onclick="sendReaction('💎', 'diamond')" class="pg-reaction-btn" data-reaction="diamond">
-                    <span class="pg-reaction-emoji">💎</span>
+                <button onclick="sendReaction('\u{1F48E}', 'diamond')" class="pg-reaction-btn" data-reaction="diamond">
+                    <span class="pg-reaction-emoji">\u{1F48E}</span>
                     <span class="pg-reaction-label">Diamond</span>
                     <span class="pg-reaction-count" id="diamond-count">0</span>
                 </button>
-                <button onclick="sendReaction('🚀', 'rocket')" class="pg-reaction-btn" data-reaction="rocket">
-                    <span class="pg-reaction-emoji">🚀</span>
+                <button onclick="sendReaction('\u{1F680}', 'rocket')" class="pg-reaction-btn" data-reaction="rocket">
+                    <span class="pg-reaction-emoji">\u{1F680}</span>
                     <span class="pg-reaction-label">Rocket</span>
                     <span class="pg-reaction-count" id="rocket-count">0</span>
                 </button>
-                <button onclick="sendReaction('⭐', 'star')" class="pg-reaction-btn" data-reaction="star">
-                    <span class="pg-reaction-emoji">⭐</span>
+                <button onclick="sendReaction('\u2B50', 'star')" class="pg-reaction-btn" data-reaction="star">
+                    <span class="pg-reaction-emoji">\u2B50</span>
                     <span class="pg-reaction-label">Star</span>
                     <span class="pg-reaction-count" id="star-count">0</span>
                 </button>
@@ -153,13 +142,13 @@ export async function userHandler(req, res) {
 
         <div style="display: flex; gap: var(--pg-space-3); flex-wrap: wrap;">
             <a href="/pengubook/browse" class="pg-btn pg-btn--secondary">
-                ← Back to Browse
+                \u2190 Back to Browse
             </a>
             <button onclick="showTipModal()" class="pg-btn pg-btn--primary">
-                💸 Send Tip
+                \u{1F4B8} Send Tip
             </button>
             <button onclick="followUser('${targetUser.discordId}')" class="pg-btn pg-btn--outline" id="followBtn">
-                ➕ Follow
+                \u2795 Follow
             </button>
         </div>
     </div>
@@ -225,7 +214,7 @@ export async function userHandler(req, res) {
             modal.innerHTML = \`
                 <div class="pg-modal">
                     <div class="pg-modal-header">
-                        <h2>💸 Send Tip to User#${targetUser.discordId.slice(-4)}</h2>
+                        <h2>\u{1F4B8} Send Tip to User#${targetUser.discordId.slice(-4)}</h2>
                         <button onclick="closeTipModal()" class="pg-modal-close">&times;</button>
                     </div>
                     <form id="tipForm" class="pg-modal-body">
@@ -250,7 +239,7 @@ export async function userHandler(req, res) {
                         <!-- Tax Preview Section -->
                         <div id="tipPreview" class="pg-tip-preview" style="display: none;">
                             <div class="pg-tip-preview-header">
-                                <h4>💰 Transaction Summary</h4>
+                                <h4>\u{1F4B0} Transaction Summary</h4>
                             </div>
                             <div class="pg-tip-preview-details">
                                 <div class="pg-tip-preview-row">
@@ -266,7 +255,7 @@ export async function userHandler(req, res) {
                                     <span id="previewTotal"><strong>-</strong></span>
                                 </div>
                                 <div id="previewSavings" class="pg-tip-preview-savings" style="display: none;">
-                                    <span>💎 Tax Savings:</span>
+                                    <span>\u{1F48E} Tax Savings:</span>
                                     <span id="previewSaved" class="pg-text-success">-</span>
                                 </div>
                                 <div id="previewBenefit" class="pg-tip-preview-benefit" style="display: none;">
@@ -523,7 +512,7 @@ export async function userHandler(req, res) {
 
             try {
                 followBtn.disabled = true;
-                followBtn.textContent = '⏳ Loading...';
+                followBtn.textContent = '\u23F3 Loading...';
 
                 const response = await fetch('/pengubook/api/follow', {
                     method: 'POST',
@@ -534,11 +523,11 @@ export async function userHandler(req, res) {
                 const result = await response.json();
                 if (result.success) {
                     if (result.following) {
-                        followBtn.textContent = '✅ Following';
+                        followBtn.textContent = '\u2705 Following';
                         followBtn.classList.add('pg-btn--success');
                         showSuccessMessage('Now following this user!');
                     } else {
-                        followBtn.textContent = '➕ Follow';
+                        followBtn.textContent = '\u2795 Follow';
                         followBtn.classList.remove('pg-btn--success');
                         showSuccessMessage('Unfollowed user');
                     }
@@ -558,7 +547,7 @@ export async function userHandler(req, res) {
         function createSparkleEffect(element) {
             const sparkle = document.createElement('div');
             sparkle.className = 'pg-sparkle-effect';
-            sparkle.innerHTML = '✨';
+            sparkle.innerHTML = '\u2728';
 
             const rect = element.getBoundingClientRect();
             sparkle.style.position = 'fixed';
@@ -614,7 +603,7 @@ export async function userHandler(req, res) {
                         // Update follow status
                         const followBtn = document.getElementById('followBtn');
                         if (data.isFollowing) {
-                            followBtn.textContent = '✅ Following';
+                            followBtn.textContent = '\u2705 Following';
                             followBtn.classList.add('pg-btn--success');
                         }
                     }
@@ -633,93 +622,88 @@ export async function userHandler(req, res) {
         window.sendReaction = sendReaction;
         window.followUser = followUser;
     </script>`;
-        res.send(generateBaseHTML(content, `👤 ${targetUser.discordId.slice(-4)} - PenguBook`, 'browse', {
-            user: currentUser,
-            unreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook user profile error:", error);
-        res.status(500).send("Error loading user profile");
-    }
+    res.send(generateBaseHTML(content, `\u{1F464} ${targetUser.discordId.slice(-4)} - PenguBook`, "browse", {
+      user: currentUser,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook user profile error:", error);
+    res.status(500).send("Error loading user profile");
+  }
 }
-export async function userTipHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const { targetDiscordId, tokenId, amount, message } = req.body;
-        // Validate inputs
-        if (!targetDiscordId || !tokenId || !amount) {
-            return res.status(400).json({
-                success: false,
-                error: "Missing required fields: targetDiscordId, tokenId, amount"
-            });
-        }
-        // Validate amount
-        if (typeof amount !== 'number' || amount <= 0 || amount > 1e15) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid amount"
-            });
-        }
-        // Check decimal places
-        const decimalPlaces = (amount.toString().split('.')[1] || '').length;
-        if (decimalPlaces > 2) {
-            return res.status(400).json({
-                success: false,
-                error: "Amount can have maximum 2 decimal places"
-            });
-        }
-        // Prevent self-tipping
-        if (targetDiscordId === currentUser.discordId) {
-            return res.status(400).json({
-                success: false,
-                error: "You cannot tip yourself"
-            });
-        }
-        // Import tip processor
-        const { processTip } = await import("../../../services/tip_processor.js");
-        const { getDiscordClient } = await import("../../../services/discord_users.js");
-        const client = getDiscordClient();
-        if (!client) {
-            return res.status(500).json({
-                success: false,
-                error: "Discord client not available"
-            });
-        }
-        // Process the tip
-        const tipData = {
-            amount,
-            tipType: 'direct',
-            targetUserId: targetDiscordId,
-            note: message || "",
-            tokenId: parseInt(tokenId),
-            userId: currentUser.discordId,
-            guildId: null, // PenguBook tips don't belong to a specific guild
-            channelId: null,
-            fromPenguBook: true
-        };
-        const result = await processTip(tipData, client);
-        if (result.success) {
-            // Note: PenguBook message is automatically created by tip processor
-            // when fromPenguBook: true is set in tipData above
-            return res.json({
-                success: true,
-                message: result.message,
-                details: result.details
-            });
-        }
-        else {
-            return res.status(400).json({
-                success: false,
-                error: result.message || "Failed to process tip"
-            });
-        }
+async function userTipHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("User tip error:", error);
-        res.status(500).json({ success: false, error: "Failed to process tip" });
+    const { targetDiscordId, tokenId, amount, message } = req.body;
+    if (!targetDiscordId || !tokenId || !amount) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: targetDiscordId, tokenId, amount"
+      });
     }
+    if (typeof amount !== "number" || amount <= 0 || amount > 1e15) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid amount"
+      });
+    }
+    const decimalPlaces = (amount.toString().split(".")[1] || "").length;
+    if (decimalPlaces > 2) {
+      return res.status(400).json({
+        success: false,
+        error: "Amount can have maximum 2 decimal places"
+      });
+    }
+    if (targetDiscordId === currentUser.discordId) {
+      return res.status(400).json({
+        success: false,
+        error: "You cannot tip yourself"
+      });
+    }
+    const { processTip } = await import("../../../services/tip_processor.js");
+    const { getDiscordClient } = await import("../../../services/discord_users.js");
+    const client = getDiscordClient();
+    if (!client) {
+      return res.status(500).json({
+        success: false,
+        error: "Discord client not available"
+      });
+    }
+    const tipData = {
+      amount,
+      tipType: "direct",
+      targetUserId: targetDiscordId,
+      note: message || "",
+      tokenId: parseInt(tokenId),
+      userId: currentUser.discordId,
+      guildId: null,
+      // PenguBook tips don't belong to a specific guild
+      channelId: null,
+      fromPenguBook: true
+    };
+    const result = await processTip(tipData, client);
+    if (result.success) {
+      return res.json({
+        success: true,
+        message: result.message,
+        details: result.details
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: result.message || "Failed to process tip"
+      });
+    }
+  } catch (error) {
+    console.error("User tip error:", error);
+    res.status(500).json({ success: false, error: "Failed to process tip" });
+  }
 }
+export {
+  userHandler,
+  userTipHandler
+};
+//# sourceMappingURL=user.js.map

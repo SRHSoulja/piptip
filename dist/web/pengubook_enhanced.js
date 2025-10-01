@@ -1,4 +1,3 @@
-// src/web/pengubook_enhanced.ts - Enhanced PenguBook interface with modern design system
 import { Router } from "express";
 import { requireAuth, getCurrentUser } from "./auth.js";
 import { prisma } from "../services/db.js";
@@ -12,22 +11,18 @@ import { getReferralStats, createReferralCode } from "../services/referrals.js";
 import { priceAPI } from "../services/price_api.js";
 import fs from "fs";
 import path from "path";
-export const pengubookEnhancedRouter = Router();
-// Load the enhanced CSS file
-const cssPath = path.join(process.cwd(), 'src/web/static/pengubook.css');
-let enhancedCSS = '';
+const pengubookEnhancedRouter = Router();
+const cssPath = path.join(process.cwd(), "src/web/static/pengubook.css");
+let enhancedCSS = "";
 try {
-    enhancedCSS = fs.readFileSync(cssPath, 'utf8');
+  enhancedCSS = fs.readFileSync(cssPath, "utf8");
+} catch (error) {
+  console.warn("Enhanced CSS file not found, falling back to inline styles");
+  enhancedCSS = "/* Enhanced CSS not available - falling back to basic styles */";
 }
-catch (error) {
-    console.warn('Enhanced CSS file not found, falling back to inline styles');
-    enhancedCSS = '/* Enhanced CSS not available - falling back to basic styles */';
-}
-// Middleware to require authentication for all PenguBook routes
 pengubookEnhancedRouter.use(requireAuth);
-// Base HTML template with enhanced design system
-function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userData = null) {
-    return `<!DOCTYPE html>
+function generateBaseHTML(content, title = "PenguBook", currentPage = "", userData = null) {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -52,7 +47,7 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
     <!-- Enhanced Header -->
     <header class="pg-header">
         <a href="/pengubook" class="pg-header__logo">
-            🐧 PenguBook
+            \u{1F427} PenguBook
         </a>
         ${userData ? `
         <div class="pg-header__user">
@@ -60,22 +55,22 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
             <img src="${userData.user.avatar}" alt="Avatar" class="pg-avatar" loading="lazy">
             <a href="/auth/logout" class="pg-btn pg-btn--secondary pg-btn--sm">Logout</a>
         </div>
-        ` : ''}
+        ` : ""}
     </header>
 
     <!-- Enhanced Navigation -->
     <nav class="pg-nav" role="navigation" aria-label="Main navigation">
-        <a href="/pengubook" class="pg-nav__link ${currentPage === 'home' ? 'pg-nav__link--active' : ''}" aria-current="${currentPage === 'home' ? 'page' : 'false'}">
-            🏠 Home
+        <a href="/pengubook" class="pg-nav__link ${currentPage === "home" ? "pg-nav__link--active" : ""}" aria-current="${currentPage === "home" ? "page" : "false"}">
+            \u{1F3E0} Home
         </a>
-        <a href="/pengubook/inbox" class="pg-nav__link ${currentPage === 'inbox' ? 'pg-nav__link--active' : ''}">
-            📨 Inbox${userData?.unreadCount > 0 ? `<span class="pg-nav__badge">${userData.unreadCount}</span>` : ''}
+        <a href="/pengubook/inbox" class="pg-nav__link ${currentPage === "inbox" ? "pg-nav__link--active" : ""}">
+            \u{1F4E8} Inbox${userData?.unreadCount > 0 ? `<span class="pg-nav__badge">${userData.unreadCount}</span>` : ""}
         </a>
-        <a href="/pengubook/browse" class="pg-nav__link ${currentPage === 'browse' ? 'pg-nav__link--active' : ''}">
-            👥 Browse Users
+        <a href="/pengubook/browse" class="pg-nav__link ${currentPage === "browse" ? "pg-nav__link--active" : ""}">
+            \u{1F465} Browse Users
         </a>
-        <a href="/pengubook/profile" class="pg-nav__link ${currentPage === 'profile' ? 'pg-nav__link--active' : ''}">
-            ⚙️ Profile
+        <a href="/pengubook/profile" class="pg-nav__link ${currentPage === "profile" ? "pg-nav__link--active" : ""}">
+            \u2699\uFE0F Profile
         </a>
     </nav>
 
@@ -86,21 +81,21 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
 
     <!-- Mobile Bottom Navigation -->
     <nav class="pg-nav-mobile" role="navigation" aria-label="Mobile navigation">
-        <a href="/pengubook" class="pg-nav-mobile__item ${currentPage === 'home' ? 'pg-nav-mobile__item--active' : ''}" aria-current="${currentPage === 'home' ? 'page' : 'false'}">
-            <span class="pg-nav-mobile__icon">🏠</span>
+        <a href="/pengubook" class="pg-nav-mobile__item ${currentPage === "home" ? "pg-nav-mobile__item--active" : ""}" aria-current="${currentPage === "home" ? "page" : "false"}">
+            <span class="pg-nav-mobile__icon">\u{1F3E0}</span>
             <span class="pg-nav-mobile__label">Home</span>
         </a>
-        <a href="/pengubook/inbox" class="pg-nav-mobile__item ${currentPage === 'inbox' ? 'pg-nav-mobile__item--active' : ''}">
-            <span class="pg-nav-mobile__icon">📨</span>
+        <a href="/pengubook/inbox" class="pg-nav-mobile__item ${currentPage === "inbox" ? "pg-nav-mobile__item--active" : ""}">
+            <span class="pg-nav-mobile__icon">\u{1F4E8}</span>
             <span class="pg-nav-mobile__label">Inbox</span>
-            ${userData?.unreadCount > 0 ? `<span class="pg-nav-mobile__badge">${userData.unreadCount}</span>` : ''}
+            ${userData?.unreadCount > 0 ? `<span class="pg-nav-mobile__badge">${userData.unreadCount}</span>` : ""}
         </a>
-        <a href="/pengubook/browse" class="pg-nav-mobile__item ${currentPage === 'browse' ? 'pg-nav-mobile__item--active' : ''}">
-            <span class="pg-nav-mobile__icon">👥</span>
+        <a href="/pengubook/browse" class="pg-nav-mobile__item ${currentPage === "browse" ? "pg-nav-mobile__item--active" : ""}">
+            <span class="pg-nav-mobile__icon">\u{1F465}</span>
             <span class="pg-nav-mobile__label">Browse</span>
         </a>
-        <a href="/pengubook/profile" class="pg-nav-mobile__item ${currentPage === 'profile' ? 'pg-nav-mobile__item--active' : ''}">
-            <span class="pg-nav-mobile__icon">⚙️</span>
+        <a href="/pengubook/profile" class="pg-nav-mobile__item ${currentPage === "profile" ? "pg-nav-mobile__item--active" : ""}">
+            <span class="pg-nav-mobile__icon">\u2699\uFE0F</span>
             <span class="pg-nav-mobile__label">Profile</span>
         </a>
     </nav>
@@ -117,7 +112,7 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
     <script>
         // Performance monitoring
         window.addEventListener('load', () => {
-            console.log('🐧 PenguBook Enhanced loaded in', performance.now().toFixed(2), 'ms');
+            console.log('\u{1F427} PenguBook Enhanced loaded in', performance.now().toFixed(2), 'ms');
         });
 
         // Global loading state management
@@ -189,7 +184,7 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
                 console.error('Failed to refresh unread count:', error);
             }
         }, 30000);
-        ` : ''}
+        ` : ""}
 
         // Skeleton loading utilities
         window.showSkeletonGrid = (container, count = 6) => {
@@ -276,39 +271,37 @@ function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userDa
 </body>
 </html>`;
 }
-// GET /pengubook - Enhanced Main PenguBook page
 pengubookEnhancedRouter.get("/", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        const referralCode = req.query.ref;
-        if (!currentUser) {
-            if (referralCode) {
-                req.session.pendingReferralCode = referralCode;
-            }
-            return res.redirect("/auth/discord");
+  try {
+    const currentUser = getCurrentUser(req);
+    const referralCode = req.query.ref;
+    if (!currentUser) {
+      if (referralCode) {
+        req.session.pendingReferralCode = referralCode;
+      }
+      return res.redirect("/auth/discord");
+    }
+    const user = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    if (referralCode || req.session.pendingReferralCode) {
+      const codeToProcess = referralCode || req.session.pendingReferralCode;
+      if (codeToProcess) {
+        const { processReferralSignup } = await import("../services/referrals.js");
+        const success = await processReferralSignup(codeToProcess, currentUser.discordId);
+        if (success) {
+          delete req.session.pendingReferralCode;
+          return res.redirect("/pengubook/profile?referred=true");
         }
-        const user = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Process referral code logic (same as before)
-        if (referralCode || req.session.pendingReferralCode) {
-            const codeToProcess = referralCode || req.session.pendingReferralCode;
-            if (codeToProcess) {
-                const { processReferralSignup } = await import("../services/referrals.js");
-                const success = await processReferralSignup(codeToProcess, currentUser.discordId);
-                if (success) {
-                    delete req.session.pendingReferralCode;
-                    return res.redirect("/pengubook/profile?referred=true");
-                }
-                delete req.session.pendingReferralCode;
-            }
-        }
-        const content = `
+        delete req.session.pendingReferralCode;
+      }
+    }
+    const content = `
     <div class="pg-container">
         <!-- Hero Welcome Section -->
         <div class="pg-card pg-card--gradient">
             <div style="text-align: center;">
                 <h1 style="margin: 0 0 1rem 0; font-size: var(--pg-text-4xl); font-weight: 900;">
-                    🐧 Welcome to PenguBook Web!
+                    \u{1F427} Welcome to PenguBook Web!
                 </h1>
                 <p style="margin: 0; font-size: var(--pg-text-lg); opacity: 0.9; max-width: 600px; margin: 0 auto;">
                     Your crypto tipping companion is now available on the web. Send tips, manage your profile, and stay connected with your community!
@@ -319,7 +312,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
         <!-- Feature Cards Grid -->
         <div class="pg-grid pg-grid--3">
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">💸</span>
+                <span class="pg-feature-icon">\u{1F4B8}</span>
                 <h3 class="pg-feature-title">Send Tips</h3>
                 <p class="pg-feature-description">
                     Tip users across your servers with our multi-token support. Fast, secure, and fun!
@@ -328,7 +321,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
             </div>
 
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">📨</span>
+                <span class="pg-feature-icon">\u{1F4E8}</span>
                 <h3 class="pg-feature-title">Message Center</h3>
                 <p class="pg-feature-description">
                     View your tip notifications and messages in one organized place.
@@ -337,7 +330,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
             </div>
 
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">⚙️</span>
+                <span class="pg-feature-icon">\u2699\uFE0F</span>
                 <h3 class="pg-feature-title">Profile Settings</h3>
                 <p class="pg-feature-description">
                     Manage your bio, social links, and preferences with ease.
@@ -349,7 +342,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
         <!-- Real-time Activity Feed -->
         <div class="pg-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-6);">
-                <h2 style="margin: 0; color: var(--pg-dark-800);">🔥 Live Activity Feed</h2>
+                <h2 style="margin: 0; color: var(--pg-dark-800);">\u{1F525} Live Activity Feed</h2>
                 <div class="pg-activity-status">
                     <span class="pg-activity-pulse"></span>
                     <span style="font-size: var(--pg-text-sm); color: var(--pg-dark-600);">Live</span>
@@ -382,10 +375,12 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
             <div>
                 <strong style="color: var(--pg-dark-800); margin-bottom: var(--pg-space-3); display: block;">Social Links:</strong>
                 <div class="pg-social-links">
-                    ${JSON.parse(user.socials).map((social) => `<a href="${social.url}" target="_blank" rel="noopener noreferrer" class="pg-social-link">${social.platform}</a>`).join('')}
+                    ${JSON.parse(user.socials).map(
+      (social) => `<a href="${social.url}" target="_blank" rel="noopener noreferrer" class="pg-social-link">${social.platform}</a>`
+    ).join("")}
                 </div>
             </div>
-            ` : ''}
+            ` : ""}
         </div>
         ` : `
         <!-- Getting Started CTA -->
@@ -429,7 +424,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
                     case 'tip':
                         return \`
                             <div class="pg-activity-item" data-id="\${activity.id}">
-                                <div class="pg-activity-icon pg-activity-icon--tip">💸</div>
+                                <div class="pg-activity-icon pg-activity-icon--tip">\u{1F4B8}</div>
                                 <div class="pg-activity-content">
                                     <p class="pg-activity-text">
                                         <strong>User#\${activity.data.fromUser.slice(-4)}</strong> tipped
@@ -447,7 +442,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
                     case 'profile_update':
                         return \`
                             <div class="pg-activity-item" data-id="\${activity.id}">
-                                <div class="pg-activity-icon pg-activity-icon--user">👤</div>
+                                <div class="pg-activity-icon pg-activity-icon--user">\u{1F464}</div>
                                 <div class="pg-activity-content">
                                     <p class="pg-activity-text">
                                         <strong>User#\${activity.data.discordId.slice(-4)}</strong> updated their profile
@@ -467,7 +462,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
                             'Match ended in a tie!';
                         return \`
                             <div class="pg-activity-item" data-id="\${activity.id}">
-                                <div class="pg-activity-icon pg-activity-icon--match">⚔️</div>
+                                <div class="pg-activity-icon pg-activity-icon--match">\u2694\uFE0F</div>
                                 <div class="pg-activity-content">
                                     <p class="pg-activity-text">
                                         <strong>User#\${activity.data.user1.slice(-4)}</strong> vs
@@ -529,7 +524,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
                     } else if (data.activities.length === 0 && page === 1) {
                         feedContainer.innerHTML = \`
                             <div class="pg-activity-empty">
-                                <div class="pg-activity-empty-icon">🌟</div>
+                                <div class="pg-activity-empty-icon">\u{1F31F}</div>
                                 <h3 style="margin: 0 0 var(--pg-space-2) 0; color: var(--pg-dark-700);">No Activity Yet</h3>
                                 <p style="margin: 0; color: var(--pg-dark-600);">
                                     Start exploring PenguBook! Send tips, update your profile, or play matches to see activity here.
@@ -542,7 +537,7 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
                     console.error('Failed to load activity feed:', error);
                     feedContainer.innerHTML = \`
                         <div class="pg-activity-empty">
-                            <div class="pg-activity-empty-icon">⚠️</div>
+                            <div class="pg-activity-empty-icon">\u26A0\uFE0F</div>
                             <h3 style="margin: 0 0 var(--pg-space-2) 0; color: var(--pg-dark-700);">Failed to Load</h3>
                             <p style="margin: 0; color: var(--pg-dark-600);">
                                 Unable to load activity feed. Please refresh the page to try again.
@@ -578,47 +573,42 @@ pengubookEnhancedRouter.get("/", async (req, res) => {
             });
         </script>
     </div>`;
-        res.send(generateBaseHTML(content, '🐧 PenguBook - Home', 'home', {
-            user: currentUser,
-            unreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook home error:", error);
-        res.status(500).send("Error loading PenguBook");
-    }
+    res.send(generateBaseHTML(content, "\u{1F427} PenguBook - Home", "home", {
+      user: currentUser,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook home error:", error);
+    res.status(500).send("Error loading PenguBook");
+  }
 });
-// GET /pengubook/inbox - Enhanced Messages inbox
 pengubookEnhancedRouter.get("/inbox", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        // Get messages with sender info
-        const messages = await prisma.penguBookMessage.findMany({
-            where: { toUserId: user.id },
-            include: {
-                from: true,
-                tip: {
-                    include: { Token: true }
-                }
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 50
-        });
-        // Mark messages as read
-        await prisma.penguBookMessage.updateMany({
-            where: { toUserId: user.id, read: false },
-            data: { read: true }
-        });
-        const content = `
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const messages = await prisma.penguBookMessage.findMany({
+      where: { toUserId: user.id },
+      include: {
+        from: true,
+        tip: {
+          include: { Token: true }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    await prisma.penguBookMessage.updateMany({
+      where: { toUserId: user.id, read: false },
+      data: { read: true }
+    });
+    const content = `
     <div class="pg-container">
-        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">📨 Your Messages</h1>
+        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u{1F4E8} Your Messages</h1>
 
         ${messages.length === 0 ? `
         <div class="pg-empty-state">
-            <div class="pg-empty-state__icon">📭</div>
+            <div class="pg-empty-state__icon">\u{1F4ED}</div>
             <h2 class="pg-empty-state__title">No messages yet</h2>
             <p class="pg-empty-state__description">
                 Your tip notifications and messages will appear here! Start by browsing users and sending some tips.
@@ -628,10 +618,10 @@ pengubookEnhancedRouter.get("/inbox", async (req, res) => {
             </div>
         </div>
         ` : messages.map((msg) => `
-        <div class="pg-message ${msg.tip ? 'pg-message--tip' : ''}">
+        <div class="pg-message ${msg.tip ? "pg-message--tip" : ""}">
             <div class="pg-message-header">
                 <span class="pg-message-sender">
-                    ${msg.from.discordId === msg.from.id ? 'System' : `User#${msg.from.discordId.slice(-4)}`}
+                    ${msg.from.discordId === msg.from.id ? "System" : `User#${msg.from.discordId.slice(-4)}`}
                 </span>
                 <span class="pg-message-time">
                     ${new Date(msg.createdAt).toLocaleString()}
@@ -640,117 +630,104 @@ pengubookEnhancedRouter.get("/inbox", async (req, res) => {
             <div class="pg-message-content">
                 ${msg.tip ? `
                 <div class="pg-tip-amount">
-                    💰 Received ${Number(msg.tip.amountAtomic / Math.pow(10, msg.tip.Token.decimals)).toFixed(2)} ${msg.tip.Token.symbol}
+                    \u{1F4B0} Received ${Number(msg.tip.amountAtomic / Math.pow(10, msg.tip.Token.decimals)).toFixed(2)} ${msg.tip.Token.symbol}
                 </div>
-                ` : ''}
+                ` : ""}
                 ${msg.message}
             </div>
         </div>
-        `).join('')}
+        `).join("")}
     </div>`;
-        res.send(generateBaseHTML(content, '📨 Inbox - PenguBook', 'inbox', {
-            user: currentUser,
-            unreadCount: 0
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook inbox error:", error);
-        res.status(500).send("Error loading inbox");
-    }
+    res.send(generateBaseHTML(content, "\u{1F4E8} Inbox - PenguBook", "inbox", {
+      user: currentUser,
+      unreadCount: 0
+    }));
+  } catch (error) {
+    console.error("PenguBook inbox error:", error);
+    res.status(500).send("Error loading inbox");
+  }
 });
-// GET /pengubook/browse - Enhanced user discovery with search and filtering
 pengubookEnhancedRouter.get("/browse", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Extract search and filter parameters
-        const searchQuery = req.query.search || '';
-        const sortBy = req.query.sort || 'recent';
-        const filterBy = req.query.filter || 'all';
-        const page = parseInt(req.query.page) || 1;
-        const limit = 20;
-        const offset = (page - 1) * limit;
-        // Build dynamic where clause based on filters
-        let whereClause = {
-            showInPenguBook: true,
-            id: { not: user.id }
-        };
-        // Add search functionality
-        if (searchQuery) {
-            whereClause.OR = [
-                { bio: { contains: searchQuery, mode: 'insensitive' } },
-                { xUsername: { contains: searchQuery, mode: 'insensitive' } },
-                { discordId: { contains: searchQuery } }
-            ];
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const searchQuery = req.query.search || "";
+    const sortBy = req.query.sort || "recent";
+    const filterBy = req.query.filter || "all";
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+    let whereClause = {
+      showInPenguBook: true,
+      id: { not: user.id }
+    };
+    if (searchQuery) {
+      whereClause.OR = [
+        { bio: { contains: searchQuery, mode: "insensitive" } },
+        { xUsername: { contains: searchQuery, mode: "insensitive" } },
+        { discordId: { contains: searchQuery } }
+      ];
+    }
+    if (filterBy === "with_bio") {
+      whereClause.bio = { not: null };
+    } else if (filterBy === "no_bio") {
+      whereClause.bio = null;
+    } else if (filterBy === "with_social") {
+      whereClause.xUsername = { not: null };
+    } else if (filterBy === "active_gamers") {
+      whereClause.OR = [
+        { wins: { gt: 0 } },
+        { losses: { gt: 0 } }
+      ];
+    }
+    let orderBy;
+    switch (sortBy) {
+      case "popular":
+        orderBy = { bioViewCount: "desc" };
+        break;
+      case "active":
+        orderBy = [{ wins: "desc" }, { bioLastUpdated: "desc" }];
+        break;
+      case "newest":
+        orderBy = { createdAt: "desc" };
+        break;
+      case "recent":
+      default:
+        orderBy = { bioLastUpdated: "desc" };
+        break;
+    }
+    const totalUsers = await prisma.user.count({ where: whereClause });
+    const totalPages = Math.ceil(totalUsers / limit);
+    const users = await prisma.user.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        discordId: true,
+        bio: true,
+        bioLastUpdated: true,
+        bioViewCount: true,
+        xUsername: true,
+        socials: true,
+        wins: true,
+        losses: true,
+        ties: true,
+        createdAt: true,
+        _count: {
+          select: {
+            tipsSent: { where: { status: "COMPLETED" } },
+            tipsReceived: { where: { status: "COMPLETED" } }
+          }
         }
-        // Add bio filter
-        if (filterBy === 'with_bio') {
-            whereClause.bio = { not: null };
-        }
-        else if (filterBy === 'no_bio') {
-            whereClause.bio = null;
-        }
-        else if (filterBy === 'with_social') {
-            whereClause.xUsername = { not: null };
-        }
-        else if (filterBy === 'active_gamers') {
-            whereClause.OR = [
-                { wins: { gt: 0 } },
-                { losses: { gt: 0 } }
-            ];
-        }
-        // Define sort options
-        let orderBy;
-        switch (sortBy) {
-            case 'popular':
-                orderBy = { bioViewCount: 'desc' };
-                break;
-            case 'active':
-                orderBy = [{ wins: 'desc' }, { bioLastUpdated: 'desc' }];
-                break;
-            case 'newest':
-                orderBy = { createdAt: 'desc' };
-                break;
-            case 'recent':
-            default:
-                orderBy = { bioLastUpdated: 'desc' };
-                break;
-        }
-        // Get total count for pagination
-        const totalUsers = await prisma.user.count({ where: whereClause });
-        const totalPages = Math.ceil(totalUsers / limit);
-        // Get filtered and sorted users
-        const users = await prisma.user.findMany({
-            where: whereClause,
-            select: {
-                id: true,
-                discordId: true,
-                bio: true,
-                bioLastUpdated: true,
-                bioViewCount: true,
-                xUsername: true,
-                socials: true,
-                wins: true,
-                losses: true,
-                ties: true,
-                createdAt: true,
-                _count: {
-                    select: {
-                        tipsSent: { where: { status: 'COMPLETED' } },
-                        tipsReceived: { where: { status: 'COMPLETED' } }
-                    }
-                }
-            },
-            orderBy,
-            skip: offset,
-            take: limit
-        });
-        const content = `
+      },
+      orderBy,
+      skip: offset,
+      take: limit
+    });
+    const content = `
     <div class="pg-container">
-        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">👥 Browse PenguBook Users</h1>
+        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u{1F465} Browse PenguBook Users</h1>
 
         <!-- Enhanced Search and Filter Interface -->
         <div style="margin-bottom: var(--pg-space-8);">
@@ -764,30 +741,30 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
                         class="pg-search-enhanced__input"
                         id="searchInput"
                     >
-                    <span class="pg-search-enhanced__icon">🔍</span>
+                    <span class="pg-search-enhanced__icon">\u{1F50D}</span>
                 </div>
 
                 <!-- Filter Pills -->
                 <div class="pg-search-enhanced__filters">
                     <select name="sort" class="pg-search-filter" onchange="this.form.submit()">
-                        <option value="recent" ${sortBy === 'recent' ? 'selected' : ''}>Recently Updated</option>
-                        <option value="popular" ${sortBy === 'popular' ? 'selected' : ''}>Most Popular</option>
-                        <option value="active" ${sortBy === 'active' ? 'selected' : ''}>Most Active</option>
-                        <option value="newest" ${sortBy === 'newest' ? 'selected' : ''}>Newest Members</option>
+                        <option value="recent" ${sortBy === "recent" ? "selected" : ""}>Recently Updated</option>
+                        <option value="popular" ${sortBy === "popular" ? "selected" : ""}>Most Popular</option>
+                        <option value="active" ${sortBy === "active" ? "selected" : ""}>Most Active</option>
+                        <option value="newest" ${sortBy === "newest" ? "selected" : ""}>Newest Members</option>
                     </select>
 
                     <select name="filter" class="pg-search-filter" onchange="this.form.submit()">
-                        <option value="all" ${filterBy === 'all' ? 'selected' : ''}>All Users</option>
-                        <option value="with_bio" ${filterBy === 'with_bio' ? 'selected' : ''}>Has Bio</option>
-                        <option value="with_social" ${filterBy === 'with_social' ? 'selected' : ''}>Has Social Links</option>
-                        <option value="active_gamers" ${filterBy === 'active_gamers' ? 'selected' : ''}>Active Gamers</option>
+                        <option value="all" ${filterBy === "all" ? "selected" : ""}>All Users</option>
+                        <option value="with_bio" ${filterBy === "with_bio" ? "selected" : ""}>Has Bio</option>
+                        <option value="with_social" ${filterBy === "with_social" ? "selected" : ""}>Has Social Links</option>
+                        <option value="active_gamers" ${filterBy === "active_gamers" ? "selected" : ""}>Active Gamers</option>
                     </select>
 
-                    ${searchQuery || sortBy !== 'recent' || filterBy !== 'all' ? `
+                    ${searchQuery || sortBy !== "recent" || filterBy !== "all" ? `
                     <a href="/pengubook/browse" class="pg-search-filter" style="text-decoration: none; display: inline-flex; align-items: center;">
-                        ✕ Clear Filters
+                        \u2715 Clear Filters
                     </a>
-                    ` : ''}
+                    ` : ""}
                 </div>
             </form>
 
@@ -795,14 +772,14 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
             <div style="margin-top: var(--pg-space-4); color: var(--pg-dark-600); font-size: var(--pg-text-sm);">
                 ${totalUsers > 0 ? `
                     Showing ${(page - 1) * limit + 1}-${Math.min(page * limit, totalUsers)} of ${totalUsers} users
-                    ${searchQuery ? `matching "${searchQuery}"` : ''}
-                ` : 'No users found'}
+                    ${searchQuery ? `matching "${searchQuery}"` : ""}
+                ` : "No users found"}
             </div>
         </div>
 
         ${users.length === 0 ? `
         <div class="pg-empty-state">
-            <div class="pg-empty-state__icon">👥</div>
+            <div class="pg-empty-state__icon">\u{1F465}</div>
             <h2 class="pg-empty-state__title">No users found</h2>
             <p class="pg-empty-state__description">
                 No users have set up their PenguBook profiles yet. Be one of the first to create your profile!
@@ -813,31 +790,31 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
         </div>
         ` : `
         <div class="pg-grid pg-grid--2">
-            ${users.map((user) => {
-            const socials = user.socials ? JSON.parse(user.socials) : [];
-            const winRate = user.wins + user.losses > 0 ? ((user.wins / (user.wins + user.losses)) * 100).toFixed(1) : 'N/A';
-            const totalTips = user._count.tipsSent + user._count.tipsReceived;
-            return `
-              <div class="pg-profile-card-enhanced" onclick="window.location.href='/pengubook/user/${user.discordId}'" style="cursor: pointer;">
+            ${users.map((user2) => {
+      const socials = user2.socials ? JSON.parse(user2.socials) : [];
+      const winRate = user2.wins + user2.losses > 0 ? (user2.wins / (user2.wins + user2.losses) * 100).toFixed(1) : "N/A";
+      const totalTips = user2._count.tipsSent + user2._count.tipsReceived;
+      return `
+              <div class="pg-profile-card-enhanced" onclick="window.location.href='/pengubook/user/${user2.discordId}'" style="cursor: pointer;">
                   <div class="pg-profile-card-enhanced__header">
-                      <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png"
+                      <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(user2.discordId.slice(-1)) % 6}.png"
                            alt="Avatar"
                            class="pg-profile-card-enhanced__avatar"
-                           id="avatar-${user.discordId}"
+                           id="avatar-${user2.discordId}"
                            loading="lazy">
                       <div class="pg-profile-card-enhanced__info">
-                          <h3 id="username-${user.discordId}">User#${user.discordId.slice(-4)}</h3>
+                          <h3 id="username-${user2.discordId}">User#${user2.discordId.slice(-4)}</h3>
                           <div style="color: var(--pg-dark-600); font-size: var(--pg-text-sm); display: flex; align-items: center; gap: var(--pg-space-3);">
-                              <span>👀 ${user.bioViewCount} views</span>
-                              ${totalTips > 0 ? `<span>💰 ${totalTips} tips</span>` : ''}
-                              ${user.xUsername ? `<span>🐦 @${user.xUsername}</span>` : ''}
+                              <span>\u{1F440} ${user2.bioViewCount} views</span>
+                              ${totalTips > 0 ? `<span>\u{1F4B0} ${totalTips} tips</span>` : ""}
+                              ${user2.xUsername ? `<span>\u{1F426} @${user2.xUsername}</span>` : ""}
                           </div>
                       </div>
                   </div>
 
-                  ${user.bio ? `
+                  ${user2.bio ? `
                   <div style="margin: var(--pg-space-4) 0; color: var(--pg-dark-700); font-size: var(--pg-text-sm); line-height: 1.5;">
-                      ${user.bio.length > 120 ? user.bio.substring(0, 120) + '...' : user.bio}
+                      ${user2.bio.length > 120 ? user2.bio.substring(0, 120) + "..." : user2.bio}
                   </div>
                   ` : `
                   <div style="margin: var(--pg-space-4) 0; color: var(--pg-dark-500); font-size: var(--pg-text-sm); font-style: italic;">
@@ -847,11 +824,11 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
 
                   <div class="pg-profile-card-enhanced__stats">
                       <div class="pg-profile-card-enhanced__stat">
-                          <span class="pg-profile-card-enhanced__stat-value">${user.wins}</span>
+                          <span class="pg-profile-card-enhanced__stat-value">${user2.wins}</span>
                           <span class="pg-profile-card-enhanced__stat-label">Wins</span>
                       </div>
                       <div class="pg-profile-card-enhanced__stat">
-                          <span class="pg-profile-card-enhanced__stat-value">${user.losses}</span>
+                          <span class="pg-profile-card-enhanced__stat-value">${user2.losses}</span>
                           <span class="pg-profile-card-enhanced__stat-label">Losses</span>
                       </div>
                       <div class="pg-profile-card-enhanced__stat">
@@ -861,7 +838,7 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
                   </div>
               </div>
               `;
-        }).join('')}
+    }).join("")}
         </div>
 
         <!-- Pagination -->
@@ -869,8 +846,8 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
         <div style="margin-top: var(--pg-space-8); display: flex; justify-content: center; align-items: center; gap: var(--pg-space-2);">
             ${page > 1 ? `
             <a href="/pengubook/browse?search=${encodeURIComponent(searchQuery)}&sort=${sortBy}&filter=${filterBy}&page=${page - 1}"
-               class="pg-btn pg-btn--secondary">← Previous</a>
-            ` : ''}
+               class="pg-btn pg-btn--secondary">\u2190 Previous</a>
+            ` : ""}
 
             <span style="color: var(--pg-dark-600); font-size: var(--pg-text-sm); margin: 0 var(--pg-space-4);">
                 Page ${page} of ${totalPages}
@@ -878,22 +855,22 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
 
             ${page < totalPages ? `
             <a href="/pengubook/browse?search=${encodeURIComponent(searchQuery)}&sort=${sortBy}&filter=${filterBy}&page=${page + 1}"
-               class="pg-btn pg-btn--secondary">Next →</a>
-            ` : ''}
+               class="pg-btn pg-btn--secondary">Next \u2192</a>
+            ` : ""}
         </div>
-        ` : ''}
+        ` : ""}
         `}
     </div>
 
     <script>
         // Load Discord usernames and avatars with error handling
-        ${users.map((user) => `
-        fetch('/pengubook/api/discord-user/${user.discordId}')
+        ${users.map((user2) => `
+        fetch('/pengubook/api/discord-user/${user2.discordId}')
             .then(res => res.ok ? res.json() : Promise.reject('Failed to load'))
             .then(data => {
                 if (data.success) {
-                    const usernameEl = document.getElementById('username-${user.discordId}');
-                    const avatarEl = document.getElementById('avatar-${user.discordId}');
+                    const usernameEl = document.getElementById('username-${user2.discordId}');
+                    const avatarEl = document.getElementById('avatar-${user2.discordId}');
                     if (usernameEl) usernameEl.textContent = data.username;
                     if (avatarEl) avatarEl.src = data.avatarURL;
                 }
@@ -901,67 +878,59 @@ pengubookEnhancedRouter.get("/browse", async (req, res) => {
             .catch(() => {
                 // Silently fail with fallback already in place
             });
-        `).join('')}
+        `).join("")}
     </script>`;
-        res.send(generateBaseHTML(content, '👥 Browse Users - PenguBook', 'browse', {
-            user: currentUser,
-            unreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook browse error:", error);
-        res.status(500).send("Error loading browse page");
-    }
+    res.send(generateBaseHTML(content, "\u{1F465} Browse Users - PenguBook", "browse", {
+      user: currentUser,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook browse error:", error);
+    res.status(500).send("Error loading browse page");
+  }
 });
-// All other routes remain the same but with enhanced HTML generation
-// ... (keeping the existing route logic but updating the HTML generation)
-// Enhanced API endpoint for unread count
 pengubookEnhancedRouter.get("/api/unread-count", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const count = await getUnreadMessageCount(currentUser.discordId);
-        res.json({ success: true, count });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Unread count fetch error:", error);
-        res.status(500).json({ success: false, error: "Failed to fetch unread count" });
-    }
+    const count = await getUnreadMessageCount(currentUser.discordId);
+    res.json({ success: true, count });
+  } catch (error) {
+    console.error("Unread count fetch error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch unread count" });
+  }
 });
-// GET /pengubook/user/:discordId - Enhanced individual user profile
 pengubookEnhancedRouter.get("/user/:discordId", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const targetDiscordId = req.params.discordId;
-        const currentDbUser = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get target user's profile
-        const targetUser = await prisma.user.findUnique({
-            where: { discordId: targetDiscordId },
-            select: {
-                id: true,
-                discordId: true,
-                bio: true,
-                bioLastUpdated: true,
-                bioViewCount: true,
-                xUsername: true,
-                socials: true,
-                wins: true,
-                losses: true,
-                ties: true,
-                createdAt: true,
-                showInPenguBook: true
-            }
-        });
-        if (!targetUser || !targetUser.showInPenguBook) {
-            const content = `
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const targetDiscordId = req.params.discordId;
+    const currentDbUser = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const targetUser = await prisma.user.findUnique({
+      where: { discordId: targetDiscordId },
+      select: {
+        id: true,
+        discordId: true,
+        bio: true,
+        bioLastUpdated: true,
+        bioViewCount: true,
+        xUsername: true,
+        socials: true,
+        wins: true,
+        losses: true,
+        ties: true,
+        createdAt: true,
+        showInPenguBook: true
+      }
+    });
+    if (!targetUser || !targetUser.showInPenguBook) {
+      const content2 = `
       <div class="pg-container">
         <div class="pg-empty-state">
-          <div class="pg-empty-state__icon">😔</div>
+          <div class="pg-empty-state__icon">\u{1F614}</div>
           <h2 class="pg-empty-state__title">User Not Found</h2>
           <p class="pg-empty-state__description">
             This user either doesn't exist or hasn't made their profile public yet.
@@ -971,413 +940,368 @@ pengubookEnhancedRouter.get("/user/:discordId", async (req, res) => {
           </div>
         </div>
       </div>`;
-            return res.send(generateBaseHTML(content, '❌ User Not Found - PenguBook', 'browse', {
-                user: currentUser,
-                unreadCount
-            }));
+      return res.send(generateBaseHTML(content2, "\u274C User Not Found - PenguBook", "browse", {
+        user: currentUser,
+        unreadCount
+      }));
+    }
+    await Promise.all([
+      prisma.bioBrowse.upsert({
+        where: {
+          viewerId_profileId: {
+            viewerId: currentDbUser.id,
+            profileId: targetUser.id
+          }
+        },
+        update: {},
+        create: {
+          viewerId: currentDbUser.id,
+          profileId: targetUser.id
         }
-        // Record profile view and increment view count
-        await Promise.all([
-            prisma.bioBrowse.upsert({
-                where: {
-                    viewerId_profileId: {
-                        viewerId: currentDbUser.id,
-                        profileId: targetUser.id
-                    }
-                },
-                update: {},
-                create: {
-                    viewerId: currentDbUser.id,
-                    profileId: targetUser.id
-                }
-            }),
-            prisma.user.update({
-                where: { id: targetUser.id },
-                data: { bioViewCount: { increment: 1 } }
-            })
-        ]);
-        // Get tokens for tipping
-        const tokens = await getActiveTokens();
-        // Get current user's balances
-        const balances = await prisma.userBalance.findMany({
-            where: { userId: currentDbUser.id },
-            include: { Token: true }
-        });
-        // Get app config for tax rates
-        const config = await getConfig();
-        // Get achievements for the target user
-        const { getUserAchievements, getStreakStats } = await import("../services/streaks.js");
-        const [achievements, streakStats] = await Promise.all([
-            getUserAchievements(targetUser.discordId),
-            getStreakStats(targetUser.discordId)
-        ]);
-        const socials = targetUser.socials ? JSON.parse(targetUser.socials) : [];
-        const winRate = targetUser.wins + targetUser.losses > 0
-            ? ((targetUser.wins / (targetUser.wins + targetUser.losses)) * 100).toFixed(1)
-            : 'N/A';
-        const content = generateUserProfileContent(targetUser, socials, winRate, streakStats, achievements, balances, tokens, config);
-        res.send(generateBaseHTML(content, `👤 ${targetUser.discordId.slice(-4)} - PenguBook`, 'browse', {
-            user: currentUser,
-            unreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook user profile error:", error);
-        res.status(500).send("Error loading user profile");
-    }
+      }),
+      prisma.user.update({
+        where: { id: targetUser.id },
+        data: { bioViewCount: { increment: 1 } }
+      })
+    ]);
+    const tokens = await getActiveTokens();
+    const balances = await prisma.userBalance.findMany({
+      where: { userId: currentDbUser.id },
+      include: { Token: true }
+    });
+    const config = await getConfig();
+    const { getUserAchievements, getStreakStats } = await import("../services/streaks.js");
+    const [achievements, streakStats] = await Promise.all([
+      getUserAchievements(targetUser.discordId),
+      getStreakStats(targetUser.discordId)
+    ]);
+    const socials = targetUser.socials ? JSON.parse(targetUser.socials) : [];
+    const winRate = targetUser.wins + targetUser.losses > 0 ? (targetUser.wins / (targetUser.wins + targetUser.losses) * 100).toFixed(1) : "N/A";
+    const content = generateUserProfileContent(targetUser, socials, winRate, streakStats, achievements, balances, tokens, config);
+    res.send(generateBaseHTML(content, `\u{1F464} ${targetUser.discordId.slice(-4)} - PenguBook`, "browse", {
+      user: currentUser,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook user profile error:", error);
+    res.status(500).send("Error loading user profile");
+  }
 });
-// GET /pengubook/profile - Enhanced profile settings
 pengubookEnhancedRouter.get("/profile", async (req, res) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const referred = req.query.referred === "true";
+    let referralStats;
     try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        const referred = req.query.referred === 'true';
-        // Get or create referral stats
-        let referralStats;
-        try {
-            referralStats = await getReferralStats(currentUser.discordId);
-            // Create referral code if user doesn't have one
-            if (!referralStats.referralCode) {
-                const newCode = await createReferralCode(currentUser.discordId);
-                referralStats = await getReferralStats(currentUser.discordId);
-            }
-        }
-        catch (error) {
-            console.error("Error getting referral stats:", error);
-            referralStats = null;
-        }
-        const content = generateProfileContent(user, referralStats, referred, req);
-        res.send(generateBaseHTML(content, '⚙️ Profile Settings - PenguBook', 'profile', {
-            user: currentUser,
-            unreadCount
-        }));
+      referralStats = await getReferralStats(currentUser.discordId);
+      if (!referralStats.referralCode) {
+        const newCode = await createReferralCode(currentUser.discordId);
+        referralStats = await getReferralStats(currentUser.discordId);
+      }
+    } catch (error) {
+      console.error("Error getting referral stats:", error);
+      referralStats = null;
     }
-    catch (error) {
-        console.error("PenguBook profile error:", error);
-        res.status(500).send("Error loading profile");
-    }
+    const content = generateProfileContent(user, referralStats, referred, req);
+    res.send(generateBaseHTML(content, "\u2699\uFE0F Profile Settings - PenguBook", "profile", {
+      user: currentUser,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook profile error:", error);
+    res.status(500).send("Error loading profile");
+  }
 });
-// POST /pengubook/api/tip - Enhanced tip processing
 pengubookEnhancedRouter.post("/api/tip", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const { recipient, token: tokenAddress, amount, message } = req.body;
-        if (!recipient || !tokenAddress || !amount) {
-            return res.status(400).json({ success: false, error: "Missing required fields" });
-        }
-        // Find recipient user
-        const recipientUser = await findOrCreateUser(recipient);
-        if (!recipientUser) {
-            return res.status(404).json({ success: false, error: "Recipient not found" });
-        }
-        // Get token info using proper token service
-        const token = await getTokenByAddress(tokenAddress);
-        if (!token) {
-            return res.status(404).json({ success: false, error: "Token not found" });
-        }
-        // Get Discord client
-        const discordClient = getDiscordClient();
-        if (!discordClient) {
-            return res.status(500).json({ success: false, error: "Discord client not available" });
-        }
-        // Process the tip using the same logic as Discord tipping
-        const tipData = {
-            amount: parseFloat(amount),
-            tipType: "direct",
-            targetUserId: recipient,
-            note: message || "",
-            tokenId: token.id,
-            userId: currentUser.discordId,
-            guildId: null, // Web tips are not guild-specific
-            channelId: null, // Web tips don't have a channel
-            fromPenguBook: true // Flag to indicate this came from PenguBook
-        };
-        const result = await processTip(tipData, discordClient);
-        if (!result.success) {
-            return res.status(400).json({ success: false, error: result.message });
-        }
-        res.json({
-            success: true,
-            message: result.message
-        });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Web tip error:", error);
-        res.status(500).json({ success: false, error: "Failed to process tip" });
+    const { recipient, token: tokenAddress, amount, message } = req.body;
+    if (!recipient || !tokenAddress || !amount) {
+      return res.status(400).json({ success: false, error: "Missing required fields" });
     }
+    const recipientUser = await findOrCreateUser(recipient);
+    if (!recipientUser) {
+      return res.status(404).json({ success: false, error: "Recipient not found" });
+    }
+    const token = await getTokenByAddress(tokenAddress);
+    if (!token) {
+      return res.status(404).json({ success: false, error: "Token not found" });
+    }
+    const discordClient = getDiscordClient();
+    if (!discordClient) {
+      return res.status(500).json({ success: false, error: "Discord client not available" });
+    }
+    const tipData = {
+      amount: parseFloat(amount),
+      tipType: "direct",
+      targetUserId: recipient,
+      note: message || "",
+      tokenId: token.id,
+      userId: currentUser.discordId,
+      guildId: null,
+      // Web tips are not guild-specific
+      channelId: null,
+      // Web tips don't have a channel
+      fromPenguBook: true
+      // Flag to indicate this came from PenguBook
+    };
+    const result = await processTip(tipData, discordClient);
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.message });
+    }
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error("Web tip error:", error);
+    res.status(500).json({ success: false, error: "Failed to process tip" });
+  }
 });
-// POST /pengubook/api/profile - Enhanced profile updates
 pengubookEnhancedRouter.post("/api/profile", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const { bio, socials } = req.body;
-        const user = await findOrCreateUser(currentUser.discordId);
-        const updateData = {};
-        if (bio !== undefined) {
-            updateData.bio = bio.trim() || null;
-            updateData.bioLastUpdated = new Date();
-        }
-        if (socials !== undefined) {
-            updateData.socials = socials.length > 0 ? JSON.stringify(socials) : null;
-        }
-        await prisma.user.update({
-            where: { id: user.id },
-            data: updateData
-        });
-        res.json({ success: true });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Profile update error:", error);
-        res.status(500).json({ success: false, error: "Failed to update profile" });
+    const { bio, socials } = req.body;
+    const user = await findOrCreateUser(currentUser.discordId);
+    const updateData = {};
+    if (bio !== void 0) {
+      updateData.bio = bio.trim() || null;
+      updateData.bioLastUpdated = /* @__PURE__ */ new Date();
     }
+    if (socials !== void 0) {
+      updateData.socials = socials.length > 0 ? JSON.stringify(socials) : null;
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: updateData
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Profile update error:", error);
+    res.status(500).json({ success: false, error: "Failed to update profile" });
+  }
 });
-// GET /pengubook/api/balance - Enhanced balance endpoint
 pengubookEnhancedRouter.get("/api/balance", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        }
-        const user = await findOrCreateUser(currentUser.discordId);
-        const balances = await prisma.userBalance.findMany({
-            where: { userId: user.id },
-            include: { Token: true },
-            orderBy: { Token: { symbol: "asc" } }
-        });
-        const tokenSymbols = Array.from(new Set(balances.map(balance => balance.Token.symbol)));
-        let priceResult = null;
-        if (tokenSymbols.length > 0) {
-            try {
-                priceResult = await priceAPI.getTokenPrices(tokenSymbols);
-            }
-            catch (error) {
-                console.warn("Failed to fetch USD prices for balances:", error);
-            }
-        }
-        const priceMap = priceResult?.prices ?? {};
-        const priceSource = priceResult?.source ?? "fallback";
-        const formattedBalances = balances.map(balance => {
-            const amountNumber = Number(balance.amount.toString());
-            const amount = amountNumber.toFixed(2).replace(/\.?0+$/, "");
-            const priceUSD = priceMap[balance.Token.symbol] ?? 0;
-            const usdValue = priceUSD > 0 ? amountNumber * priceUSD : 0;
-            let formattedUSD = null;
-            if (priceUSD > 0) {
-                if (usdValue === 0) {
-                    formattedUSD = "$0.00";
-                }
-                else if (usdValue < 0.01) {
-                    formattedUSD = "< $0.01";
-                }
-                else {
-                    formattedUSD = `$${usdValue.toFixed(2)}`;
-                }
-            }
-            return {
-                ...balance,
-                amount,
-                priceUSD: priceUSD > 0 ? priceUSD : null,
-                usdValue,
-                formattedUSD
-            };
-        });
-        const totalUSD = formattedBalances.reduce((sum, balance) => sum + (balance.usdValue || 0), 0);
-        const formattedTotalUSD = totalUSD > 0 ? `$${totalUSD.toFixed(2)}` : null;
-        const priceDisclaimer = tokenSymbols.length > 0
-            ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}`
-            : null;
-        res.json({
-            success: true,
-            balances: formattedBalances,
-            totalUSD,
-            formattedTotalUSD,
-            priceSource,
-            priceDisclaimer
-        });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
-    catch (error) {
-        console.error("Balance fetch error:", error);
-        res.status(500).json({ success: false, error: "Failed to fetch balance" });
+    const user = await findOrCreateUser(currentUser.discordId);
+    const balances = await prisma.userBalance.findMany({
+      where: { userId: user.id },
+      include: { Token: true },
+      orderBy: { Token: { symbol: "asc" } }
+    });
+    const tokenSymbols = Array.from(new Set(balances.map((balance) => balance.Token.symbol)));
+    let priceResult = null;
+    if (tokenSymbols.length > 0) {
+      try {
+        priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+      } catch (error) {
+        console.warn("Failed to fetch USD prices for balances:", error);
+      }
     }
+    const priceMap = priceResult?.prices ?? {};
+    const priceSource = priceResult?.source ?? "fallback";
+    const formattedBalances = balances.map((balance) => {
+      const amountNumber = Number(balance.amount.toString());
+      const amount = amountNumber.toFixed(2).replace(/\.?0+$/, "");
+      const priceUSD = priceMap[balance.Token.symbol] ?? 0;
+      const usdValue = priceUSD > 0 ? amountNumber * priceUSD : 0;
+      let formattedUSD = null;
+      if (priceUSD > 0) {
+        if (usdValue === 0) {
+          formattedUSD = "$0.00";
+        } else if (usdValue < 0.01) {
+          formattedUSD = "< $0.01";
+        } else {
+          formattedUSD = `$${usdValue.toFixed(2)}`;
+        }
+      }
+      return {
+        ...balance,
+        amount,
+        priceUSD: priceUSD > 0 ? priceUSD : null,
+        usdValue,
+        formattedUSD
+      };
+    });
+    const totalUSD = formattedBalances.reduce((sum, balance) => sum + (balance.usdValue || 0), 0);
+    const formattedTotalUSD = totalUSD > 0 ? `$${totalUSD.toFixed(2)}` : null;
+    const priceDisclaimer = tokenSymbols.length > 0 ? `USD estimates via ${priceSource.toUpperCase()}${priceSource === "fallback" ? " (estimates only)" : ""}` : null;
+    res.json({
+      success: true,
+      balances: formattedBalances,
+      totalUSD,
+      formattedTotalUSD,
+      priceSource,
+      priceDisclaimer
+    });
+  } catch (error) {
+    console.error("Balance fetch error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch balance" });
+  }
 });
-// GET /pengubook/api/discord-user/:discordId - Enhanced Discord user info
 pengubookEnhancedRouter.get("/api/discord-user/:discordId", async (req, res) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.status(401).json({ success: false, error: "Not authenticated" });
+    const discordId = req.params.discordId;
+    const client = getDiscordClient();
+    if (!client) {
+      return res.json({
+        success: true,
+        username: `User#${discordId.slice(-4)}`,
+        avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+      });
+    }
     try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.status(401).json({ success: false, error: "Not authenticated" });
-        const discordId = req.params.discordId;
-        // Get Discord client from services
-        const client = getDiscordClient();
-        if (!client) {
-            return res.json({
-                success: true,
-                username: `User#${discordId.slice(-4)}`,
-                avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
-            });
-        }
-        try {
-            const user = await client.users.fetch(discordId);
-            res.json({
-                success: true,
-                username: user.username || user.displayName || `User#${discordId.slice(-4)}`,
-                avatarURL: user.displayAvatarURL({ size: 256, extension: 'png' })
-            });
-        }
-        catch (error) {
-            // User not found or not accessible, return fallback
-            res.json({
-                success: true,
-                username: `User#${discordId.slice(-4)}`,
-                avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
-            });
-        }
+      const user = await client.users.fetch(discordId);
+      res.json({
+        success: true,
+        username: user.username || user.displayName || `User#${discordId.slice(-4)}`,
+        avatarURL: user.displayAvatarURL({ size: 256, extension: "png" })
+      });
+    } catch (error) {
+      res.json({
+        success: true,
+        username: `User#${discordId.slice(-4)}`,
+        avatarURL: `https://cdn.discordapp.com/embed/avatars/${parseInt(discordId.slice(-1)) % 6}.png`
+      });
     }
-    catch (error) {
-        console.error("Discord user fetch error:", error);
-        res.status(500).json({ success: false, error: "Failed to fetch user info" });
-    }
+  } catch (error) {
+    console.error("Discord user fetch error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch user info" });
+  }
 });
-// GET /pengubook/api/activity-feed - Fetch recent activity for activity feed
 pengubookEnhancedRouter.get("/api/activity-feed", async (req, res) => {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.status(401).json({ success: false, error: "Not authenticated" });
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.status(401).json({ success: false, error: "Not authenticated" });
+    }
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const recentTips = await prisma.tip.findMany({
+      take: limit,
+      skip: offset,
+      orderBy: { createdAt: "desc" },
+      include: {
+        From: true,
+        To: true,
+        Token: true
+      },
+      where: {
+        OR: [
+          { From: { showInPenguBook: true } },
+          { To: { showInPenguBook: true } }
+        ]
+      }
+    });
+    const recentProfileUpdates = await prisma.user.findMany({
+      take: Math.floor(limit / 4),
+      orderBy: { updatedAt: "desc" },
+      where: {
+        showInPenguBook: true,
+        bio: { not: null },
+        updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1e3) }
+        // Last 24 hours
+      },
+      select: {
+        discordId: true,
+        bio: true,
+        updatedAt: true
+      }
+    });
+    const recentMatches = await prisma.match.findMany({
+      take: Math.floor(limit / 4),
+      orderBy: { createdAt: "desc" },
+      include: {
+        Challenger: { select: { discordId: true, showInPenguBook: true } },
+        Joiner: { select: { discordId: true, showInPenguBook: true } }
+      },
+      where: {
+        OR: [
+          { Challenger: { showInPenguBook: true } },
+          { Joiner: { showInPenguBook: true } }
+        ],
+        result: { not: null }
+      }
+    }).catch(() => []);
+    const activities = [];
+    recentTips.forEach((tip) => {
+      if (!tip.From || !tip.To) return;
+      activities.push({
+        id: `tip-${tip.id}`,
+        type: "tip",
+        timestamp: tip.createdAt,
+        data: {
+          fromUser: tip.From.discordId,
+          toUser: tip.To.discordId,
+          amount: formatAmount(BigInt(tip.amountAtomic.toString()), tip.Token),
+          message: tip.note
         }
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const offset = (page - 1) * limit;
-        // Get recent tips (both given and received)
-        const recentTips = await prisma.tip.findMany({
-            take: limit,
-            skip: offset,
-            orderBy: { createdAt: 'desc' },
-            include: {
-                From: true,
-                To: true,
-                Token: true
-            },
-            where: {
-                OR: [
-                    { From: { showInPenguBook: true } },
-                    { To: { showInPenguBook: true } }
-                ]
-            }
-        });
-        // Get recent user profile updates
-        const recentProfileUpdates = await prisma.user.findMany({
-            take: Math.floor(limit / 4),
-            orderBy: { updatedAt: 'desc' },
-            where: {
-                showInPenguBook: true,
-                bio: { not: null },
-                updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
-            },
-            select: {
-                discordId: true,
-                bio: true,
-                updatedAt: true
-            }
-        });
-        // Get recent matches (if available)
-        const recentMatches = await prisma.match.findMany({
-            take: Math.floor(limit / 4),
-            orderBy: { createdAt: 'desc' },
-            include: {
-                Challenger: { select: { discordId: true, showInPenguBook: true } },
-                Joiner: { select: { discordId: true, showInPenguBook: true } }
-            },
-            where: {
-                OR: [
-                    { Challenger: { showInPenguBook: true } },
-                    { Joiner: { showInPenguBook: true } }
-                ],
-                result: { not: null }
-            }
-        }).catch(() => []); // Fallback if matches table doesn't exist
-        // Combine and format activities
-        const activities = [];
-        // Add tip activities
-        recentTips.forEach(tip => {
-            if (!tip.From || !tip.To)
-                return;
-            activities.push({
-                id: `tip-${tip.id}`,
-                type: 'tip',
-                timestamp: tip.createdAt,
-                data: {
-                    fromUser: tip.From.discordId,
-                    toUser: tip.To.discordId,
-                    amount: formatAmount(BigInt(tip.amountAtomic.toString()), tip.Token),
-                    message: tip.note
-                }
-            });
-        });
-        // Add profile update activities
-        recentProfileUpdates.forEach(user => {
-            activities.push({
-                id: `profile-${user.discordId}-${user.updatedAt.getTime()}`,
-                type: 'profile_update',
-                timestamp: user.updatedAt,
-                data: {
-                    discordId: user.discordId,
-                    bio: user.bio?.substring(0, 100) + (user.bio && user.bio.length > 100 ? '...' : '')
-                }
-            });
-        });
-        // Add match activities
-        recentMatches.forEach(match => {
-            if (!match.Challenger || !match.Joiner)
-                return;
-            const winner = match.result === 'challenger' ? match.Challenger.discordId :
-                match.result === 'joiner' ? match.Joiner.discordId : null;
-            activities.push({
-                id: `match-${match.id}`,
-                type: 'match',
-                timestamp: match.createdAt,
-                data: {
-                    user1: match.Challenger.discordId,
-                    user2: match.Joiner.discordId,
-                    winner: winner,
-                    result: match.result
-                }
-            });
-        });
-        // Sort by timestamp and limit
-        activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        const limitedActivities = activities.slice(0, limit);
-        res.json({
-            success: true,
-            activities: limitedActivities,
-            hasMore: activities.length > limit,
-            nextPage: activities.length > limit ? page + 1 : null
-        });
-    }
-    catch (error) {
-        console.error("Activity feed fetch error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to fetch activity feed",
-            details: String(error)
-        });
-    }
+      });
+    });
+    recentProfileUpdates.forEach((user) => {
+      activities.push({
+        id: `profile-${user.discordId}-${user.updatedAt.getTime()}`,
+        type: "profile_update",
+        timestamp: user.updatedAt,
+        data: {
+          discordId: user.discordId,
+          bio: user.bio?.substring(0, 100) + (user.bio && user.bio.length > 100 ? "..." : "")
+        }
+      });
+    });
+    recentMatches.forEach((match) => {
+      if (!match.Challenger || !match.Joiner) return;
+      const winner = match.result === "challenger" ? match.Challenger.discordId : match.result === "joiner" ? match.Joiner.discordId : null;
+      activities.push({
+        id: `match-${match.id}`,
+        type: "match",
+        timestamp: match.createdAt,
+        data: {
+          user1: match.Challenger.discordId,
+          user2: match.Joiner.discordId,
+          winner,
+          result: match.result
+        }
+      });
+    });
+    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const limitedActivities = activities.slice(0, limit);
+    res.json({
+      success: true,
+      activities: limitedActivities,
+      hasMore: activities.length > limit,
+      nextPage: activities.length > limit ? page + 1 : null
+    });
+  } catch (error) {
+    console.error("Activity feed fetch error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch activity feed",
+      details: String(error)
+    });
+  }
 });
-// Helper function to generate user profile content
 function generateUserProfileContent(targetUser, socials, winRate, streakStats, achievements, balances, tokens, config) {
-    return `
+  return `
     <div class="pg-container">
       <div style="margin-bottom: var(--pg-space-6);">
-        <a href="/pengubook/browse" class="pg-btn pg-btn--secondary">← Back to Browse</a>
+        <a href="/pengubook/browse" class="pg-btn pg-btn--secondary">\u2190 Back to Browse</a>
       </div>
 
       <!-- Profile Header -->
@@ -1389,7 +1313,7 @@ function generateUserProfileContent(targetUser, socials, winRate, streakStats, a
              loading="lazy">
         <div class="pg-profile-info">
           <div class="pg-profile-name" id="profileName">User#${targetUser.discordId.slice(-4)}</div>
-          <div class="pg-profile-meta">👀 ${targetUser.bioViewCount} profile views • Member since ${new Date(targetUser.createdAt).toLocaleDateString()}</div>
+          <div class="pg-profile-meta">\u{1F440} ${targetUser.bioViewCount} profile views \u2022 Member since ${new Date(targetUser.createdAt).toLocaleDateString()}</div>
 
           <!-- Stats Grid -->
           <div class="pg-stats-grid" style="margin: var(--pg-space-6) 0;">
@@ -1417,9 +1341,9 @@ function generateUserProfileContent(targetUser, socials, winRate, streakStats, a
             <a href="${social.url}" target="_blank" rel="noopener noreferrer" class="pg-social-link">
               ${social.platform}
             </a>
-            `).join('')}
+            `).join("")}
           </div>
-          ` : ''}
+          ` : ""}
         </div>
       </div>
 
@@ -1430,13 +1354,12 @@ function generateUserProfileContent(targetUser, socials, winRate, streakStats, a
       ${generateProfileScripts(targetUser, config)}
     </script>`;
 }
-// Helper function to generate profile sections
 function generateProfileSections(targetUser, streakStats, achievements, balances, tokens, config) {
-    return `
+  return `
       <!-- Bio Section -->
       ${targetUser.bio ? `
       <div class="pg-card">
-        <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">✨ About Me</h3>
+        <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u2728 About Me</h3>
         <p style="margin: 0; line-height: 1.7; color: var(--pg-dark-700);">
           ${targetUser.bio}
         </p>
@@ -1453,19 +1376,19 @@ function generateProfileSections(targetUser, streakStats, achievements, balances
       <!-- Win Streak Section -->
       ${streakStats && (streakStats.currentWins > 0 || streakStats.longestWins > 0) ? `
       <div class="pg-card">
-        <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">🔥 Win Streak</h3>
+        <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u{1F525} Win Streak</h3>
         <div class="pg-streak-display">
           <div class="pg-streak-current">${streakStats.currentWins}</div>
           <div class="pg-streak-label">Current Streak</div>
           <div class="pg-streak-best">Best: ${streakStats.longestWins} wins</div>
         </div>
       </div>
-      ` : ''}
+      ` : ""}
 
       <!-- Achievements Section -->
       ${achievements && achievements.length > 0 ? `
       <div class="pg-card">
-        <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">🏆 Achievements</h3>
+        <h3 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u{1F3C6} Achievements</h3>
         <div class="pg-achievement-grid">
           ${achievements.map((achievement) => `
           <div class="pg-achievement-badge">
@@ -1473,26 +1396,25 @@ function generateProfileSections(targetUser, streakStats, achievements, balances
             <div class="pg-achievement-name">${achievement.name}</div>
             <div class="pg-achievement-date">${new Date(achievement.unlockedAt).toLocaleDateString()}</div>
           </div>
-          `).join('')}
+          `).join("")}
         </div>
       </div>
-      ` : ''}
+      ` : ""}
 
       ${generateTipSection(balances, tokens, config)}`;
 }
-// Helper function to generate tip section
 function generateTipSection(balances, tokens, config) {
-    return `
+  return `
       <!-- Tip Section -->
       <div class="pg-tip-section">
-        <h3 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">💸 Send a Tip</h3>
+        <h3 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u{1F4B8} Send a Tip</h3>
 
         <!-- Current Balances -->
         <div style="margin-bottom: var(--pg-space-6);">
           <h4 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-700);">Your Balances</h4>
           ${balances.length === 0 ? `
           <div class="pg-empty-state" style="padding: var(--pg-space-8) var(--pg-space-4);">
-            <div class="pg-empty-state__icon">💰</div>
+            <div class="pg-empty-state__icon">\u{1F4B0}</div>
             <p class="pg-empty-state__description">No balances found. Deposit tokens to start tipping!</p>
           </div>
           ` : `
@@ -1502,17 +1424,16 @@ function generateTipSection(balances, tokens, config) {
               <div class="pg-balance-symbol">${balance.Token.symbol}</div>
               <div class="pg-balance-amount">${formatAmount(balance.amountAtomic, balance.Token.decimals)}</div>
             </div>
-            `).join('')}
+            `).join("")}
           </div>
           `}
         </div>
 
-        ${balances.length > 0 ? generateTipForm(tokens, config) : ''}
+        ${balances.length > 0 ? generateTipForm(tokens, config) : ""}
       </div>`;
 }
-// Helper function to generate tip form
 function generateTipForm(tokens, config) {
-    return `
+  return `
         <!-- Tip Form -->
         <form id="tipForm" onsubmit="return handleTipSubmit(event)">
           <div class="pg-form-group">
@@ -1521,7 +1442,7 @@ function generateTipForm(tokens, config) {
               <option value="">Select a token...</option>
               ${tokens.map((token) => `
               <option value="${token.contractAddress}">${token.symbol} - ${token.name}</option>
-              `).join('')}
+              `).join("")}
             </select>
           </div>
 
@@ -1537,7 +1458,7 @@ function generateTipForm(tokens, config) {
 
           <!-- Tax Preview -->
           <div id="taxPreview" class="pg-tax-preview">
-            <h4 class="pg-tax-preview__title">💰 Transaction Preview</h4>
+            <h4 class="pg-tax-preview__title">\u{1F4B0} Transaction Preview</h4>
             <div class="pg-tax-preview__row">
               <span>Amount:</span>
               <span id="previewAmount">-</span>
@@ -1553,13 +1474,12 @@ function generateTipForm(tokens, config) {
           </div>
 
           <button type="submit" class="pg-btn pg-btn--primary pg-btn--lg" style="width: 100%; margin-top: var(--pg-space-4);">
-            Send Tip 🚀
+            Send Tip \u{1F680}
           </button>
         </form>`;
 }
-// Helper function to generate profile scripts
 function generateProfileScripts(targetUser, config) {
-    return `
+  return `
       // Load Discord username and avatar
       fetch('/pengubook/api/discord-user/${targetUser.discordId}')
         .then(res => res.ok ? res.json() : Promise.reject('Failed to load'))
@@ -1627,35 +1547,34 @@ function generateProfileScripts(targetUser, config) {
           const result = await response.json();
 
           if (result.success) {
-            alert('✅ Tip sent successfully! ' + result.message);
+            alert('\u2705 Tip sent successfully! ' + result.message);
             form.reset();
             const taxPreview = document.getElementById('taxPreview');
             if (taxPreview) taxPreview.style.display = 'none';
             // Refresh balances
             window.location.reload();
           } else {
-            alert('❌ Failed to send tip: ' + result.error);
+            alert('\u274C Failed to send tip: ' + result.error);
           }
         });
       }`;
 }
-// Helper function to generate profile content
 function generateProfileContent(user, referralStats, referred, req) {
-    const socials = user.socials ? JSON.parse(user.socials) : [];
-    return `
+  const socials = user.socials ? JSON.parse(user.socials) : [];
+  return `
     <div class="pg-container">
       ${referred ? `
       <div class="pg-card pg-card--success" style="margin-bottom: var(--pg-space-6);">
-        <h3 style="margin: 0 0 var(--pg-space-3) 0;">🎉 Welcome! Referral Success</h3>
+        <h3 style="margin: 0 0 var(--pg-space-3) 0;">\u{1F389} Welcome! Referral Success</h3>
         <p style="margin: 0;">You've successfully joined PenguBook through a referral! Complete your profile below to get started.</p>
       </div>
-      ` : ''}
+      ` : ""}
 
-      <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">⚙️ Profile Settings</h1>
+      <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u2699\uFE0F Profile Settings</h1>
 
       <!-- Profile Form -->
       <div class="pg-card">
-        <h2 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">✨ Your Profile</h2>
+        <h2 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u2728 Your Profile</h2>
 
         <form id="profileForm" onsubmit="return handleProfileSubmit(event)">
           <div class="pg-form-group">
@@ -1671,9 +1590,9 @@ function generateProfileContent(user, referralStats, referred, req) {
               name="bio"
               placeholder="Share something interesting about yourself..."
               maxlength="500"
-              style="min-height: 120px;">${user.bio || ''}</textarea>
+              style="min-height: 120px;">${user.bio || ""}</textarea>
             <div style="text-align: right; color: var(--pg-dark-600); font-size: var(--pg-text-xs); margin-top: var(--pg-space-1);">
-              <span id="bioCharCount">${(user.bio || '').length}</span>/500 characters
+              <span id="bioCharCount">${(user.bio || "").length}</span>/500 characters
             </div>
           </div>
 
@@ -1686,14 +1605,14 @@ function generateProfileContent(user, referralStats, referred, req) {
                 <input class="pg-form-input" type="url" placeholder="https://..." value="${social.url}" style="flex: 2;">
                 <button type="button" class="pg-btn pg-btn--secondary pg-btn--sm" onclick="removeSocialLink(this)">Remove</button>
               </div>
-              `).join('')}
+              `).join("")}
             </div>
             <button type="button" class="pg-btn pg-btn--outline" onclick="addSocialLink()" style="margin-top: var(--pg-space-3);">+ Add Social Link</button>
           </div>
 
           <div class="pg-form-group">
             <label style="display: flex; align-items: center; gap: var(--pg-space-2); cursor: pointer;">
-              <input type="checkbox" ${user.showInPenguBook ? 'checked' : ''} style="margin: 0;">
+              <input type="checkbox" ${user.showInPenguBook ? "checked" : ""} style="margin: 0;">
               <span class="pg-form-label" style="margin: 0;">Show my profile publicly in PenguBook</span>
             </label>
             <p style="margin: var(--pg-space-2) 0 0 0; color: var(--pg-dark-600); font-size: var(--pg-text-sm);">
@@ -1702,7 +1621,7 @@ function generateProfileContent(user, referralStats, referred, req) {
           </div>
 
           <button type="submit" class="pg-btn pg-btn--primary pg-btn--lg" style="width: 100%; margin-top: var(--pg-space-6);">
-            💾 Save Profile
+            \u{1F4BE} Save Profile
           </button>
         </form>
       </div>
@@ -1714,14 +1633,12 @@ function generateProfileContent(user, referralStats, referred, req) {
       ${generateProfileFormScripts()}
     </script>`;
 }
-// Helper function to generate referral section
 function generateReferralSection(referralStats, req) {
-    if (!referralStats)
-        return '';
-    return `
+  if (!referralStats) return "";
+  return `
       <!-- Referral Section -->
       <div class="pg-card">
-        <h2 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">🔗 Referrals</h2>
+        <h2 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u{1F517} Referrals</h2>
 
         <div style="background: var(--pg-dark-200); padding: var(--pg-space-4); border-radius: var(--pg-radius-lg); margin-bottom: var(--pg-space-4);">
           <label class="pg-form-label">Your Referral Link</label>
@@ -1729,11 +1646,11 @@ function generateReferralSection(referralStats, req) {
             <input
               class="pg-form-input"
               type="text"
-              value="${req.protocol}://${req.get('host')}/pengubook?ref=${referralStats.referralCode}"
+              value="${req.protocol}://${req.get("host")}/pengubook?ref=${referralStats.referralCode}"
               readonly
               id="referralLink"
               style="flex: 1;">
-            <button type="button" class="pg-btn pg-btn--secondary" onclick="copyReferralLink()">📋 Copy</button>
+            <button type="button" class="pg-btn pg-btn--secondary" onclick="copyReferralLink()">\u{1F4CB} Copy</button>
           </div>
         </div>
 
@@ -1753,9 +1670,8 @@ function generateReferralSection(referralStats, req) {
         </div>
       </div>`;
 }
-// Helper function to generate profile form scripts
 function generateProfileFormScripts() {
-    return `
+  return `
       // Character counter for bio
       const bioInput = document.getElementById('bioInput');
       if (bioInput) {
@@ -1798,7 +1714,7 @@ function generateProfileFormScripts() {
 
         const button = event.target;
         const originalText = button.textContent;
-        button.textContent = '✅ Copied!';
+        button.textContent = '\u2705 Copied!';
         setTimeout(() => {
           button.textContent = originalText;
         }, 2000);
@@ -1841,11 +1757,15 @@ function generateProfileFormScripts() {
           const result = await response.json();
 
           if (result.success) {
-            alert('✅ Profile updated successfully!');
+            alert('\u2705 Profile updated successfully!');
           } else {
-            alert('❌ Failed to update profile: ' + result.error);
+            alert('\u274C Failed to update profile: ' + result.error);
           }
         });
       }`;
 }
-export { generateBaseHTML };
+export {
+  generateBaseHTML,
+  pengubookEnhancedRouter
+};
+//# sourceMappingURL=pengubook_enhanced.js.map

@@ -36,7 +36,8 @@
       "Bash(docker-compose:*)",
       "Bash(npm run test:discord-integration:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

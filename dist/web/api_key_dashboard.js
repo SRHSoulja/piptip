@@ -1,102 +1,95 @@
-import { apiKeyManager } from '../services/api_key_management';
-export async function getApiKeyDashboard(req, res) {
-    try {
-        const { userId } = req.params;
-        if (!userId) {
-            return res.status(400).json({ error: 'User ID required' });
-        }
-        // Get user's API keys with usage stats
-        const apiKeys = await getUserApiKeysWithStats(userId);
-        // Calculate aggregate stats
-        const aggregateStats = calculateAggregateStats(apiKeys);
-        // Get usage trends for charts
-        const usageTrends = await getUsageTrends(userId);
-        // Get cost breakdown
-        const costBreakdown = calculateCostBreakdown(apiKeys);
-        res.send(generateApiKeyDashboard({
-            apiKeys,
-            aggregateStats,
-            usageTrends,
-            costBreakdown,
-            userId
-        }));
+import { apiKeyManager } from "../services/api_key_management";
+async function getApiKeyDashboard(req, res) {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ error: "User ID required" });
     }
-    catch (error) {
-        console.error('API Key dashboard error:', error);
-        res.status(500).json({ error: 'Failed to load API key dashboard' });
-    }
+    const apiKeys = await getUserApiKeysWithStats(userId);
+    const aggregateStats = calculateAggregateStats(apiKeys);
+    const usageTrends = await getUsageTrends(userId);
+    const costBreakdown = calculateCostBreakdown(apiKeys);
+    res.send(generateApiKeyDashboard({
+      apiKeys,
+      aggregateStats,
+      usageTrends,
+      costBreakdown,
+      userId
+    }));
+  } catch (error) {
+    console.error("API Key dashboard error:", error);
+    res.status(500).json({ error: "Failed to load API key dashboard" });
+  }
 }
 async function getUserApiKeysWithStats(userId) {
-    try {
-        const keys = await apiKeyManager.getUserApiKeys(userId);
-        // Mock enriched stats (in production, get from analytics database)
-        return keys.map(key => ({
-            keyId: key.id,
-            name: key.name || `API Key ${key.id.slice(-4)}`,
-            tier: key.rateLimitTier,
-            requestsToday: Math.floor(Math.random() * 1000),
-            requestsThisMonth: Math.floor(Math.random() * 25000),
-            dailyLimit: getDailyLimit(key.rateLimitTier),
-            monthlyLimit: getMonthlyLimit(key.rateLimitTier),
-            lastUsed: key.lastUsedAt,
-            createdAt: key.createdAt,
-            isActive: key.isActive,
-            ipWhitelist: key.ipWhitelist || [],
-            domains: key.allowedDomains || [],
-            costThisMonth: calculateMonthlyCost(key.rateLimitTier, Math.floor(Math.random() * 25000))
-        }));
-    }
-    catch (error) {
-        return [];
-    }
+  try {
+    const keys = await apiKeyManager.getUserApiKeys(userId);
+    return keys.map((key) => ({
+      keyId: key.id,
+      name: key.name || `API Key ${key.id.slice(-4)}`,
+      tier: key.rateLimitTier,
+      requestsToday: Math.floor(Math.random() * 1e3),
+      requestsThisMonth: Math.floor(Math.random() * 25e3),
+      dailyLimit: getDailyLimit(key.rateLimitTier),
+      monthlyLimit: getMonthlyLimit(key.rateLimitTier),
+      lastUsed: key.lastUsedAt,
+      createdAt: key.createdAt,
+      isActive: key.isActive,
+      ipWhitelist: key.ipWhitelist || [],
+      domains: key.allowedDomains || [],
+      costThisMonth: calculateMonthlyCost(key.rateLimitTier, Math.floor(Math.random() * 25e3))
+    }));
+  } catch (error) {
+    return [];
+  }
 }
 function getDailyLimit(tier) {
-    const limits = { BASIC: 1000, PREMIUM: 10000, ENTERPRISE: 100000 };
-    return limits[tier] || 1000;
+  const limits = { BASIC: 1e3, PREMIUM: 1e4, ENTERPRISE: 1e5 };
+  return limits[tier] || 1e3;
 }
 function getMonthlyLimit(tier) {
-    const limits = { BASIC: 25000, PREMIUM: 250000, ENTERPRISE: 2500000 };
-    return limits[tier] || 25000;
+  const limits = { BASIC: 25e3, PREMIUM: 25e4, ENTERPRISE: 25e5 };
+  return limits[tier] || 25e3;
 }
 function calculateMonthlyCost(tier, usage) {
-    const baseCosts = { BASIC: 0, PREMIUM: 29, ENTERPRISE: 99 };
-    const perRequestCosts = { BASIC: 0.001, PREMIUM: 0.0008, ENTERPRISE: 0.0005 };
-    const baseCost = baseCosts[tier] || 0;
-    const usageCost = usage * (perRequestCosts[tier] || 0);
-    return baseCost + usageCost;
+  const baseCosts = { BASIC: 0, PREMIUM: 29, ENTERPRISE: 99 };
+  const perRequestCosts = { BASIC: 1e-3, PREMIUM: 8e-4, ENTERPRISE: 5e-4 };
+  const baseCost = baseCosts[tier] || 0;
+  const usageCost = usage * (perRequestCosts[tier] || 0);
+  return baseCost + usageCost;
 }
 function calculateAggregateStats(apiKeys) {
-    return {
-        totalKeys: apiKeys.length,
-        activeKeys: apiKeys.filter(k => k.isActive).length,
-        totalRequestsToday: apiKeys.reduce((sum, k) => sum + k.requestsToday, 0),
-        totalRequestsThisMonth: apiKeys.reduce((sum, k) => sum + k.requestsThisMonth, 0),
-        totalCostThisMonth: apiKeys.reduce((sum, k) => sum + k.costThisMonth, 0),
-        averageResponseTime: 150 + Math.floor(Math.random() * 50) // Mock
-    };
+  return {
+    totalKeys: apiKeys.length,
+    activeKeys: apiKeys.filter((k) => k.isActive).length,
+    totalRequestsToday: apiKeys.reduce((sum, k) => sum + k.requestsToday, 0),
+    totalRequestsThisMonth: apiKeys.reduce((sum, k) => sum + k.requestsThisMonth, 0),
+    totalCostThisMonth: apiKeys.reduce((sum, k) => sum + k.costThisMonth, 0),
+    averageResponseTime: 150 + Math.floor(Math.random() * 50)
+    // Mock
+  };
 }
 async function getUsageTrends(userId) {
-    // Mock 7-day usage trend
-    return Array.from({ length: 7 }, (_, i) => ({
-        date: new Date(Date.now() - (6 - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        requests: Math.floor(Math.random() * 2000) + 500,
-        errors: Math.floor(Math.random() * 50),
-        avgResponseTime: 120 + Math.floor(Math.random() * 100)
-    }));
+  return Array.from({ length: 7 }, (_, i) => ({
+    date: new Date(Date.now() - (6 - i) * 24 * 60 * 60 * 1e3).toISOString().split("T")[0],
+    requests: Math.floor(Math.random() * 2e3) + 500,
+    errors: Math.floor(Math.random() * 50),
+    avgResponseTime: 120 + Math.floor(Math.random() * 100)
+  }));
 }
 function calculateCostBreakdown(apiKeys) {
-    return {
-        subscription: apiKeys.reduce((sum, k) => {
-            const baseCosts = { BASIC: 0, PREMIUM: 29, ENTERPRISE: 99 };
-            return sum + (baseCosts[k.tier] || 0);
-        }, 0),
-        usage: apiKeys.reduce((sum, k) => k.costThisMonth - (k.tier === 'BASIC' ? 0 : k.tier === 'PREMIUM' ? 29 : 99), 0),
-        total: apiKeys.reduce((sum, k) => sum + k.costThisMonth, 0)
-    };
+  return {
+    subscription: apiKeys.reduce((sum, k) => {
+      const baseCosts = { BASIC: 0, PREMIUM: 29, ENTERPRISE: 99 };
+      return sum + (baseCosts[k.tier] || 0);
+    }, 0),
+    usage: apiKeys.reduce((sum, k) => k.costThisMonth - (k.tier === "BASIC" ? 0 : k.tier === "PREMIUM" ? 29 : 99), 0),
+    total: apiKeys.reduce((sum, k) => sum + k.costThisMonth, 0)
+  };
 }
 function generateApiKeyDashboard(data) {
-    const { apiKeys, aggregateStats, usageTrends, costBreakdown, userId } = data;
-    return `
+  const { apiKeys, aggregateStats, usageTrends, costBreakdown, userId } = data;
+  return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -112,10 +105,10 @@ function generateApiKeyDashboard(data) {
       <div class="dashboard-container">
         <header class="dashboard-header">
           <div class="header-content">
-            <h1>🗝️ API Key Dashboard</h1>
+            <h1>\u{1F5DD}\uFE0F API Key Dashboard</h1>
             <div class="header-actions">
               <button onclick="createNewKey()" class="btn btn-primary">+ Create New Key</button>
-              <button onclick="viewDocs()" class="btn btn-secondary">📚 API Docs</button>
+              <button onclick="viewDocs()" class="btn btn-secondary">\u{1F4DA} API Docs</button>
             </div>
           </div>
         </header>
@@ -123,7 +116,7 @@ function generateApiKeyDashboard(data) {
         <!-- Quick Stats -->
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="stat-icon">🔑</div>
+            <div class="stat-icon">\u{1F511}</div>
             <div class="stat-content">
               <div class="stat-value">${aggregateStats.totalKeys}</div>
               <div class="stat-label">Total Keys</div>
@@ -131,7 +124,7 @@ function generateApiKeyDashboard(data) {
             </div>
           </div>
           <div class="stat-card">
-            <div class="stat-icon">📊</div>
+            <div class="stat-icon">\u{1F4CA}</div>
             <div class="stat-content">
               <div class="stat-value">${aggregateStats.totalRequestsToday.toLocaleString()}</div>
               <div class="stat-label">Requests Today</div>
@@ -139,7 +132,7 @@ function generateApiKeyDashboard(data) {
             </div>
           </div>
           <div class="stat-card">
-            <div class="stat-icon">💰</div>
+            <div class="stat-icon">\u{1F4B0}</div>
             <div class="stat-content">
               <div class="stat-value">$${aggregateStats.totalCostThisMonth.toFixed(2)}</div>
               <div class="stat-label">Cost This Month</div>
@@ -147,7 +140,7 @@ function generateApiKeyDashboard(data) {
             </div>
           </div>
           <div class="stat-card">
-            <div class="stat-icon">⚡</div>
+            <div class="stat-icon">\u26A1</div>
             <div class="stat-content">
               <div class="stat-value">${aggregateStats.averageResponseTime}ms</div>
               <div class="stat-label">Avg Response Time</div>
@@ -160,7 +153,7 @@ function generateApiKeyDashboard(data) {
           <!-- Usage Chart -->
           <div class="card chart-card">
             <div class="card-header">
-              <h3>📈 Usage Trends (7 days)</h3>
+              <h3>\u{1F4C8} Usage Trends (7 days)</h3>
               <div class="chart-controls">
                 <select onchange="updateChart(this.value)">
                   <option value="requests">Requests</option>
@@ -177,12 +170,12 @@ function generateApiKeyDashboard(data) {
           <!-- API Keys List -->
           <div class="card">
             <div class="card-header">
-              <h3>🔑 Your API Keys</h3>
-              <button onclick="refreshKeys()" class="btn btn-small">🔄 Refresh</button>
+              <h3>\u{1F511} Your API Keys</h3>
+              <button onclick="refreshKeys()" class="btn btn-small">\u{1F504} Refresh</button>
             </div>
             <div class="keys-list">
-              ${apiKeys.map(key => `
-                <div class="key-item ${key.isActive ? 'active' : 'inactive'}">
+              ${apiKeys.map((key) => `
+                <div class="key-item ${key.isActive ? "active" : "inactive"}">
                   <div class="key-info">
                     <div class="key-header">
                       <div class="key-name">${key.name}</div>
@@ -191,7 +184,7 @@ function generateApiKeyDashboard(data) {
                     <div class="key-id">Key: ${key.keyId.slice(0, 8)}...${key.keyId.slice(-4)}</div>
                     <div class="key-usage">
                       <div class="usage-bar">
-                        <div class="usage-fill" style="width: ${(key.requestsToday / key.dailyLimit) * 100}%"></div>
+                        <div class="usage-fill" style="width: ${key.requestsToday / key.dailyLimit * 100}%"></div>
                       </div>
                       <div class="usage-text">
                         ${key.requestsToday.toLocaleString()} / ${key.dailyLimit.toLocaleString()} daily requests
@@ -199,29 +192,29 @@ function generateApiKeyDashboard(data) {
                     </div>
                     <div class="key-meta">
                       <span>Created: ${formatDate(key.createdAt)}</span>
-                      <span>Last used: ${key.lastUsed ? formatTimeAgo(key.lastUsed) : 'Never'}</span>
+                      <span>Last used: ${key.lastUsed ? formatTimeAgo(key.lastUsed) : "Never"}</span>
                       <span>Cost: $${key.costThisMonth.toFixed(2)}/month</span>
                     </div>
                   </div>
                   <div class="key-actions">
-                    <button onclick="viewKeyDetails('${key.keyId}')" class="btn btn-small">📊 Details</button>
-                    <button onclick="manageKey('${key.keyId}')" class="btn btn-small">⚙️ Manage</button>
-                    <button onclick="toggleKey('${key.keyId}', ${key.isActive})" class="btn btn-small ${key.isActive ? 'danger' : 'success'}">
-                      ${key.isActive ? '⏸️ Pause' : '▶️ Activate'}
+                    <button onclick="viewKeyDetails('${key.keyId}')" class="btn btn-small">\u{1F4CA} Details</button>
+                    <button onclick="manageKey('${key.keyId}')" class="btn btn-small">\u2699\uFE0F Manage</button>
+                    <button onclick="toggleKey('${key.keyId}', ${key.isActive})" class="btn btn-small ${key.isActive ? "danger" : "success"}">
+                      ${key.isActive ? "\u23F8\uFE0F Pause" : "\u25B6\uFE0F Activate"}
                     </button>
                   </div>
                 </div>
-              `).join('')}
+              `).join("")}
             </div>
           </div>
 
           <!-- Rate Limits -->
           <div class="card">
             <div class="card-header">
-              <h3>🚦 Rate Limits</h3>
+              <h3>\u{1F6A6} Rate Limits</h3>
             </div>
             <div class="limits-grid">
-              ${apiKeys.map(key => `
+              ${apiKeys.map((key) => `
                 <div class="limit-item">
                   <div class="limit-header">
                     <span class="key-name">${key.name}</span>
@@ -229,56 +222,54 @@ function generateApiKeyDashboard(data) {
                   </div>
                   <div class="limit-progress">
                     <div class="progress-bar">
-                      <div class="progress-fill" style="width: ${Math.min((key.requestsToday / key.dailyLimit) * 100, 100)}%"></div>
+                      <div class="progress-fill" style="width: ${Math.min(key.requestsToday / key.dailyLimit * 100, 100)}%"></div>
                     </div>
                     <div class="progress-text">
                       ${key.requestsToday.toLocaleString()} / ${key.dailyLimit.toLocaleString()}
                     </div>
                   </div>
                   <div class="limit-remaining">
-                    ${key.dailyLimit - key.requestsToday > 0
-        ? `${(key.dailyLimit - key.requestsToday).toLocaleString()} requests remaining today`
-        : `⚠️ Daily limit reached`}
+                    ${key.dailyLimit - key.requestsToday > 0 ? `${(key.dailyLimit - key.requestsToday).toLocaleString()} requests remaining today` : `\u26A0\uFE0F Daily limit reached`}
                   </div>
                 </div>
-              `).join('')}
+              `).join("")}
             </div>
           </div>
 
           <!-- Security Settings -->
           <div class="card">
             <div class="card-header">
-              <h3>🛡️ Security Settings</h3>
+              <h3>\u{1F6E1}\uFE0F Security Settings</h3>
             </div>
             <div class="security-list">
-              ${apiKeys.map(key => `
+              ${apiKeys.map((key) => `
                 <div class="security-item">
                   <div class="security-header">
                     <span class="key-name">${key.name}</span>
-                    <span class="security-score ${getSecurityScore(key) >= 80 ? 'high' : getSecurityScore(key) >= 60 ? 'medium' : 'low'}">
+                    <span class="security-score ${getSecurityScore(key) >= 80 ? "high" : getSecurityScore(key) >= 60 ? "medium" : "low"}">
                       ${getSecurityScore(key)}/100
                     </span>
                   </div>
                   <div class="security-details">
-                    <div class="security-check ${key.ipWhitelist.length > 0 ? 'enabled' : 'disabled'}">
-                      <span class="check-icon">${key.ipWhitelist.length > 0 ? '✅' : '❌'}</span>
+                    <div class="security-check ${key.ipWhitelist.length > 0 ? "enabled" : "disabled"}">
+                      <span class="check-icon">${key.ipWhitelist.length > 0 ? "\u2705" : "\u274C"}</span>
                       <span>IP Whitelist</span>
                       <span class="check-detail">${key.ipWhitelist.length} IPs</span>
                     </div>
-                    <div class="security-check ${key.domains.length > 0 ? 'enabled' : 'disabled'}">
-                      <span class="check-icon">${key.domains.length > 0 ? '✅' : '❌'}</span>
+                    <div class="security-check ${key.domains.length > 0 ? "enabled" : "disabled"}">
+                      <span class="check-icon">${key.domains.length > 0 ? "\u2705" : "\u274C"}</span>
                       <span>Domain Restrictions</span>
                       <span class="check-detail">${key.domains.length} domains</span>
                     </div>
                     <div class="security-check enabled">
-                      <span class="check-icon">✅</span>
+                      <span class="check-icon">\u2705</span>
                       <span>HTTPS Only</span>
                       <span class="check-detail">Enforced</span>
                     </div>
                   </div>
-                  <button onclick="configSecurity('${key.keyId}')" class="btn btn-small">⚙️ Configure</button>
+                  <button onclick="configSecurity('${key.keyId}')" class="btn btn-small">\u2699\uFE0F Configure</button>
                 </div>
-              `).join('')}
+              `).join("")}
             </div>
           </div>
         </div>
@@ -292,34 +283,28 @@ function generateApiKeyDashboard(data) {
   `;
 }
 function getSecurityScore(key) {
-    let score = 40; // Base score
-    if (key.ipWhitelist.length > 0)
-        score += 30;
-    if (key.domains.length > 0)
-        score += 20;
-    if (key.isActive && key.lastUsed)
-        score += 10;
-    return Math.min(score, 100);
+  let score = 40;
+  if (key.ipWhitelist.length > 0) score += 30;
+  if (key.domains.length > 0) score += 20;
+  if (key.isActive && key.lastUsed) score += 10;
+  return Math.min(score, 100);
 }
 function formatDate(date) {
-    return date.toLocaleDateString();
+  return date.toLocaleDateString();
 }
 function formatTimeAgo(date) {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    if (days > 0)
-        return `${days}d ago`;
-    if (hours > 0)
-        return `${hours}h ago`;
-    if (minutes > 0)
-        return `${minutes}m ago`;
-    return 'Just now';
+  const now = /* @__PURE__ */ new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 6e4);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return "Just now";
 }
 function getApiKeyDashboardStyles() {
-    return `
+  return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
@@ -698,7 +683,7 @@ function getApiKeyDashboardStyles() {
   `;
 }
 function getApiKeyDashboardScript(usageTrends) {
-    return `
+  return `
     // Initialize usage chart
     const ctx = document.getElementById('usageChart').getContext('2d');
     const usageData = ${JSON.stringify(usageTrends)};
@@ -743,7 +728,7 @@ function getApiKeyDashboardScript(usageTrends) {
 
     // Dashboard functions
     function createNewKey() {
-      alert('🚧 Create new API key feature coming soon!');
+      alert('\u{1F6A7} Create new API key feature coming soon!');
     }
 
     function viewDocs() {
@@ -780,11 +765,11 @@ function getApiKeyDashboardScript(usageTrends) {
     }
 
     function viewKeyDetails(keyId) {
-      alert('📊 Key details for ' + keyId + '\\n\\n• Real-time usage monitoring\\n• Request/response logs\\n• Error analysis\\n• Performance metrics');
+      alert('\u{1F4CA} Key details for ' + keyId + '\\n\\n\u2022 Real-time usage monitoring\\n\u2022 Request/response logs\\n\u2022 Error analysis\\n\u2022 Performance metrics');
     }
 
     function manageKey(keyId) {
-      alert('⚙️ Manage key ' + keyId + '\\n\\n• Regenerate key\\n• Update settings\\n• Configure permissions\\n• Set rate limits');
+      alert('\u2699\uFE0F Manage key ' + keyId + '\\n\\n\u2022 Regenerate key\\n\u2022 Update settings\\n\u2022 Configure permissions\\n\u2022 Set rate limits');
     }
 
     function toggleKey(keyId, isActive) {
@@ -796,7 +781,7 @@ function getApiKeyDashboardScript(usageTrends) {
     }
 
     function configSecurity(keyId) {
-      alert('🛡️ Security config for ' + keyId + '\\n\\n• IP whitelist management\\n• Domain restrictions\\n• HTTPS enforcement\\n• Request signing');
+      alert('\u{1F6E1}\uFE0F Security config for ' + keyId + '\\n\\n\u2022 IP whitelist management\\n\u2022 Domain restrictions\\n\u2022 HTTPS enforcement\\n\u2022 Request signing');
     }
 
     // Auto-refresh every 60 seconds
@@ -817,3 +802,7 @@ function getApiKeyDashboardScript(usageTrends) {
     }, 5000);
   `;
 }
+export {
+  getApiKeyDashboard
+};
+//# sourceMappingURL=api_key_dashboard.js.map

@@ -1,126 +1,96 @@
-// User Security Dashboard - Self-service security management interface
-import express from 'express';
-import { prisma } from '../services/db.js';
-import { findOrCreateUser } from '../services/user_helpers.js';
-export const securityDashboardRouter = express.Router();
-// Main security dashboard page
-securityDashboardRouter.get('/:discordId', async (req, res) => {
-    try {
-        const { discordId } = req.params;
-        const user = await findOrCreateUser(discordId);
-        // Get user's security profile
-        const securityProfile = await getUserSecurityProfile(discordId);
-        // Generate security score
-        const securityScore = calculateSecurityScore(securityProfile);
-        // Get recent security events
-        const recentEvents = await getRecentSecurityEvents(discordId);
-        // Render the dashboard
-        res.send(renderSecurityDashboard({
-            user,
-            securityProfile,
-            securityScore,
-            recentEvents,
-            discordId
-        }));
-    }
-    catch (error) {
-        console.error('Security dashboard error:', error);
-        res.status(500).send('Security dashboard unavailable');
-    }
+import express from "express";
+import { prisma } from "../services/db.js";
+import { findOrCreateUser } from "../services/user_helpers.js";
+const securityDashboardRouter = express.Router();
+securityDashboardRouter.get("/:discordId", async (req, res) => {
+  try {
+    const { discordId } = req.params;
+    const user = await findOrCreateUser(discordId);
+    const securityProfile = await getUserSecurityProfile(discordId);
+    const securityScore = calculateSecurityScore(securityProfile);
+    const recentEvents = await getRecentSecurityEvents(discordId);
+    res.send(renderSecurityDashboard({
+      user,
+      securityProfile,
+      securityScore,
+      recentEvents,
+      discordId
+    }));
+  } catch (error) {
+    console.error("Security dashboard error:", error);
+    res.status(500).send("Security dashboard unavailable");
+  }
 });
-// Get user's security profile
 async function getUserSecurityProfile(discordId) {
-    const user = await prisma.user.findFirst({
-        where: { discordId }
-    });
-    // Check various security features
-    const has2FA = false; // Will be implemented with 2FA wizard
-    const hasStrongPassword = true; // Placeholder
-    const hasBackupCodes = false; // Will be implemented
-    const lastPasswordChange = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
-    const suspiciousActivityCount = 0;
-    // Get session information
-    const activeSessions = 1; // Placeholder - will integrate with session fingerprinting
-    const trustedDevices = 2; // Placeholder
-    return {
-        has2FA,
-        hasStrongPassword,
-        hasBackupCodes,
-        lastPasswordChange,
-        suspiciousActivityCount,
-        activeSessions,
-        trustedDevices,
-        accountAge: user ? Math.floor((Date.now() - user.createdAt.getTime()) / (24 * 60 * 60 * 1000)) : 0
-    };
+  const user = await prisma.user.findFirst({
+    where: { discordId }
+  });
+  const has2FA = false;
+  const hasStrongPassword = true;
+  const hasBackupCodes = false;
+  const lastPasswordChange = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
+  const suspiciousActivityCount = 0;
+  const activeSessions = 1;
+  const trustedDevices = 2;
+  return {
+    has2FA,
+    hasStrongPassword,
+    hasBackupCodes,
+    lastPasswordChange,
+    suspiciousActivityCount,
+    activeSessions,
+    trustedDevices,
+    accountAge: user ? Math.floor((Date.now() - user.createdAt.getTime()) / (24 * 60 * 60 * 1e3)) : 0
+  };
 }
-// Calculate security score (0-100)
 function calculateSecurityScore(profile) {
-    let score = 0;
-    // Base score for having an account
-    score += 20;
-    // 2FA enabled (+30 points)
-    if (profile.has2FA)
-        score += 30;
-    // Strong password (+15 points)
-    if (profile.hasStrongPassword)
-        score += 15;
-    // Backup codes generated (+10 points)
-    if (profile.hasBackupCodes)
-        score += 10;
-    // Recent password change (+10 points)
-    const daysSincePasswordChange = Math.floor((Date.now() - profile.lastPasswordChange.getTime()) / (24 * 60 * 60 * 1000));
-    if (daysSincePasswordChange < 90)
-        score += 10;
-    // No suspicious activity (+10 points)
-    if (profile.suspiciousActivityCount === 0)
-        score += 10;
-    // Account age bonus (+5 points for accounts > 30 days)
-    if (profile.accountAge > 30)
-        score += 5;
-    return Math.min(score, 100);
+  let score = 0;
+  score += 20;
+  if (profile.has2FA) score += 30;
+  if (profile.hasStrongPassword) score += 15;
+  if (profile.hasBackupCodes) score += 10;
+  const daysSincePasswordChange = Math.floor((Date.now() - profile.lastPasswordChange.getTime()) / (24 * 60 * 60 * 1e3));
+  if (daysSincePasswordChange < 90) score += 10;
+  if (profile.suspiciousActivityCount === 0) score += 10;
+  if (profile.accountAge > 30) score += 5;
+  return Math.min(score, 100);
 }
-// Get recent security events
 async function getRecentSecurityEvents(discordId) {
-    // This will integrate with our anomaly detection and session fingerprinting
-    return [
-        {
-            type: 'login',
-            description: 'Successful login from Discord',
-            timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-            severity: 'info'
-        },
-        {
-            type: 'tip',
-            description: 'Large tip sent (1000 PENGUIN)',
-            timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-            severity: 'info'
-        }
-    ];
+  return [
+    {
+      type: "login",
+      description: "Successful login from Discord",
+      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1e3),
+      severity: "info"
+    },
+    {
+      type: "tip",
+      description: "Large tip sent (1000 PENGUIN)",
+      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1e3),
+      severity: "info"
+    }
+  ];
 }
-// Render the security dashboard HTML
 function renderSecurityDashboard(data) {
-    const { user, securityProfile, securityScore, recentEvents, discordId } = data;
-    // Determine security level and color
-    let securityLevel = 'Critical';
-    let securityColor = '#ff4444';
-    let progressBarClass = 'critical';
-    if (securityScore >= 80) {
-        securityLevel = 'Excellent';
-        securityColor = '#00c851';
-        progressBarClass = 'excellent';
-    }
-    else if (securityScore >= 60) {
-        securityLevel = 'Good';
-        securityColor = '#33b5e5';
-        progressBarClass = 'good';
-    }
-    else if (securityScore >= 40) {
-        securityLevel = 'Fair';
-        securityColor = '#ffbb33';
-        progressBarClass = 'fair';
-    }
-    const recommendations = getSecurityRecommendations(securityProfile);
-    return `<!DOCTYPE html>
+  const { user, securityProfile, securityScore, recentEvents, discordId } = data;
+  let securityLevel = "Critical";
+  let securityColor = "#ff4444";
+  let progressBarClass = "critical";
+  if (securityScore >= 80) {
+    securityLevel = "Excellent";
+    securityColor = "#00c851";
+    progressBarClass = "excellent";
+  } else if (securityScore >= 60) {
+    securityLevel = "Good";
+    securityColor = "#33b5e5";
+    progressBarClass = "good";
+  } else if (securityScore >= 40) {
+    securityLevel = "Fair";
+    securityColor = "#ffbb33";
+    progressBarClass = "fair";
+  }
+  const recommendations = getSecurityRecommendations(securityProfile);
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -463,7 +433,7 @@ function renderSecurityDashboard(data) {
   <div class="container">
     <div class="header">
       <h1>
-        <span class="shield-icon">🛡️</span>
+        <span class="shield-icon">\u{1F6E1}\uFE0F</span>
         Security Dashboard
       </h1>
       <p>Manage your PIPTip account security and privacy</p>
@@ -487,28 +457,28 @@ function renderSecurityDashboard(data) {
 
         <div class="security-status">
           <div class="status-item">
-            <div class="status-icon ${securityProfile.has2FA ? 'enabled' : 'disabled'}">
-              ${securityProfile.has2FA ? '✅' : '⚠️'}
+            <div class="status-icon ${securityProfile.has2FA ? "enabled" : "disabled"}">
+              ${securityProfile.has2FA ? "\u2705" : "\u26A0\uFE0F"}
             </div>
             <div class="status-text">
               <div class="label">Two-Factor Auth</div>
-              <div class="value">${securityProfile.has2FA ? 'Enabled' : 'Not Set'}</div>
+              <div class="value">${securityProfile.has2FA ? "Enabled" : "Not Set"}</div>
             </div>
           </div>
 
           <div class="status-item">
-            <div class="status-icon ${securityProfile.hasStrongPassword ? 'enabled' : 'disabled'}">
-              ${securityProfile.hasStrongPassword ? '✅' : '⚠️'}
+            <div class="status-icon ${securityProfile.hasStrongPassword ? "enabled" : "disabled"}">
+              ${securityProfile.hasStrongPassword ? "\u2705" : "\u26A0\uFE0F"}
             </div>
             <div class="status-text">
               <div class="label">Password Strength</div>
-              <div class="value">${securityProfile.hasStrongPassword ? 'Strong' : 'Weak'}</div>
+              <div class="value">${securityProfile.hasStrongPassword ? "Strong" : "Weak"}</div>
             </div>
           </div>
 
           <div class="status-item">
             <div class="status-icon enabled">
-              🔐
+              \u{1F510}
             </div>
             <div class="status-text">
               <div class="label">Active Sessions</div>
@@ -518,7 +488,7 @@ function renderSecurityDashboard(data) {
 
           <div class="status-item">
             <div class="status-icon enabled">
-              📱
+              \u{1F4F1}
             </div>
             <div class="status-text">
               <div class="label">Trusted Devices</div>
@@ -534,7 +504,7 @@ function renderSecurityDashboard(data) {
         <div class="quick-actions">
           <button class="action-button primary" onclick="setup2FA()">
             <span class="action-text">
-              <span>🔐</span>
+              <span>\u{1F510}</span>
               <span>Enable Two-Factor Authentication</span>
             </span>
             <span class="badge">+30 pts</span>
@@ -542,34 +512,34 @@ function renderSecurityDashboard(data) {
 
           <button class="action-button" onclick="changePassword()">
             <span class="action-text">
-              <span>🔑</span>
+              <span>\u{1F511}</span>
               <span>Change Password</span>
             </span>
-            <span>→</span>
+            <span>\u2192</span>
           </button>
 
           <button class="action-button" onclick="viewSessions()">
             <span class="action-text">
-              <span>💻</span>
+              <span>\u{1F4BB}</span>
               <span>Manage Sessions</span>
             </span>
-            <span>→</span>
+            <span>\u2192</span>
           </button>
 
           <button class="action-button" onclick="downloadData()">
             <span class="action-text">
-              <span>📥</span>
+              <span>\u{1F4E5}</span>
               <span>Download My Data</span>
             </span>
-            <span>→</span>
+            <span>\u2192</span>
           </button>
 
           <button class="action-button" onclick="privacySettings()">
             <span class="action-text">
-              <span>🔒</span>
+              <span>\u{1F512}</span>
               <span>Privacy Settings</span>
             </span>
-            <span>→</span>
+            <span>\u2192</span>
           </button>
         </div>
       </div>
@@ -588,7 +558,7 @@ function renderSecurityDashboard(data) {
                 <div class="activity-time">${formatTimeAgo(event.timestamp)}</div>
               </div>
             </div>
-          `).join('')}
+          `).join("")}
         </div>
       </div>
 
@@ -597,14 +567,14 @@ function renderSecurityDashboard(data) {
         <h3 style="margin-bottom: 20px;">Security Recommendations</h3>
         ${recommendations.length > 0 ? `
           <div class="recommendations">
-            <h4>⚠️ Action Required</h4>
+            <h4>\u26A0\uFE0F Action Required</h4>
             <ul>
-              ${recommendations.map(rec => `<li>${rec}</li>`).join('')}
+              ${recommendations.map((rec) => `<li>${rec}</li>`).join("")}
             </ul>
           </div>
         ` : `
           <div style="padding: 20px; text-align: center; background: #d4edda; border-radius: 10px; color: #155724;">
-            <div style="font-size: 2em; margin-bottom: 10px;">✅</div>
+            <div style="font-size: 2em; margin-bottom: 10px;">\u2705</div>
             <div style="font-weight: 600;">All security features enabled!</div>
             <div style="margin-top: 5px; font-size: 0.9em;">Your account is well protected</div>
           </div>
@@ -614,19 +584,19 @@ function renderSecurityDashboard(data) {
           <h4 style="margin-bottom: 10px;">Security Tips</h4>
           <ul style="list-style: none; padding: 0;">
             <li style="padding: 8px 0; display: flex; align-items: start; gap: 8px;">
-              <span>💡</span>
+              <span>\u{1F4A1}</span>
               <span>Use a unique password for your PIPTip account</span>
             </li>
             <li style="padding: 8px 0; display: flex; align-items: start; gap: 8px;">
-              <span>💡</span>
+              <span>\u{1F4A1}</span>
               <span>Enable notifications for suspicious activities</span>
             </li>
             <li style="padding: 8px 0; display: flex; align-items: start; gap: 8px;">
-              <span>💡</span>
+              <span>\u{1F4A1}</span>
               <span>Review your connected apps regularly</span>
             </li>
             <li style="padding: 8px 0; display: flex; align-items: start; gap: 8px;">
-              <span>💡</span>
+              <span>\u{1F4A1}</span>
               <span>Keep your recovery email up to date</span>
             </li>
           </ul>
@@ -674,52 +644,49 @@ function renderSecurityDashboard(data) {
 </body>
 </html>`;
 }
-// Helper function to get activity icon
 function getActivityIcon(type) {
-    const icons = {
-        login: '🔓',
-        logout: '🔒',
-        tip: '💰',
-        withdrawal: '💸',
-        deposit: '💳',
-        password_change: '🔑',
-        '2fa_enabled': '🔐',
-        suspicious: '⚠️',
-        blocked: '🚫'
-    };
-    return icons[type] || '📝';
+  const icons = {
+    login: "\u{1F513}",
+    logout: "\u{1F512}",
+    tip: "\u{1F4B0}",
+    withdrawal: "\u{1F4B8}",
+    deposit: "\u{1F4B3}",
+    password_change: "\u{1F511}",
+    "2fa_enabled": "\u{1F510}",
+    suspicious: "\u26A0\uFE0F",
+    blocked: "\u{1F6AB}"
+  };
+  return icons[type] || "\u{1F4DD}";
 }
-// Helper function to format time ago
 function formatTimeAgo(date) {
-    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-    if (seconds < 60)
-        return 'Just now';
-    if (seconds < 3600)
-        return `${Math.floor(seconds / 60)} minutes ago`;
-    if (seconds < 86400)
-        return `${Math.floor(seconds / 3600)} hours ago`;
-    if (seconds < 2592000)
-        return `${Math.floor(seconds / 86400)} days ago`;
-    return date.toLocaleDateString();
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1e3);
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+  if (seconds < 2592e3) return `${Math.floor(seconds / 86400)} days ago`;
+  return date.toLocaleDateString();
 }
-// Get security recommendations based on profile
 function getSecurityRecommendations(profile) {
-    const recommendations = [];
-    if (!profile.has2FA) {
-        recommendations.push('Enable Two-Factor Authentication for maximum security');
-    }
-    if (!profile.hasStrongPassword) {
-        recommendations.push('Update your password to meet strength requirements');
-    }
-    if (!profile.hasBackupCodes) {
-        recommendations.push('Generate backup codes for account recovery');
-    }
-    const daysSincePasswordChange = Math.floor((Date.now() - profile.lastPasswordChange.getTime()) / (24 * 60 * 60 * 1000));
-    if (daysSincePasswordChange > 90) {
-        recommendations.push('Consider changing your password (last changed ' + daysSincePasswordChange + ' days ago)');
-    }
-    if (profile.suspiciousActivityCount > 0) {
-        recommendations.push('Review recent suspicious activities in your account');
-    }
-    return recommendations;
+  const recommendations = [];
+  if (!profile.has2FA) {
+    recommendations.push("Enable Two-Factor Authentication for maximum security");
+  }
+  if (!profile.hasStrongPassword) {
+    recommendations.push("Update your password to meet strength requirements");
+  }
+  if (!profile.hasBackupCodes) {
+    recommendations.push("Generate backup codes for account recovery");
+  }
+  const daysSincePasswordChange = Math.floor((Date.now() - profile.lastPasswordChange.getTime()) / (24 * 60 * 60 * 1e3));
+  if (daysSincePasswordChange > 90) {
+    recommendations.push("Consider changing your password (last changed " + daysSincePasswordChange + " days ago)");
+  }
+  if (profile.suspiciousActivityCount > 0) {
+    recommendations.push("Review recent suspicious activities in your account");
+  }
+  return recommendations;
 }
+export {
+  securityDashboardRouter
+};
+//# sourceMappingURL=security_dashboard.js.map

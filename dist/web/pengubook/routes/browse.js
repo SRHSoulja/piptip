@@ -3,140 +3,121 @@ import { findOrCreateUser } from "../../../services/user_helpers.js";
 import { getUnreadMessageCount } from "../../../interactions/buttons/pengubook.js";
 import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
-// HTML escaping function to prevent XSS
 function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+  return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-export async function browseHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        const unreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get all users who show in PenguBook (excluding current user)
-        const users = await prisma.user.findMany({
-            where: {
-                showInPenguBook: true,
-                id: { not: user.id }
-            },
-            select: {
-                id: true,
-                discordId: true,
-                bio: true,
-                bioLastUpdated: true,
-                bioViewCount: true,
-                xUsername: true,
-                socials: true,
-                wins: true,
-                losses: true,
-                ties: true,
-                createdAt: true
-            },
-            orderBy: { bioLastUpdated: 'desc' },
-            take: 50
-        });
-        // Check if current user has a bio
-        const currentUserHasBio = await prisma.user.findFirst({
-            where: { id: user.id, bio: { not: null } },
-            select: { bio: true }
-        });
-        // Get top 3 users for leaderboard podium
-        const topUsers = users
-            .filter(u => (u.wins + u.losses) > 0)
-            .sort((a, b) => {
-            const winRateA = a.wins / (a.wins + a.losses);
-            const winRateB = b.wins / (b.wins + b.losses);
-            if (winRateA !== winRateB)
-                return winRateB - winRateA;
-            return (b.wins + b.losses) - (a.wins + a.losses); // Tie-breaker: total games
-        })
-            .slice(0, 3);
-        const content = `
+async function browseHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const unreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const users = await prisma.user.findMany({
+      where: {
+        showInPenguBook: true,
+        id: { not: user.id }
+      },
+      select: {
+        id: true,
+        discordId: true,
+        bio: true,
+        bioLastUpdated: true,
+        bioViewCount: true,
+        xUsername: true,
+        socials: true,
+        wins: true,
+        losses: true,
+        ties: true,
+        createdAt: true
+      },
+      orderBy: { bioLastUpdated: "desc" },
+      take: 50
+    });
+    const currentUserHasBio = await prisma.user.findFirst({
+      where: { id: user.id, bio: { not: null } },
+      select: { bio: true }
+    });
+    const topUsers = users.filter((u) => u.wins + u.losses > 0).sort((a, b) => {
+      const winRateA = a.wins / (a.wins + a.losses);
+      const winRateB = b.wins / (b.wins + b.losses);
+      if (winRateA !== winRateB) return winRateB - winRateA;
+      return b.wins + b.losses - (a.wins + a.losses);
+    }).slice(0, 3);
+    const content = `
     <div class="pg-container">
-        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">👥 Browse PenguBook Users</h1>
+        <h1 style="margin: 0 0 var(--pg-space-6) 0; color: var(--pg-dark-800);">\u{1F465} Browse PenguBook Users</h1>
 
         ${topUsers.length >= 3 ? `
         <!-- Leaderboard Podium -->
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
-            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">🏆 Top Players</h2>
+            <h2 style="margin: 0 0 var(--pg-space-4) 0; color: var(--pg-dark-800);">\u{1F3C6} Top Players</h2>
             <div class="pg-leaderboard-podium">
-                ${topUsers.map((user, index) => {
-            const winRate = ((user.wins / (user.wins + user.losses)) * 100).toFixed(1);
-            const podiumClass = index === 0 ? 'first' : index === 1 ? 'second' : 'third';
-            const crown = index === 0 ? '👑' : index === 1 ? '🥈' : '🥉';
-            const rank = index + 1;
-            return `
+                ${topUsers.map((user2, index) => {
+      const winRate = (user2.wins / (user2.wins + user2.losses) * 100).toFixed(1);
+      const podiumClass = index === 0 ? "first" : index === 1 ? "second" : "third";
+      const crown = index === 0 ? "\u{1F451}" : index === 1 ? "\u{1F948}" : "\u{1F949}";
+      const rank = index + 1;
+      return `
                     <div class="pg-podium-place pg-podium-place--${podiumClass}">
                         <div class="pg-podium-crown">${crown}</div>
                         <div class="pg-podium-rank">#${rank}</div>
-                        <div class="pg-podium-user" id="podium-username-${user.discordId}">User#${user.discordId.slice(-4)}</div>
+                        <div class="pg-podium-user" id="podium-username-${user2.discordId}">User#${user2.discordId.slice(-4)}</div>
                         <div class="pg-podium-score">${winRate}% Win Rate</div>
-                        <div style="font-size: var(--pg-text-sm); margin-top: var(--pg-space-1);">${user.wins}W ${user.losses}L</div>
+                        <div style="font-size: var(--pg-text-sm); margin-top: var(--pg-space-1);">${user2.wins}W ${user2.losses}L</div>
                     </div>
                   `;
-        }).join('')}
+    }).join("")}
             </div>
         </div>
-        ` : ''}
+        ` : ""}
 
         ${users.length === 0 ? `
         <div class="pg-empty-state">
-            <div class="pg-empty-state__icon">🐧</div>
+            <div class="pg-empty-state__icon">\u{1F427}</div>
             <h2 class="pg-empty-state__title">${currentUserHasBio ? "You're the first one here!" : "No other users yet"}</h2>
             <p class="pg-empty-state__description">
-                ${currentUserHasBio
-            ? "Looks like you're the pioneer! Your profile is set up, but no other users have joined PenguBook yet. Share with friends to grow the community!"
-            : "No other users have set up their PenguBook profiles yet. Be the first to create your profile!"}
+                ${currentUserHasBio ? "Looks like you're the pioneer! Your profile is set up, but no other users have joined PenguBook yet. Share with friends to grow the community!" : "No other users have set up their PenguBook profiles yet. Be the first to create your profile!"}
             </p>
             <div style="margin-top: var(--pg-space-6);">
-                ${currentUserHasBio
-            ? `<a href="/pengubook/profile" class="pg-btn pg-btn--primary">View Your Profile</a>`
-            : `<a href="/pengubook/profile" class="pg-btn pg-btn--primary">Create Profile</a>`}
+                ${currentUserHasBio ? `<a href="/pengubook/profile" class="pg-btn pg-btn--primary">View Your Profile</a>` : `<a href="/pengubook/profile" class="pg-btn pg-btn--primary">Create Profile</a>`}
             </div>
         </div>
         ` : `
         <div class="pg-grid pg-grid--2">
-            ${users.map((user) => {
-            let socials = [];
-            try {
-                socials = user.socials ? JSON.parse(user.socials) : [];
-            }
-            catch (e) {
-                socials = [];
-            }
-            const winRate = user.wins + user.losses > 0 ? ((user.wins / (user.wins + user.losses)) * 100).toFixed(1) : 'N/A';
-            return `
+            ${users.map((user2) => {
+      let socials = [];
+      try {
+        socials = user2.socials ? JSON.parse(user2.socials) : [];
+      } catch (e) {
+        socials = [];
+      }
+      const winRate = user2.wins + user2.losses > 0 ? (user2.wins / (user2.wins + user2.losses) * 100).toFixed(1) : "N/A";
+      return `
               <div class="pg-card" style="transition: all var(--pg-duration-normal) var(--pg-ease-out);">
                   <div style="display: flex; align-items: center; gap: var(--pg-space-4); margin-bottom: var(--pg-space-4);">
-                      <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(user.discordId.slice(-1)) % 6}.png"
+                      <img src="https://cdn.discordapp.com/embed/avatars/${parseInt(user2.discordId.slice(-1)) % 6}.png"
                            alt="Avatar"
                            class="pg-avatar"
                            style="width: 60px; height: 60px;"
-                           id="avatar-${user.discordId}"
+                           id="avatar-${user2.discordId}"
                            loading="lazy">
                       <div style="flex: 1; min-width: 0;">
-                          <div style="font-weight: 700; color: var(--pg-dark-800); margin-bottom: var(--pg-space-1);" id="username-${user.discordId}">
-                              User#${user.discordId.slice(-4)}
+                          <div style="font-weight: 700; color: var(--pg-dark-800); margin-bottom: var(--pg-space-1);" id="username-${user2.discordId}">
+                              User#${user2.discordId.slice(-4)}
                           </div>
                           <div style="color: var(--pg-dark-600); font-size: var(--pg-text-sm);">
-                              👀 ${user.bioViewCount} views
+                              \u{1F440} ${user2.bioViewCount} views
                           </div>
                       </div>
                   </div>
 
                   <div class="pg-stats-grid" style="margin: var(--pg-space-4) 0;">
                       <div class="pg-stat-card">
-                          <div class="pg-stat-value">${user.wins}</div>
+                          <div class="pg-stat-value">${user2.wins}</div>
                           <div class="pg-stat-label">Wins</div>
                       </div>
                       <div class="pg-stat-card">
-                          <div class="pg-stat-value">${user.losses}</div>
+                          <div class="pg-stat-value">${user2.losses}</div>
                           <div class="pg-stat-label">Losses</div>
                       </div>
                       <div class="pg-stat-card">
@@ -145,22 +126,22 @@ export async function browseHandler(req, res) {
                       </div>
                   </div>
 
-                  ${user.bio ? `
+                  ${user2.bio ? `
                   <div style="margin: var(--pg-space-4) 0; padding: var(--pg-space-4); background: var(--pg-dark-100); border-radius: var(--pg-radius-md);">
                       <div style="color: var(--pg-dark-700); font-size: var(--pg-text-sm); line-height: 1.5;">
-                          ${escapeHtml(user.bio.length > 120 ? user.bio.substring(0, 120) + '...' : user.bio)}
+                          ${escapeHtml(user2.bio.length > 120 ? user2.bio.substring(0, 120) + "..." : user2.bio)}
                       </div>
                   </div>
-                  ` : ''}
+                  ` : ""}
 
                   <div style="display: flex; gap: var(--pg-space-2); margin-top: var(--pg-space-4);">
-                      <a href="/pengubook/user/${user.discordId}" class="pg-btn pg-btn--primary pg-btn--sm" style="flex: 1;">
-                          👤 View Profile
+                      <a href="/pengubook/user/${user2.discordId}" class="pg-btn pg-btn--primary pg-btn--sm" style="flex: 1;">
+                          \u{1F464} View Profile
                       </a>
                   </div>
               </div>
               `;
-        }).join('')}
+    }).join("")}
         </div>
         `}
     </div>
@@ -168,7 +149,7 @@ export async function browseHandler(req, res) {
     <script>
         // Batch load Discord usernames and avatars to avoid N+1 queries
         async function loadDiscordUserData() {
-            const discordIds = [${users.map((user) => `'${user.discordId}'`).join(', ')}];
+            const discordIds = [${users.map((user2) => `'${user2.discordId}'`).join(", ")}];
 
             if (discordIds.length === 0) return;
 
@@ -223,7 +204,7 @@ export async function browseHandler(req, res) {
         });
 
         function createCelebrationEffect(element) {
-            const emojis = ['🎉', '✨', '🏆', '👑', '⭐'];
+            const emojis = ['\u{1F389}', '\u2728', '\u{1F3C6}', '\u{1F451}', '\u2B50'];
             for (let i = 0; i < 5; i++) {
                 setTimeout(() => {
                     const celebration = document.createElement('div');
@@ -250,13 +231,16 @@ export async function browseHandler(req, res) {
             }
         }
     </script>`;
-        res.send(generateBaseHTML(content, '👥 Browse Users - PenguBook', 'browse', {
-            user: currentUser,
-            unreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook browse error:", error);
-        res.status(500).send("Error loading browse page");
-    }
+    res.send(generateBaseHTML(content, "\u{1F465} Browse Users - PenguBook", "browse", {
+      user: currentUser,
+      unreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook browse error:", error);
+    res.status(500).send("Error loading browse page");
+  }
 }
+export {
+  browseHandler
+};
+//# sourceMappingURL=browse.js.map

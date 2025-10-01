@@ -1,24 +1,12 @@
-/**
- * Admin Markets Panel - Dedicated UI for Prediction Market Management
- *
- * Provides a comprehensive interface for:
- * - Viewing all markets (active, resolved, expired)
- * - Creating new markets (regular + tournament)
- * - Resolving markets (manual resolution)
- * - Configuring market settings
- * - Viewing market analytics
- * - Managing tournament markets (TPIP)
- */
 import { Router } from "express";
 import { prisma } from "../services/db.js";
 import { predictionMarkets } from "../services/prediction_markets.js";
-export const adminMarketsRouter = Router();
-// Admin authentication middleware
+const adminMarketsRouter = Router();
 function requireAdminAuth(req, res, next) {
-    const adminSecret = process.env.ADMIN_SECRET;
-    const authHeader = req.headers.authorization;
-    if (!authHeader || authHeader !== `Bearer ${adminSecret}`) {
-        return res.status(403).send(`
+  const adminSecret = process.env.ADMIN_SECRET;
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== `Bearer ${adminSecret}`) {
+    return res.status(403).send(`
       <!DOCTYPE html>
       <html>
       <head>
@@ -47,7 +35,7 @@ function requireAdminAuth(req, res, next) {
       </head>
       <body>
         <div class="error-container">
-          <h1>🔒 403</h1>
+          <h1>\u{1F512} 403</h1>
           <p>Unauthorized Access</p>
           <p style="font-size: 1rem; margin-top: 2rem;">
             Admin authentication required
@@ -56,231 +44,201 @@ function requireAdminAuth(req, res, next) {
       </body>
       </html>
     `);
-    }
-    next();
+  }
+  next();
 }
-// Apply auth to all routes
 adminMarketsRouter.use(requireAdminAuth);
-/**
- * GET /admin/markets - Main markets admin panel
- */
 adminMarketsRouter.get("/markets", async (req, res) => {
-    try {
-        // Get market statistics
-        const [totalMarkets, activeMarkets, resolvedMarkets, expiredMarkets] = await Promise.all([
-            prisma.predictionMarket.count(),
-            prisma.predictionMarket.count({ where: { status: 'ACTIVE' } }),
-            prisma.predictionMarket.count({ where: { status: 'RESOLVED' } }),
-            prisma.predictionMarket.count({
-                where: {
-                    status: 'ACTIVE',
-                    resolveAt: { lt: new Date() }
-                }
-            })
-        ]);
-        // Get recent markets
-        const recentMarkets = await prisma.predictionMarket.findMany({
-            orderBy: { createdAt: 'desc' },
-            take: 50,
-            include: {
-                _count: {
-                    select: { participations: true }
-                }
-            }
-        });
-        // Calculate market details
-        const marketsWithDetails = recentMarkets.map(market => {
-            const totalPool = market.totalYesBets + market.totalNoBets;
-            const timeLeft = market.resolveAt.getTime() - Date.now();
-            const isExpired = timeLeft <= 0 && market.status === 'ACTIVE';
-            // Calculate odds
-            const yesOdds = totalPool > 0
-                ? (totalPool / Math.max(market.totalYesBets, 0.01)).toFixed(2)
-                : '2.00';
-            const noOdds = totalPool > 0
-                ? (totalPool / Math.max(market.totalNoBets, 0.01)).toFixed(2)
-                : '2.00';
-            return {
-                ...market,
-                totalPool,
-                timeLeftMs: timeLeft,
-                timeLeftHuman: isExpired
-                    ? 'EXPIRED'
-                    : timeLeft > 0
-                        ? formatTimeLeft(timeLeft)
-                        : 'Resolving soon',
-                isExpired,
-                participationCount: market._count.participations,
-                yesOdds,
-                noOdds
-            };
-        });
-        // Render admin panel HTML
-        res.send(generateMarketsAdminHTML({
-            stats: {
-                total: totalMarkets,
-                active: activeMarkets,
-                resolved: resolvedMarkets,
-                expired: expiredMarkets
-            },
-            markets: marketsWithDetails
-        }));
-    }
-    catch (error) {
-        console.error("Admin markets panel error:", error);
-        res.status(500).send(`
+  try {
+    const [totalMarkets, activeMarkets, resolvedMarkets, expiredMarkets] = await Promise.all([
+      prisma.predictionMarket.count(),
+      prisma.predictionMarket.count({ where: { status: "ACTIVE" } }),
+      prisma.predictionMarket.count({ where: { status: "RESOLVED" } }),
+      prisma.predictionMarket.count({
+        where: {
+          status: "ACTIVE",
+          resolveAt: { lt: /* @__PURE__ */ new Date() }
+        }
+      })
+    ]);
+    const recentMarkets = await prisma.predictionMarket.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        _count: {
+          select: { participations: true }
+        }
+      }
+    });
+    const marketsWithDetails = recentMarkets.map((market) => {
+      const totalPool = market.totalYesBets + market.totalNoBets;
+      const timeLeft = market.resolveAt.getTime() - Date.now();
+      const isExpired = timeLeft <= 0 && market.status === "ACTIVE";
+      const yesOdds = totalPool > 0 ? (totalPool / Math.max(market.totalYesBets, 0.01)).toFixed(2) : "2.00";
+      const noOdds = totalPool > 0 ? (totalPool / Math.max(market.totalNoBets, 0.01)).toFixed(2) : "2.00";
+      return {
+        ...market,
+        totalPool,
+        timeLeftMs: timeLeft,
+        timeLeftHuman: isExpired ? "EXPIRED" : timeLeft > 0 ? formatTimeLeft(timeLeft) : "Resolving soon",
+        isExpired,
+        participationCount: market._count.participations,
+        yesOdds,
+        noOdds
+      };
+    });
+    res.send(generateMarketsAdminHTML({
+      stats: {
+        total: totalMarkets,
+        active: activeMarkets,
+        resolved: resolvedMarkets,
+        expired: expiredMarkets
+      },
+      markets: marketsWithDetails
+    }));
+  } catch (error) {
+    console.error("Admin markets panel error:", error);
+    res.status(500).send(`
       <html>
         <body style="font-family: sans-serif; padding: 2rem;">
           <h1>Error Loading Admin Panel</h1>
-          <p>${error instanceof Error ? error.message : 'Unknown error'}</p>
+          <p>${error instanceof Error ? error.message : "Unknown error"}</p>
         </body>
       </html>
     `);
-    }
+  }
 });
-/**
- * POST /admin/markets/:id/resolve - Quick resolve from admin panel
- */
 adminMarketsRouter.post("/markets/:id/resolve", async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { outcome } = req.body;
-        if (!outcome || !['YES', 'NO', 'CANCEL'].includes(outcome)) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid outcome. Must be YES, NO, or CANCEL'
-            });
-        }
-        // Resolve market using admin endpoint
-        const result = await predictionMarkets.resolveMarket(id, outcome);
-        res.json({
-            success: result.success,
-            message: result.success
-                ? `Market resolved as ${outcome}`
-                : result.error,
-            payoutCount: result.payouts?.length || 0
-        });
+  try {
+    const { id } = req.params;
+    const { outcome } = req.body;
+    if (!outcome || !["YES", "NO", "CANCEL"].includes(outcome)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid outcome. Must be YES, NO, or CANCEL"
+      });
     }
-    catch (error) {
-        console.error("Market resolution error:", error);
-        res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.message : 'Resolution failed'
-        });
-    }
+    const result = await predictionMarkets.resolveMarket(id, outcome);
+    res.json({
+      success: result.success,
+      message: result.success ? `Market resolved as ${outcome}` : result.error,
+      payoutCount: result.payouts?.length || 0
+    });
+  } catch (error) {
+    console.error("Market resolution error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Resolution failed"
+    });
+  }
 });
-/**
- * POST /admin/markets/create - Create new market from admin panel
- */
 adminMarketsRouter.post("/markets/create", async (req, res) => {
-    try {
-        const { title, description, marketType, tokenSymbol, tournamentId, resolveAt, minBet, maxBet, rakePercentage, guildId } = req.body;
-        // Validation
-        if (!title || !description || !resolveAt) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields: title, description, resolveAt'
-            });
-        }
-        const resolveDate = new Date(resolveAt);
-        if (resolveDate <= new Date()) {
-            return res.status(400).json({
-                success: false,
-                error: 'Resolve date must be in the future'
-            });
-        }
-        // ✅ CRITICAL: Validate crypto markets must have API guarantees
-        const cryptoMarketTypes = [
-            'CRYPTO_PRICE_DIRECTION',
-            'CRYPTO_DAILY_CHANGE',
-            'CRYPTO_VOLUME',
-            'CRYPTO_PRICE_TARGET',
-            'CRYPTO_PRICE_RANGE',
-            'CRYPTO_RANK_TARGET',
-            'PRICE_UP_DOWN',
-            'PRICE_ABOVE_BELOW',
-            'VOLUME_RANKING'
-        ];
-        if (cryptoMarketTypes.includes(marketType)) {
-            return res.status(400).json({
-                success: false,
-                error: '🚫 BLOCKED: Crypto markets cannot be created directly from admin panel. Use template-based creation to ensure API settlement guarantees.'
-            });
-        }
-        // Create market
-        const market = await prisma.predictionMarket.create({
-            data: {
-                title,
-                description,
-                marketType: marketType || 'EVENT',
-                tokenSymbol: tokenSymbol || 'PIPCHIPS',
-                tournamentId: tournamentId || null,
-                status: 'ACTIVE',
-                resolveAt: resolveDate,
-                minBet: minBet || 10,
-                maxBet: maxBet || 10000,
-                rakePercentage: rakePercentage || 5,
-                guildId: guildId || null,
-                totalYesBets: 0,
-                totalNoBets: 0,
-                totalBetCount: 0,
-                totalPipchipsVolume: 0
-            }
-        });
-        res.json({
-            success: true,
-            marketId: market.id,
-            message: 'Market created successfully'
-        });
+  try {
+    const {
+      title,
+      description,
+      marketType,
+      tokenSymbol,
+      tournamentId,
+      resolveAt,
+      minBet,
+      maxBet,
+      rakePercentage,
+      guildId
+    } = req.body;
+    if (!title || !description || !resolveAt) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: title, description, resolveAt"
+      });
     }
-    catch (error) {
-        console.error("Market creation error:", error);
-        res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.message : 'Creation failed'
-        });
+    const resolveDate = new Date(resolveAt);
+    if (resolveDate <= /* @__PURE__ */ new Date()) {
+      return res.status(400).json({
+        success: false,
+        error: "Resolve date must be in the future"
+      });
     }
+    const cryptoMarketTypes = [
+      "CRYPTO_PRICE_DIRECTION",
+      "CRYPTO_DAILY_CHANGE",
+      "CRYPTO_VOLUME",
+      "CRYPTO_PRICE_TARGET",
+      "CRYPTO_PRICE_RANGE",
+      "CRYPTO_RANK_TARGET",
+      "PRICE_UP_DOWN",
+      "PRICE_ABOVE_BELOW",
+      "VOLUME_RANKING"
+    ];
+    if (cryptoMarketTypes.includes(marketType)) {
+      return res.status(400).json({
+        success: false,
+        error: "\u{1F6AB} BLOCKED: Crypto markets cannot be created directly from admin panel. Use template-based creation to ensure API settlement guarantees."
+      });
+    }
+    const market = await prisma.predictionMarket.create({
+      data: {
+        title,
+        description,
+        marketType: marketType || "EVENT",
+        tokenSymbol: tokenSymbol || "PIPCHIPS",
+        tournamentId: tournamentId || null,
+        status: "ACTIVE",
+        resolveAt: resolveDate,
+        minBet: minBet || 10,
+        maxBet: maxBet || 1e4,
+        rakePercentage: rakePercentage || 5,
+        guildId: guildId || null,
+        totalYesBets: 0,
+        totalNoBets: 0,
+        totalBetCount: 0,
+        totalPipchipsVolume: 0
+      }
+    });
+    res.json({
+      success: true,
+      marketId: market.id,
+      message: "Market created successfully"
+    });
+  } catch (error) {
+    console.error("Market creation error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Creation failed"
+    });
+  }
 });
-/**
- * DELETE /admin/markets/:id - Delete market
- */
 adminMarketsRouter.delete("/markets/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        await prisma.predictionMarket.delete({
-            where: { id }
-        });
-        res.json({
-            success: true,
-            message: 'Market deleted successfully'
-        });
-    }
-    catch (error) {
-        console.error("Market deletion error:", error);
-        res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.message : 'Deletion failed'
-        });
-    }
+  try {
+    const { id } = req.params;
+    await prisma.predictionMarket.delete({
+      where: { id }
+    });
+    res.json({
+      success: true,
+      message: "Market deleted successfully"
+    });
+  } catch (error) {
+    console.error("Market deletion error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Deletion failed"
+    });
+  }
 });
-// Helper function to format time remaining
 function formatTimeLeft(ms) {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    if (days > 0)
-        return `${days}d ${hours % 24}h`;
-    if (hours > 0)
-        return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0)
-        return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
+  const seconds = Math.floor(ms / 1e3);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
 }
-// Generate HTML for markets admin panel
 function generateMarketsAdminHTML(data) {
-    const { stats, markets } = data;
-    return `
+  const { stats, markets } = data;
+  return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -694,7 +652,7 @@ function generateMarketsAdminHTML(data) {
 <body>
   <div class="container">
     <div class="header">
-      <h1>🔮 Prediction Markets Admin</h1>
+      <h1>\u{1F52E} Prediction Markets Admin</h1>
       <p>Manage all prediction markets, tournaments, and configurations</p>
     </div>
 
@@ -713,19 +671,19 @@ function generateMarketsAdminHTML(data) {
       </div>
       <div class="stat-card">
         <h3>Expired (Needs Resolution)</h3>
-        <div class="value" style="color: ${stats.expired > 0 ? '#ef4444' : '#10b981'}">${stats.expired}</div>
+        <div class="value" style="color: ${stats.expired > 0 ? "#ef4444" : "#10b981"}">${stats.expired}</div>
       </div>
     </div>
 
     <div class="actions">
       <button class="btn btn-primary" onclick="openCreateModal()">
-        ➕ Create New Market
+        \u2795 Create New Market
       </button>
       <button class="btn btn-warning" onclick="resolveAllExpired()">
-        ⚡ Resolve All Expired
+        \u26A1 Resolve All Expired
       </button>
       <a href="/admin" class="btn btn-secondary">
-        ← Back to Admin
+        \u2190 Back to Admin
       </a>
     </div>
 
@@ -741,8 +699,8 @@ function generateMarketsAdminHTML(data) {
       </div>
 
       <div id="markets-list">
-        ${markets.map(market => `
-          <div class="market-card ${market.isExpired ? 'expired' : ''}" data-status="${market.status.toLowerCase()}" data-expired="${market.isExpired}">
+        ${markets.map((market) => `
+          <div class="market-card ${market.isExpired ? "expired" : ""}" data-status="${market.status.toLowerCase()}" data-expired="${market.isExpired}">
             <div class="market-header">
               <div>
                 <div class="market-title">${escapeHtml(market.title)}</div>
@@ -782,30 +740,30 @@ function generateMarketsAdminHTML(data) {
               </div>
             </div>
 
-            ${market.status === 'ACTIVE' ? `
+            ${market.status === "ACTIVE" ? `
               <div class="market-actions">
                 <button class="btn btn-small btn-success" onclick="resolveMarket('${market.id}', 'YES')">
-                  ✓ Resolve YES
+                  \u2713 Resolve YES
                 </button>
                 <button class="btn btn-small btn-danger" onclick="resolveMarket('${market.id}', 'NO')">
-                  ✗ Resolve NO
+                  \u2717 Resolve NO
                 </button>
                 <button class="btn btn-small btn-warning" onclick="resolveMarket('${market.id}', 'CANCEL')">
-                  ⊘ Cancel
+                  \u2298 Cancel
                 </button>
                 <button class="btn btn-small btn-secondary" onclick="deleteMarket('${market.id}')">
-                  🗑️ Delete
+                  \u{1F5D1}\uFE0F Delete
                 </button>
               </div>
-            ` : market.status === 'RESOLVED' ? `
+            ` : market.status === "RESOLVED" ? `
               <div class="market-actions">
                 <span style="color: #10b981; font-weight: 600;">
-                  ${market.outcome === 'YES' ? '✓ Resolved YES' : market.outcome === 'NO' ? '✗ Resolved NO' : '⊘ Cancelled'}
+                  ${market.outcome === "YES" ? "\u2713 Resolved YES" : market.outcome === "NO" ? "\u2717 Resolved NO" : "\u2298 Cancelled"}
                 </span>
               </div>
-            ` : ''}
+            ` : ""}
           </div>
-        `).join('')}
+        `).join("")}
       </div>
     </div>
   </div>
@@ -1022,12 +980,16 @@ function generateMarketsAdminHTML(data) {
   `;
 }
 function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
+  const map = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  };
+  return text.replace(/[&<>"']/g, (m) => map[m]);
 }
+export {
+  adminMarketsRouter
+};
+//# sourceMappingURL=admin_markets.js.map

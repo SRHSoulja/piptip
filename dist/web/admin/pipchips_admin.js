@@ -1,309 +1,280 @@
-// src/web/admin/pipchips_admin.ts - Admin panel for PIPChips management
 import { Router } from "express";
 import { prisma } from "../../services/db.js";
 import { pipchipsService } from "../../services/pipchips_service.js";
 import { pipchipsLMSR } from "../../services/pipchips_lmsr.js";
 import { requireAuth } from "../auth.js";
-export const pipchipsAdminRouter = Router();
-// All admin routes require authentication
+const pipchipsAdminRouter = Router();
 pipchipsAdminRouter.use(requireAuth);
-/**
- * GET /admin/pipchips - Main PIPChips admin dashboard
- */
 pipchipsAdminRouter.get("/", async (req, res) => {
-    try {
-        // Get system-wide PIPChips statistics
-        const stats = await pipchipsService.getSystemStats();
-        // Get recent transactions
-        const recentTransactions = await prisma.pipchipsTransaction.findMany({
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-            include: {
-                user: {
-                    select: {
-                        discordId: true,
-                        xUsername: true
-                    }
-                }
-            }
-        });
-        // Get top users by balance
-        const topUsers = await prisma.user.findMany({
-            orderBy: { pipchipsBalance: 'desc' },
-            take: 10,
-            select: {
-                discordId: true,
-                xUsername: true,
-                pipchipsBalance: true,
-                pipchipsEarnedTotal: true,
-                pipchipsSpentTotal: true,
-                dailyStreak: true,
-                longestDailyStreak: true
-            }
-        });
-        // Get active PIPChips markets
-        const activeMarkets = await prisma.predictionMarket.findMany({
-            where: {
-                tokenSymbol: 'PIPCHIPS',
-                status: 'ACTIVE'
-            },
-            select: {
-                id: true,
-                title: true,
-                totalPipchipsVolume: true,
-                totalBetCount: true,
-                createdAt: true
-            },
-            orderBy: { totalPipchipsVolume: 'desc' },
-            take: 10
-        });
-        const html = generatePIPChipsAdminHTML({
-            stats,
-            recentTransactions,
-            topUsers,
-            activeMarkets
-        });
-        res.send(html);
-    }
-    catch (error) {
-        console.error('PIPChips admin error:', error);
-        res.status(500).send('Error loading PIPChips admin dashboard');
-    }
+  try {
+    const stats = await pipchipsService.getSystemStats();
+    const recentTransactions = await prisma.pipchipsTransaction.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: {
+        user: {
+          select: {
+            discordId: true,
+            xUsername: true
+          }
+        }
+      }
+    });
+    const topUsers = await prisma.user.findMany({
+      orderBy: { pipchipsBalance: "desc" },
+      take: 10,
+      select: {
+        discordId: true,
+        xUsername: true,
+        pipchipsBalance: true,
+        pipchipsEarnedTotal: true,
+        pipchipsSpentTotal: true,
+        dailyStreak: true,
+        longestDailyStreak: true
+      }
+    });
+    const activeMarkets = await prisma.predictionMarket.findMany({
+      where: {
+        tokenSymbol: "PIPCHIPS",
+        status: "ACTIVE"
+      },
+      select: {
+        id: true,
+        title: true,
+        totalPipchipsVolume: true,
+        totalBetCount: true,
+        createdAt: true
+      },
+      orderBy: { totalPipchipsVolume: "desc" },
+      take: 10
+    });
+    const html = generatePIPChipsAdminHTML({
+      stats,
+      recentTransactions,
+      topUsers,
+      activeMarkets
+    });
+    res.send(html);
+  } catch (error) {
+    console.error("PIPChips admin error:", error);
+    res.status(500).send("Error loading PIPChips admin dashboard");
+  }
 });
-/**
- * GET /admin/pipchips/users - User management interface
- */
 pipchipsAdminRouter.get("/users", async (req, res) => {
-    try {
-        const { search = "", limit = "50", offset = "0" } = req.query;
-        const limitNum = Math.min(parseInt(limit) || 50, 100);
-        const offsetNum = parseInt(offset) || 0;
-        const where = {};
-        if (search) {
-            where.OR = [
-                { xUsername: { contains: search, mode: 'insensitive' } },
-                { discordId: { contains: search } }
-            ];
+  try {
+    const { search = "", limit = "50", offset = "0" } = req.query;
+    const limitNum = Math.min(parseInt(limit) || 50, 100);
+    const offsetNum = parseInt(offset) || 0;
+    const where = {};
+    if (search) {
+      where.OR = [
+        { xUsername: { contains: search, mode: "insensitive" } },
+        { discordId: { contains: search } }
+      ];
+    }
+    const [users, totalUsers] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { pipchipsBalance: "desc" },
+        take: limitNum,
+        skip: offsetNum,
+        select: {
+          discordId: true,
+          xUsername: true,
+          pipchipsBalance: true,
+          pipchipsEarnedTotal: true,
+          pipchipsSpentTotal: true,
+          pipchipsBoughtTotal: true,
+          dailyStreak: true,
+          longestDailyStreak: true,
+          lastPipchipsDaily: true,
+          createdAt: true
         }
-        const [users, totalUsers] = await Promise.all([
-            prisma.user.findMany({
-                where,
-                orderBy: { pipchipsBalance: 'desc' },
-                take: limitNum,
-                skip: offsetNum,
-                select: {
-                    discordId: true,
-                    xUsername: true,
-                    pipchipsBalance: true,
-                    pipchipsEarnedTotal: true,
-                    pipchipsSpentTotal: true,
-                    pipchipsBoughtTotal: true,
-                    dailyStreak: true,
-                    longestDailyStreak: true,
-                    lastPipchipsDaily: true,
-                    createdAt: true
-                }
-            }),
-            prisma.user.count({ where })
-        ]);
-        const html = generateUserManagementHTML({
-            users,
-            search: search,
-            pagination: {
-                total: totalUsers,
-                limit: limitNum,
-                offset: offsetNum,
-                hasMore: offsetNum + limitNum < totalUsers
-            }
-        });
-        res.send(html);
-    }
-    catch (error) {
-        console.error('PIPChips user management error:', error);
-        res.status(500).send('Error loading user management');
-    }
+      }),
+      prisma.user.count({ where })
+    ]);
+    const html = generateUserManagementHTML({
+      users,
+      search,
+      pagination: {
+        total: totalUsers,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + limitNum < totalUsers
+      }
+    });
+    res.send(html);
+  } catch (error) {
+    console.error("PIPChips user management error:", error);
+    res.status(500).send("Error loading user management");
+  }
 });
-/**
- * POST /admin/pipchips/users/:discordId/adjust - Adjust user balance
- */
 pipchipsAdminRouter.post("/users/:discordId/adjust", async (req, res) => {
-    try {
-        const { discordId } = req.params;
-        const { amount, reason, type } = req.body;
-        if (!amount || !reason || !type) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields: amount, reason, type'
-            });
-        }
-        const adjustAmount = BigInt(parseInt(amount));
-        if (type === 'credit') {
-            await pipchipsService.creditPIPChips(discordId, adjustAmount, 'ADMIN_CREDIT', undefined, `Admin credit: ${reason}`, { adminUserId: req.user?.discordId });
-        }
-        else if (type === 'debit') {
-            await pipchipsService.debitPIPChips(discordId, adjustAmount, 'ADMIN_DEBIT', undefined, `Admin debit: ${reason}`, { adminUserId: req.user?.discordId });
-        }
-        else {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid adjustment type. Must be "credit" or "debit"'
-            });
-        }
-        res.json({
-            success: true,
-            message: `Successfully ${type}ed ${adjustAmount} PIPChips`
-        });
+  try {
+    const { discordId } = req.params;
+    const { amount, reason, type } = req.body;
+    if (!amount || !reason || !type) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: amount, reason, type"
+      });
     }
-    catch (error) {
-        console.error('Balance adjustment error:', error);
-        res.status(500).json({
-            success: false,
-            error: error?.message || 'Failed to adjust balance'
-        });
+    const adjustAmount = BigInt(parseInt(amount));
+    if (type === "credit") {
+      await pipchipsService.creditPIPChips(
+        discordId,
+        adjustAmount,
+        "ADMIN_CREDIT",
+        void 0,
+        `Admin credit: ${reason}`,
+        { adminUserId: req.user?.discordId }
+      );
+    } else if (type === "debit") {
+      await pipchipsService.debitPIPChips(
+        discordId,
+        adjustAmount,
+        "ADMIN_DEBIT",
+        void 0,
+        `Admin debit: ${reason}`,
+        { adminUserId: req.user?.discordId }
+      );
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid adjustment type. Must be "credit" or "debit"'
+      });
     }
+    res.json({
+      success: true,
+      message: `Successfully ${type}ed ${adjustAmount} PIPChips`
+    });
+  } catch (error) {
+    console.error("Balance adjustment error:", error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Failed to adjust balance"
+    });
+  }
 });
-/**
- * GET /admin/pipchips/packages - Manage purchase packages
- */
 pipchipsAdminRouter.get("/packages", async (req, res) => {
-    try {
-        const packages = await prisma.pipchipsPackage.findMany({
-            orderBy: [
-                { tokenSymbol: 'asc' },
-                { pipchipsAmount: 'asc' }
-            ]
-        });
-        const html = generatePackageManagementHTML(packages);
-        res.send(html);
-    }
-    catch (error) {
-        console.error('Package management error:', error);
-        res.status(500).send('Error loading package management');
-    }
+  try {
+    const packages = await prisma.pipchipsPackage.findMany({
+      orderBy: [
+        { tokenSymbol: "asc" },
+        { pipchipsAmount: "asc" }
+      ]
+    });
+    const html = generatePackageManagementHTML(packages);
+    res.send(html);
+  } catch (error) {
+    console.error("Package management error:", error);
+    res.status(500).send("Error loading package management");
+  }
 });
-/**
- * POST /admin/pipchips/packages - Create new purchase package
- */
 pipchipsAdminRouter.post("/packages", async (req, res) => {
-    try {
-        const { pipchipsAmount, tokenCost, tokenSymbol, bonusPercentage, isActive } = req.body;
-        const newPackage = await prisma.pipchipsPackage.create({
-            data: {
-                name: `${pipchipsAmount} PIPChips`,
-                pipchipsAmount: BigInt(pipchipsAmount),
-                usdPrice: parseFloat(tokenCost),
-                tokenCost: parseFloat(tokenCost),
-                tokenSymbol: tokenSymbol.toUpperCase(),
-                bonusPercentage: parseInt(bonusPercentage) || 0,
-                isActive: isActive === 'true'
-            }
-        });
-        res.json({
-            success: true,
-            message: 'Package created successfully',
-            package: newPackage
-        });
-    }
-    catch (error) {
-        console.error('Create package error:', error);
-        res.status(500).json({
-            success: false,
-            error: error?.message || 'Failed to create package'
-        });
-    }
+  try {
+    const { pipchipsAmount, tokenCost, tokenSymbol, bonusPercentage, isActive } = req.body;
+    const newPackage = await prisma.pipchipsPackage.create({
+      data: {
+        name: `${pipchipsAmount} PIPChips`,
+        pipchipsAmount: BigInt(pipchipsAmount),
+        usdPrice: parseFloat(tokenCost),
+        tokenCost: parseFloat(tokenCost),
+        tokenSymbol: tokenSymbol.toUpperCase(),
+        bonusPercentage: parseInt(bonusPercentage) || 0,
+        isActive: isActive === "true"
+      }
+    });
+    res.json({
+      success: true,
+      message: "Package created successfully",
+      package: newPackage
+    });
+  } catch (error) {
+    console.error("Create package error:", error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Failed to create package"
+    });
+  }
 });
-/**
- * POST /admin/pipchips/markets/:marketId/resolve - Resolve PIPChips market
- */
 pipchipsAdminRouter.post("/markets/:marketId/resolve", async (req, res) => {
-    try {
-        const { marketId } = req.params;
-        const { winningOutcome } = req.body;
-        const adminUserId = req.user?.discordId;
-        if (!winningOutcome) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing winning outcome'
-            });
-        }
-        const result = await pipchipsLMSR.resolveMarket(marketId, winningOutcome, adminUserId);
-        res.json({
-            success: true,
-            message: 'Market resolved successfully',
-            result
-        });
+  try {
+    const { marketId } = req.params;
+    const { winningOutcome } = req.body;
+    const adminUserId = req.user?.discordId;
+    if (!winningOutcome) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing winning outcome"
+      });
     }
-    catch (error) {
-        console.error('Market resolution error:', error);
-        res.status(500).json({
-            success: false,
-            error: error?.message || 'Failed to resolve market'
-        });
-    }
+    const result = await pipchipsLMSR.resolveMarket(marketId, winningOutcome, adminUserId);
+    res.json({
+      success: true,
+      message: "Market resolved successfully",
+      result
+    });
+  } catch (error) {
+    console.error("Market resolution error:", error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Failed to resolve market"
+    });
+  }
 });
-/**
- * GET /admin/pipchips/settings - System settings management
- */
 pipchipsAdminRouter.get("/settings", async (req, res) => {
-    try {
-        // Get current admin settings
-        const settings = await prisma.adminSetting.findMany({
-            where: {
-                key: {
-                    in: [
-                        'daily_bonus_amount',
-                        'starting_pipchips',
-                        'max_daily_bonus',
-                        'streak_multiplier_7d',
-                        'streak_multiplier_30d',
-                        'streak_multiplier_100d'
-                    ]
-                }
-            }
-        });
-        const settingsMap = settings.reduce((acc, setting) => {
-            acc[setting.key] = setting.value;
-            return acc;
-        }, {});
-        const html = generateSettingsHTML(settingsMap);
-        res.send(html);
-    }
-    catch (error) {
-        console.error('Settings management error:', error);
-        res.status(500).send('Error loading settings management');
-    }
-});
-/**
- * POST /admin/pipchips/settings - Update system settings
- */
-pipchipsAdminRouter.post("/settings", async (req, res) => {
-    try {
-        const settings = req.body;
-        // Update settings in database
-        for (const [key, value] of Object.entries(settings)) {
-            await prisma.adminSetting.upsert({
-                where: { key },
-                create: { key, value: JSON.stringify(value) },
-                update: { value: JSON.stringify(value) }
-            });
+  try {
+    const settings = await prisma.adminSetting.findMany({
+      where: {
+        key: {
+          in: [
+            "daily_bonus_amount",
+            "starting_pipchips",
+            "max_daily_bonus",
+            "streak_multiplier_7d",
+            "streak_multiplier_30d",
+            "streak_multiplier_100d"
+          ]
         }
-        res.json({
-            success: true,
-            message: 'Settings updated successfully'
-        });
-    }
-    catch (error) {
-        console.error('Update settings error:', error);
-        res.status(500).json({
-            success: false,
-            error: error?.message || 'Failed to update settings'
-        });
-    }
+      }
+    });
+    const settingsMap = settings.reduce((acc, setting) => {
+      acc[setting.key] = setting.value;
+      return acc;
+    }, {});
+    const html = generateSettingsHTML(settingsMap);
+    res.send(html);
+  } catch (error) {
+    console.error("Settings management error:", error);
+    res.status(500).send("Error loading settings management");
+  }
 });
-// HTML Generation Functions
+pipchipsAdminRouter.post("/settings", async (req, res) => {
+  try {
+    const settings = req.body;
+    for (const [key, value] of Object.entries(settings)) {
+      await prisma.adminSetting.upsert({
+        where: { key },
+        create: { key, value: JSON.stringify(value) },
+        update: { value: JSON.stringify(value) }
+      });
+    }
+    res.json({
+      success: true,
+      message: "Settings updated successfully"
+    });
+  } catch (error) {
+    console.error("Update settings error:", error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Failed to update settings"
+    });
+  }
+});
 function generatePIPChipsAdminHTML(data) {
-    const { stats, recentTransactions, topUsers, activeMarkets } = data;
-    return `
+  const { stats, recentTransactions, topUsers, activeMarkets } = data;
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -330,15 +301,15 @@ function generatePIPChipsAdminHTML(data) {
     </head>
     <body>
         <div class="header">
-            <h1>🎰 PIPChips Administration</h1>
+            <h1>\u{1F3B0} PIPChips Administration</h1>
             <p>Manage the virtual currency system, users, and prediction markets</p>
         </div>
 
         <div class="nav-tabs">
-            <a href="/admin/pipchips" class="nav-tab">📊 Overview</a>
-            <a href="/admin/pipchips/users" class="nav-tab">👥 Users</a>
-            <a href="/admin/pipchips/packages" class="nav-tab">📦 Packages</a>
-            <a href="/admin/pipchips/settings" class="nav-tab">⚙️ Settings</a>
+            <a href="/admin/pipchips" class="nav-tab">\u{1F4CA} Overview</a>
+            <a href="/admin/pipchips/users" class="nav-tab">\u{1F465} Users</a>
+            <a href="/admin/pipchips/packages" class="nav-tab">\u{1F4E6} Packages</a>
+            <a href="/admin/pipchips/settings" class="nav-tab">\u2699\uFE0F Settings</a>
         </div>
 
         <div class="stats-grid">
@@ -369,7 +340,7 @@ function generatePIPChipsAdminHTML(data) {
         </div>
 
         <div class="section">
-            <h2>📈 Top Users by Balance</h2>
+            <h2>\u{1F4C8} Top Users by Balance</h2>
             <table>
                 <thead>
                     <tr>
@@ -391,13 +362,13 @@ function generatePIPChipsAdminHTML(data) {
                             <td>${user.dailyStreak} days</td>
                             <td>${user.longestDailyStreak} days</td>
                         </tr>
-                    `).join('')}
+                    `).join("")}
                 </tbody>
             </table>
         </div>
 
         <div class="section">
-            <h2>💰 Active PIPChips Markets</h2>
+            <h2>\u{1F4B0} Active PIPChips Markets</h2>
             <table>
                 <thead>
                     <tr>
@@ -419,13 +390,13 @@ function generatePIPChipsAdminHTML(data) {
                                 <button onclick="resolveMarket('${market.id}')" class="btn-small">Resolve</button>
                             </td>
                         </tr>
-                    `).join('')}
+                    `).join("")}
                 </tbody>
             </table>
         </div>
 
         <div class="section">
-            <h2>📋 Recent Transactions</h2>
+            <h2>\u{1F4CB} Recent Transactions</h2>
             <table>
                 <thead>
                     <tr>
@@ -440,12 +411,12 @@ function generatePIPChipsAdminHTML(data) {
                     ${recentTransactions.map((tx) => `
                         <tr>
                             <td>${tx.user?.xUsername || tx.userId.slice(0, 8)}</td>
-                            <td><span class="transaction-type ${tx.amount > 0 ? 'type-credit' : 'type-debit'}">${tx.transactionType}</span></td>
-                            <td class="pipchips-amount">${tx.amount > 0 ? '+' : ''}${Number(tx.amount).toLocaleString()}</td>
-                            <td>${tx.description || 'N/A'}</td>
+                            <td><span class="transaction-type ${tx.amount > 0 ? "type-credit" : "type-debit"}">${tx.transactionType}</span></td>
+                            <td class="pipchips-amount">${tx.amount > 0 ? "+" : ""}${Number(tx.amount).toLocaleString()}</td>
+                            <td>${tx.description || "N/A"}</td>
                             <td>${new Date(tx.createdAt).toLocaleString()}</td>
                         </tr>
-                    `).join('')}
+                    `).join("")}
                 </tbody>
             </table>
         </div>
@@ -477,8 +448,8 @@ function generatePIPChipsAdminHTML(data) {
   `;
 }
 function generateUserManagementHTML(data) {
-    const { users, search, pagination } = data;
-    return `
+  const { users, search, pagination } = data;
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -507,14 +478,14 @@ function generateUserManagementHTML(data) {
     </head>
     <body>
         <div class="header">
-            <h1>👥 PIPChips User Management</h1>
+            <h1>\u{1F465} PIPChips User Management</h1>
             <p>View and manage user balances, streaks, and transactions</p>
         </div>
 
         <div class="section">
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search by username or Discord ID..." value="${search}">
-                <button onclick="searchUsers()">🔍 Search</button>
+                <button onclick="searchUsers()">\u{1F50D} Search</button>
             </div>
 
             <table>
@@ -539,13 +510,13 @@ function generateUserManagementHTML(data) {
                             <td>${Number(user.pipchipsSpentTotal).toLocaleString()}</td>
                             <td>${Number(user.pipchipsBoughtTotal).toLocaleString()}</td>
                             <td>${user.dailyStreak}/${user.longestDailyStreak}</td>
-                            <td>${user.lastPipchipsDaily ? new Date(user.lastPipchipsDaily).toLocaleDateString() : 'Never'}</td>
+                            <td>${user.lastPipchipsDaily ? new Date(user.lastPipchipsDaily).toLocaleDateString() : "Never"}</td>
                             <td class="balance-actions">
                                 <button class="btn-small btn-credit" onclick="adjustBalance('${user.discordId}', 'credit')">+ Credit</button>
                                 <button class="btn-small btn-debit" onclick="adjustBalance('${user.discordId}', 'debit')">- Debit</button>
                             </td>
                         </tr>
-                    `).join('')}
+                    `).join("")}
                 </tbody>
             </table>
         </div>
@@ -622,7 +593,7 @@ function generateUserManagementHTML(data) {
   `;
 }
 function generatePackageManagementHTML(packages) {
-    return `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -644,7 +615,7 @@ function generatePackageManagementHTML(packages) {
     </head>
     <body>
         <div class="header">
-            <h1>📦 PIPChips Package Management</h1>
+            <h1>\u{1F4E6} PIPChips Package Management</h1>
             <p>Create and manage purchase packages for PIPChips</p>
         </div>
 
@@ -701,22 +672,22 @@ function generatePackageManagementHTML(packages) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${packages.map(pkg => {
-        const totalValue = Number(pkg.pipchipsAmount) * (1 + pkg.bonusPercentage / 100);
-        return `
+                    ${packages.map((pkg) => {
+    const totalValue = Number(pkg.pipchipsAmount) * (1 + pkg.bonusPercentage / 100);
+    return `
                         <tr>
                             <td>${Number(pkg.pipchipsAmount).toLocaleString()}</td>
                             <td>${pkg.tokenCost}</td>
                             <td>${pkg.tokenSymbol}</td>
                             <td>${pkg.bonusPercentage}%</td>
                             <td>${totalValue.toLocaleString()}</td>
-                            <td class="${pkg.isActive ? 'status-active' : 'status-inactive'}">
-                                ${pkg.isActive ? 'Active' : 'Inactive'}
+                            <td class="${pkg.isActive ? "status-active" : "status-inactive"}">
+                                ${pkg.isActive ? "Active" : "Inactive"}
                             </td>
                             <td>${new Date(pkg.createdAt).toLocaleDateString()}</td>
                         </tr>
                       `;
-    }).join('')}
+  }).join("")}
                 </tbody>
             </table>
         </div>
@@ -749,7 +720,7 @@ function generatePackageManagementHTML(packages) {
   `;
 }
 function generateSettingsHTML(settings) {
-    return `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -769,7 +740,7 @@ function generateSettingsHTML(settings) {
     </head>
     <body>
         <div class="header">
-            <h1>⚙️ PIPChips System Settings</h1>
+            <h1>\u2699\uFE0F PIPChips System Settings</h1>
             <p>Configure global settings for the PIPChips virtual currency system</p>
         </div>
 
@@ -784,7 +755,7 @@ function generateSettingsHTML(settings) {
 
                     <div class="form-group">
                         <label>Starting PIPChips</label>
-                        <input type="number" name="starting_pipchips" value="${settings.starting_pipchips || 10000}" min="100" required>
+                        <input type="number" name="starting_pipchips" value="${settings.starting_pipchips || 1e4}" min="100" required>
                         <small>PIPChips given to new users when they join</small>
                     </div>
                 </div>
@@ -810,7 +781,7 @@ function generateSettingsHTML(settings) {
                 </div>
 
                 <div style="grid-column: 1 / -1; text-align: center;">
-                    <button type="submit" class="btn">💾 Update Settings</button>
+                    <button type="submit" class="btn">\u{1F4BE} Update Settings</button>
                 </div>
             </form>
         </div>
@@ -845,4 +816,9 @@ function generateSettingsHTML(settings) {
     </html>
   `;
 }
-export default pipchipsAdminRouter;
+var pipchips_admin_default = pipchipsAdminRouter;
+export {
+  pipchips_admin_default as default,
+  pipchipsAdminRouter
+};
+//# sourceMappingURL=pipchips_admin.js.map

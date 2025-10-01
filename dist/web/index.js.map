@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/web/index.ts"],
+  "sourcesContent": ["// src/web/index.ts - Web interface exports\nexport * from \"./admin.js\";\nexport * from \"./auth.js\";\nexport * from \"./health.js\";\nexport * from \"./internal.js\";\nexport * from \"./pengubook_enhanced.js\";\nexport * from \"./public_tiers.js\";\n"],
+  "mappings": "AACA,cAAc;AACd,cAAc;AACd,cAAc;AACd,cAAc;AACd,cAAc;AACd,cAAc;",
+  "names": []
+}

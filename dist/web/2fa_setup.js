@@ -1,90 +1,71 @@
-// 2FA Setup Wizard - Easy two-factor authentication setup with QR codes
-import express from 'express';
-import crypto from 'crypto';
-import { findOrCreateUser } from '../services/user_helpers.js';
-export const twoFactorRouter = express.Router();
-// 2FA setup page
-twoFactorRouter.get('/2fa-setup/:discordId', async (req, res) => {
-    try {
-        const { discordId } = req.params;
-        const user = await findOrCreateUser(discordId);
-        // Generate secret for 2FA (32 bytes = 52 characters in base32)
-        const secret = crypto.randomBytes(32).toString('base64url').substring(0, 32);
-        // Store secret temporarily in session (in production, use secure session storage)
-        req.session = req.session || {};
-        req.session.tempSecret = secret;
-        // Create TOTP URL for QR code
-        const totpUrl = `otpauth://totp/PIPTip:${encodeURIComponent(discordId)}?secret=${secret}&issuer=PIPTip`;
-        // For now, use a placeholder QR code URL (in production, generate actual QR code)
-        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUrl)}`;
-        res.send(render2FASetupPage({
-            discordId,
-            qrCodeUrl,
-            secret,
-            backupCodes: generateBackupCodes()
-        }));
-    }
-    catch (error) {
-        console.error('2FA setup error:', error);
-        res.status(500).send('2FA setup unavailable');
-    }
+import express from "express";
+import crypto from "crypto";
+import { findOrCreateUser } from "../services/user_helpers.js";
+const twoFactorRouter = express.Router();
+twoFactorRouter.get("/2fa-setup/:discordId", async (req, res) => {
+  try {
+    const { discordId } = req.params;
+    const user = await findOrCreateUser(discordId);
+    const secret = crypto.randomBytes(32).toString("base64url").substring(0, 32);
+    req.session = req.session || {};
+    req.session.tempSecret = secret;
+    const totpUrl = `otpauth://totp/PIPTip:${encodeURIComponent(discordId)}?secret=${secret}&issuer=PIPTip`;
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUrl)}`;
+    res.send(render2FASetupPage({
+      discordId,
+      qrCodeUrl,
+      secret,
+      backupCodes: generateBackupCodes()
+    }));
+  } catch (error) {
+    console.error("2FA setup error:", error);
+    res.status(500).send("2FA setup unavailable");
+  }
 });
-// Verify 2FA setup
-twoFactorRouter.post('/2fa-verify/:discordId', async (req, res) => {
-    try {
-        const { discordId } = req.params;
-        const { token, secret } = req.body;
-        // For demonstration, accept any 6-digit code (in production, implement proper TOTP verification)
-        if (!token || token.length !== 6 || !/^\d{6}$/.test(token)) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid verification code. Please try again.'
-            });
-        }
-        // Placeholder verification - in production, implement proper TOTP algorithm
-        const isValid = token === '123456' || Math.random() > 0.3; // Accept test code or 70% success rate for demo
-        if (!isValid) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid verification code. Please try again.'
-            });
-        }
-        // Save 2FA secret to database (encrypted in production)
-        // This is a placeholder - implement proper encryption
-        await saveUserTwoFactorSecret(discordId, secret);
-        res.json({
-            success: true,
-            message: 'Two-factor authentication enabled successfully!'
-        });
+twoFactorRouter.post("/2fa-verify/:discordId", async (req, res) => {
+  try {
+    const { discordId } = req.params;
+    const { token, secret } = req.body;
+    if (!token || token.length !== 6 || !/^\d{6}$/.test(token)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid verification code. Please try again."
+      });
     }
-    catch (error) {
-        console.error('2FA verification error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Verification failed'
-        });
+    const isValid = token === "123456" || Math.random() > 0.3;
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid verification code. Please try again."
+      });
     }
+    await saveUserTwoFactorSecret(discordId, secret);
+    res.json({
+      success: true,
+      message: "Two-factor authentication enabled successfully!"
+    });
+  } catch (error) {
+    console.error("2FA verification error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Verification failed"
+    });
+  }
 });
-// Generate backup codes
 function generateBackupCodes() {
-    const codes = [];
-    for (let i = 0; i < 10; i++) {
-        const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-        codes.push(`${code.slice(0, 4)}-${code.slice(4)}`);
-    }
-    return codes;
+  const codes = [];
+  for (let i = 0; i < 10; i++) {
+    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+    codes.push(`${code.slice(0, 4)}-${code.slice(4)}`);
+  }
+  return codes;
 }
-// Save user's 2FA secret (implement proper encryption)
 async function saveUserTwoFactorSecret(discordId, secret) {
-    // In production, encrypt the secret before storing
-    // This is a placeholder implementation
-    console.log(`Saving 2FA secret for user ${discordId}`);
-    // await prisma.userSecuritySettings.upsert({...})
+  console.log(`Saving 2FA secret for user ${discordId}`);
 }
-// Render 2FA setup page
 function render2FASetupPage(data) {
-    const { discordId, qrCodeUrl, secret, backupCodes } = data;
-    return `<!DOCTYPE html>
+  const { discordId, qrCodeUrl, secret, backupCodes } = data;
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -441,7 +422,7 @@ function render2FASetupPage(data) {
   <div class="setup-container">
     <div class="setup-header">
       <h1>
-        <span>🔐</span>
+        <span>\u{1F510}</span>
         Enable Two-Factor Authentication
       </h1>
       <p>Add an extra layer of security to your PIPTip account</p>
@@ -464,11 +445,11 @@ function render2FASetupPage(data) {
 
     <div class="setup-content">
       <div class="success-message" id="successMessage">
-        ✅ Two-factor authentication has been successfully enabled!
+        \u2705 Two-factor authentication has been successfully enabled!
       </div>
 
       <div class="error-message" id="errorMessage">
-        ❌ Invalid verification code. Please try again.
+        \u274C Invalid verification code. Please try again.
       </div>
 
       <div class="setup-grid">
@@ -483,19 +464,19 @@ function render2FASetupPage(data) {
           </p>
           <ul class="app-list">
             <li>
-              <span>📱</span>
+              <span>\u{1F4F1}</span>
               <span>Google Authenticator</span>
-              <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank">Download →</a>
+              <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank">Download \u2192</a>
             </li>
             <li>
-              <span>🔒</span>
+              <span>\u{1F512}</span>
               <span>Microsoft Authenticator</span>
-              <a href="https://www.microsoft.com/en-us/security/mobile-authenticator-app" target="_blank">Download →</a>
+              <a href="https://www.microsoft.com/en-us/security/mobile-authenticator-app" target="_blank">Download \u2192</a>
             </li>
             <li>
-              <span>🛡️</span>
+              <span>\u{1F6E1}\uFE0F</span>
               <span>Authy</span>
-              <a href="https://authy.com/download/" target="_blank">Download →</a>
+              <a href="https://authy.com/download/" target="_blank">Download \u2192</a>
             </li>
           </ul>
         </div>
@@ -518,7 +499,7 @@ function render2FASetupPage(data) {
 
       <div class="verification-section">
         <h3>
-          <span>✔️</span>
+          <span>\u2714\uFE0F</span>
           Step 2: Enter verification code
         </h3>
         <p style="text-align: center; color: #666;">
@@ -539,21 +520,21 @@ function render2FASetupPage(data) {
 
       <div class="backup-codes">
         <h3>
-          <span>⚠️</span>
+          <span>\u26A0\uFE0F</span>
           Step 3: Save your backup codes
         </h3>
         <p>
           Store these codes in a safe place. You can use them to access your account if you lose your authenticator device.
         </p>
         <div class="codes-grid">
-          ${backupCodes.map((code) => `<div class="backup-code">${code}</div>`).join('')}
+          ${backupCodes.map((code) => `<div class="backup-code">${code}</div>`).join("")}
         </div>
         <div class="action-buttons">
           <button class="download-button" onclick="downloadCodes()">
-            📥 Download Codes
+            \u{1F4E5} Download Codes
           </button>
           <button class="print-button" onclick="printCodes()">
-            🖨️ Print Codes
+            \u{1F5A8}\uFE0F Print Codes
           </button>
         </div>
       </div>
@@ -646,7 +627,7 @@ function render2FASetupPage(data) {
 
     function showError(message) {
       const errorEl = document.getElementById('errorMessage');
-      errorEl.textContent = '❌ ' + message;
+      errorEl.textContent = '\u274C ' + message;
       errorEl.classList.add('show');
       document.getElementById('successMessage').classList.remove('show');
 
@@ -684,3 +665,7 @@ function render2FASetupPage(data) {
 </body>
 </html>`;
 }
+export {
+  twoFactorRouter
+};
+//# sourceMappingURL=2fa_setup.js.map

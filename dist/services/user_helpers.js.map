@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/services/user_helpers.ts"],
+  "sourcesContent": ["import { prisma } from \"./db.js\";\n\n// Find or create user - upserts user if they don't exist\nexport async function findOrCreateUser(discordId: string) {\n  return prisma.user.upsert({\n    where: { discordId },\n    update: {},\n    create: { discordId }\n  });\n}\n\n// Just find user without creating\nexport async function findUser(discordId: string) {\n  return prisma.user.findUnique({\n    where: { discordId }\n  });\n}"],
+  "mappings": "AAAA,SAAS,cAAc;AAGvB,eAAsB,iBAAiB,WAAmB;AACxD,SAAO,OAAO,KAAK,OAAO;AAAA,IACxB,OAAO,EAAE,UAAU;AAAA,IACnB,QAAQ,CAAC;AAAA,IACT,QAAQ,EAAE,UAAU;AAAA,EACtB,CAAC;AACH;AAGA,eAAsB,SAAS,WAAmB;AAChD,SAAO,OAAO,KAAK,WAAW;AAAA,IAC5B,OAAO,EAAE,UAAU;AAAA,EACrB,CAAC;AACH;",
+  "names": []
+}

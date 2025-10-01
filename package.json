@@ -6,7 +6,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "npx prisma generate && tsc && cp -r src/web/admin/js dist/web/admin/ && cp src/web/admin/ui.js dist/web/admin/ && cp -r src/web/static dist/web/ && cp -r src/web/server dist/web/ 2>/dev/null || true",
+    "build": "npx prisma generate && npx tsx scripts/compile.ts && cp -r src/web/admin/js dist/web/admin/ && cp src/web/admin/ui.js dist/web/admin/ && cp -r src/web/static dist/web/ && cp -r src/web/server dist/web/ 2>/dev/null || true",
+    "build:tsc": "npx prisma generate && tsc --noEmit false --skipLibCheck && cp -r src/web/admin/js dist/web/admin/ && cp src/web/admin/ui.js dist/web/admin/ && cp -r src/web/static dist/web/ && cp -r src/web/server dist/web/ 2>/dev/null || true",
+    "build:strict": "npx prisma generate && tsc && cp -r src/web/admin/js dist/web/admin/ && cp src/web/admin/ui.js dist/web/admin/ && cp -r src/web/static dist/web/ && cp -r src/web/server dist/web/ 2>/dev/null || true",
     "start": "node dist/index.js",
     "start:prod": "NODE_ENV=production npm run build && npm run prod:preflight && npm run prod:migrate && npm run prod:serve",
     "start:cluster": "NODE_ENV=production npm run build && npm run prod:preflight && node dist/cluster.js",

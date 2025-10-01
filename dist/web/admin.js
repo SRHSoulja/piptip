@@ -1,11 +1,9 @@
-// src/web/admin.ts - Modular admin interface
 import "dotenv/config";
 import { Router } from "express";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-// Import route modules
 import { adsRouter } from "./admin/ads.js";
 import { tiersRouter } from "./admin/tiers.js";
 import { serversRouter } from "./admin/servers.js";
@@ -17,7 +15,6 @@ import { usersRouter } from "./admin/users.js";
 import { transactionsRouter } from "./admin/transactions.js";
 import { groupTipsRouter } from "./admin/groupTips.js";
 import { systemRouter } from "./admin/system.js";
-// import { backupRouter } from "./admin/backup.js"; // Disabled due to environment issues
 import { statsRouter } from "./admin/stats.js";
 import { pengubookRouter } from "./admin/pengubook.js";
 import achievementAdminRouter from "./admin/achievements.js";
@@ -37,49 +34,39 @@ import { getTreasurySnapshot } from "../services/treasury.js";
 import { priceAPI } from "../services/price_api.js";
 import { verifyCSRFToken, generateCSRFToken, getCSRFStats } from "../services/csrf_protection.js";
 import { getSecureAdminSecret } from "../services/secure_key.js";
-export const adminRouter = Router();
-// Get current directory for file paths
+const adminRouter = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-// Read lazily so .env is loaded and hot-reloads work
 const getAdminSecret = () => (process.env.ADMIN_SECRET ?? "").trim();
-/* ------------------------------------------------------------------------ */
-/*                       Security Headers Middleware                        */
-/* ------------------------------------------------------------------------ */
 const setSecurityHeaders = (req, res, next) => {
-    // Content Security Policy - Strict for admin interface
-    res.setHeader("Content-Security-Policy", [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'", // Allowing inline for admin-generated content only
-        "style-src 'self' 'unsafe-inline'", // Allowing inline styles for admin interface
-        "font-src 'self'",
-        "img-src 'self' data:",
-        "connect-src 'self'",
-        "object-src 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-        "frame-ancestors 'none'",
-        "upgrade-insecure-requests"
-    ].join("; "));
-    // Additional security headers
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=()");
-    // HSTS for HTTPS environments
-    if (req.secure || req.get('X-Forwarded-Proto') === 'https') {
-        res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
-    }
-    next();
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    // Allowing inline for admin-generated content only
+    "style-src 'self' 'unsafe-inline'",
+    // Allowing inline styles for admin interface
+    "font-src 'self'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests"
+  ].join("; "));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=()");
+  if (req.secure || req.get("X-Forwarded-Proto") === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
+  next();
 };
-// Apply security headers to all admin routes
 adminRouter.use(setSecurityHeaders);
-/* ------------------------------------------------------------------------ */
-/*                           Admin UI (HTML shell)                          */
-/* ------------------------------------------------------------------------ */
 adminRouter.get("/ui", (_req, res) => {
-    res.type("html").send(`<!doctype html>
+  res.type("html").send(`<!doctype html>
 <html>
 <head>
 <meta charset="utf-8"/>
@@ -121,7 +108,7 @@ adminRouter.get("/ui", (_req, res) => {
 </style>
 </head>
 <body>
-  <h1>🎯 PIPtip Admin</h1>
+  <h1>\u{1F3AF} PIPtip Admin</h1>
 
   <section>
     <div class="row">
@@ -131,27 +118,27 @@ adminRouter.get("/ui", (_req, res) => {
       <span id="authStatus"></span>
     </div>
     <div class="row" style="margin-top:10px; font-size:0.9em; color:#9ca3af;">
-      🔐 Enhanced CSRF Protection: All operations protected with session-bound tokens, Double Submit Cookies, and HMAC validation.
+      \u{1F510} Enhanced CSRF Protection: All operations protected with session-bound tokens, Double Submit Cookies, and HMAC validation.
     </div>
   </section>
 
   <section>
-    <h2>🔗 Admin Interfaces</h2>
+    <h2>\u{1F517} Admin Interfaces</h2>
     <div class="row">
-      <a href="/admin/achievements" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px;">🏆 Achievement Management</a>
-      <a href="/admin/role-tax" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #10b981; color: white; text-decoration: none; border-radius: 4px;">💰 Role Tax Exemptions</a>
-      <a href="/admin/role-rake" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #f59e0b; color: white; text-decoration: none; border-radius: 4px;">🎲 Role Rake Reductions</a>
-      <a href="/admin/resources" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #ef4444; color: white; text-decoration: none; border-radius: 4px;">📈 Resource Monitor</a>
-      <a href="/admin/good-knight" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #8b5cf6; color: white; text-decoration: none; border-radius: 4px;">🛡️ Good Knight Webhooks</a>
-      <a href="/admin/tier-roles/status" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #6366f1; color: white; text-decoration: none; border-radius: 4px;">👑 Tier Role Management</a>
+      <a href="/admin/achievements" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px;">\u{1F3C6} Achievement Management</a>
+      <a href="/admin/role-tax" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #10b981; color: white; text-decoration: none; border-radius: 4px;">\u{1F4B0} Role Tax Exemptions</a>
+      <a href="/admin/role-rake" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #f59e0b; color: white; text-decoration: none; border-radius: 4px;">\u{1F3B2} Role Rake Reductions</a>
+      <a href="/admin/resources" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #ef4444; color: white; text-decoration: none; border-radius: 4px;">\u{1F4C8} Resource Monitor</a>
+      <a href="/admin/good-knight" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #8b5cf6; color: white; text-decoration: none; border-radius: 4px;">\u{1F6E1}\uFE0F Good Knight Webhooks</a>
+      <a href="/admin/tier-roles/status" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #6366f1; color: white; text-decoration: none; border-radius: 4px;">\u{1F451} Tier Role Management</a>
     </div>
   </section>
 
   <section>
-    <h2>📊 Bot Statistics Dashboard</h2>
+    <h2>\u{1F4CA} Bot Statistics Dashboard</h2>
     <div class="row">
-      <button id="loadDashboard">🔄 Refresh Dashboard</button>
-      <button id="exportStats">📊 Export Stats CSV</button>
+      <button id="loadDashboard">\u{1F504} Refresh Dashboard</button>
+      <button id="exportStats">\u{1F4CA} Export Stats CSV</button>
       <span id="statsMsg"></span>
     </div>
     
@@ -178,11 +165,11 @@ adminRouter.get("/ui", (_req, res) => {
     <!-- Highlights Row -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;">
       <div style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333;">
-        <h4 style="margin: 0 0 12px 0; color: #fff;">🏆 Biggest Tip Ever</h4>
+        <h4 style="margin: 0 0 12px 0; color: #fff;">\u{1F3C6} Biggest Tip Ever</h4>
         <div id="biggest-tip">Loading...</div>
       </div>
       <div style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333;">
-        <h4 style="margin: 0 0 12px 0; color: #fff;">⭐ Most Active User</h4>
+        <h4 style="margin: 0 0 12px 0; color: #fff;">\u2B50 Most Active User</h4>
         <div id="most-active">Loading...</div>
       </div>
     </div>
@@ -190,7 +177,7 @@ adminRouter.get("/ui", (_req, res) => {
     <!-- Server Activity Table -->
     <div style="margin-top: 20px;">
       <div class="row">
-        <h3 style="margin: 0; color: #fff;">🖥️ Server Activity</h3>
+        <h3 style="margin: 0; color: #fff;">\u{1F5A5}\uFE0F Server Activity</h3>
         <label for="serverSort" style="margin-left: auto; margin-right: 8px;">Sort:</label>
         <select id="serverSort" name="serverSort">
           <option value="activity">Sort by Total Activity</option>
@@ -214,7 +201,7 @@ adminRouter.get("/ui", (_req, res) => {
     <!-- Token Performance Table -->
     <div style="margin-top: 20px;">
       <div class="row">
-        <h3 style="margin: 0; color: #fff;">🪙 Token Performance</h3>
+        <h3 style="margin: 0; color: #fff;">\u{1FA99} Token Performance</h3>
         <label for="tokenSort" style="margin-left: auto; margin-right: 8px;">Sort:</label>
         <select id="tokenSort" name="tokenSort">
           <option value="volume">Sort by Volume</option>
@@ -236,7 +223,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>⚙️ Configuration</h2>
+    <h2>\u2699\uFE0F Configuration</h2>
     <div id="cfgForm" class="row">
       <label for="minDeposit">Min Deposit</label>
       <input id="minDeposit" name="minDeposit" type="number" min="0" step="0.0000000001"/>
@@ -253,7 +240,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🏷️ Tiers</h2>
+    <h2>\u{1F3F7}\uFE0F Tiers</h2>
     <div class="row">
       <label for="tierName">Name</label>
       <input id="tierName" name="tierName" placeholder="Name" style="width:180px"/>
@@ -282,7 +269,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🪙 Tokens</h2>
+    <h2>\u{1FA99} Tokens</h2>
     <div class="row">
       <label for="newTokenAddress">Token Address</label>
       <input id="newTokenAddress" name="newTokenAddress" placeholder="0x..." maxlength="42"/>
@@ -304,7 +291,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🖥️ Servers</h2>
+    <h2>\u{1F5A5}\uFE0F Servers</h2>
     <div class="row">
       <label for="newGuildId">Guild ID</label>
       <input id="newGuildId" name="newGuildId" placeholder="Guild ID" pattern="[0-9]+"/>
@@ -321,7 +308,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>💰 Treasury Balances</h2>
+    <h2>\u{1F4B0} Treasury Balances</h2>
     <div class="row">
       <button id="loadTreasury" onclick="loadTreasury()">Load Treasury Balances</button>
       <button id="reloadTreasury" style="display:none">Refresh Balances</button>
@@ -336,10 +323,10 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🔒 Withdrawal Security & Monitoring</h2>
+    <h2>\u{1F512} Withdrawal Security & Monitoring</h2>
     <div class="row">
-      <button id="loadWithdrawalStats">🔄 Refresh Stats</button>
-      <button id="clearCooldowns">⚡ Clear All Cooldowns</button>
+      <button id="loadWithdrawalStats">\u{1F504} Refresh Stats</button>
+      <button id="clearCooldowns">\u26A1 Clear All Cooldowns</button>
       <label for="withdrawalTimeframe">Timeframe:</label>
       <select id="withdrawalTimeframe" name="withdrawalTimeframe">
         <option value="1">Last 1 Hour</option>
@@ -372,7 +359,7 @@ adminRouter.get("/ui", (_req, res) => {
 
     <!-- Protection Success Rate -->
     <div style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; margin: 16px 0;">
-      <h4 style="margin: 0 0 12px 0; color: #fff;">🛡️ Protection Effectiveness</h4>
+      <h4 style="margin: 0 0 12px 0; color: #fff;">\u{1F6E1}\uFE0F Protection Effectiveness</h4>
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <div>
           <span style="font-size: 2em; color: #10b981; font-weight: bold;" id="success-rate">-</span>
@@ -387,7 +374,7 @@ adminRouter.get("/ui", (_req, res) => {
 
     <!-- High-Risk Users Alert Table -->
     <div style="margin-top: 20px;">
-      <h3 style="margin: 0 0 12px 0; color: #fff;">⚠️ High-Risk Activity Alerts</h3>
+      <h3 style="margin: 0 0 12px 0; color: #fff;">\u26A0\uFE0F High-Risk Activity Alerts</h3>
       <div id="high-risk-users" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; min-height: 60px;">
         <div style="color: #9ca3af; text-align: center; padding: 20px;">
           Click "Refresh Stats" to load withdrawal monitoring data
@@ -397,7 +384,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🪧 Ads</h2>
+    <h2>\u{1FAA7} Ads</h2>
     <div class="row">
       <label for="adText">Ad Text</label>
       <input id="adText" name="adText" placeholder="Ad text (max 500 chars)" style="width:420px" maxlength="500"/>
@@ -420,11 +407,11 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>👥 User Management</h2>
+    <h2>\u{1F465} User Management</h2>
     
     <!-- User Search with Auto-complete -->
     <div style="margin-bottom: 20px;">
-      <h3 style="margin: 0 0 12px 0; color: #fff;">🔍 Search Users</h3>
+      <h3 style="margin: 0 0 12px 0; color: #fff;">\u{1F50D} Search Users</h3>
       <div class="row">
         <div style="position: relative; flex: 1; max-width: 400px;">
           <label for="searchUser" style="display: block; margin-bottom: 4px;">Search by Discord ID:</label>
@@ -441,10 +428,10 @@ adminRouter.get("/ui", (_req, res) => {
 
     <!-- Top Users Section -->
     <div style="margin-bottom: 20px;">
-      <h3 style="margin: 0 0 12px 0; color: #fff;">🏆 Top Users</h3>
+      <h3 style="margin: 0 0 12px 0; color: #fff;">\u{1F3C6} Top Users</h3>
       <div class="row">
         <button id="loadTopUsers">Load Top 100 Users</button>
-        <button id="refreshUsers" style="background:#059669;">🔄 Refresh Users</button>
+        <button id="refreshUsers" style="background:#059669;">\u{1F504} Refresh Users</button>
         <label for="topUsersSort" style="margin-left: 12px; margin-right: 4px;">Sort:</label>
         <select id="topUsersSort" name="topUsersSort">
           <option value="recent">Sort by Registration Date</option>
@@ -469,7 +456,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>💸 Transaction Monitor</h2>
+    <h2>\u{1F4B8} Transaction Monitor</h2>
     <div class="row">
       <label for="txType">Type:</label>
       <select id="txType" name="txType">
@@ -488,7 +475,7 @@ adminRouter.get("/ui", (_req, res) => {
       <input id="txLimit" name="txLimit" type="number" value="50" min="1" max="1000" style="width:80px"/>
       <button id="loadTransactions">Load Transactions</button>
       <button id="exportTransactions">Export CSV</button>
-      <button id="exportGuildData">📊 Export Guild Data</button>
+      <button id="exportGuildData">\u{1F4CA} Export Guild Data</button>
       <span id="txMsg"></span>
     </div>
     <table id="transactionsTbl">
@@ -503,7 +490,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🎯 Group Tips Monitor</h2>
+    <h2>\u{1F3AF} Group Tips Monitor</h2>
     <div class="row">
       <label for="gtStatus">Status Filter:</label>
       <select id="gtStatus">
@@ -528,12 +515,12 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>📊 Resource Monitor</h2>
+    <h2>\u{1F4CA} Resource Monitor</h2>
     <p>Real-time monitoring for 0.5 vCPU / 2 GiB Replit Reserved VM</p>
     <div class="row">
-      <button id="refreshResources">🔄 Refresh Metrics</button>
-      <button id="loadResourceHistory">📈 Load History</button>
-      <button id="checkUpgrade">🚀 Check Upgrade Need</button>
+      <button id="refreshResources">\u{1F504} Refresh Metrics</button>
+      <button id="loadResourceHistory">\u{1F4C8} Load History</button>
+      <button id="checkUpgrade">\u{1F680} Check Upgrade Need</button>
       <span id="resourceMsg"></span>
     </div>
 
@@ -563,13 +550,13 @@ adminRouter.get("/ui", (_req, res) => {
 
     <!-- Alerts Section -->
     <div id="resource-alerts" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; margin: 16px 0; display: none;">
-      <h4 style="margin: 0 0 12px 0; color: #fff;">🚨 Resource Alerts</h4>
+      <h4 style="margin: 0 0 12px 0; color: #fff;">\u{1F6A8} Resource Alerts</h4>
       <div id="alerts-container"></div>
     </div>
 
     <!-- Upgrade Recommendations -->
     <div id="upgrade-recommendations" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; margin: 16px 0;">
-      <h4 style="margin: 0 0 12px 0; color: #fff;">💡 Recommendations</h4>
+      <h4 style="margin: 0 0 12px 0; color: #fff;">\u{1F4A1} Recommendations</h4>
       <div id="recommendations-container">
         <div style="color: #9ca3af; text-align: center; padding: 20px;">
           Click "Refresh Metrics" to load resource analysis
@@ -579,10 +566,10 @@ adminRouter.get("/ui", (_req, res) => {
 
     <!-- Resource History Chart Placeholder -->
     <div style="margin-top: 20px;">
-      <h3 style="margin: 0 0 12px 0; color: #fff;">📈 Resource History (Last Hour)</h3>
+      <h3 style="margin: 0 0 12px 0; color: #fff;">\u{1F4C8} Resource History (Last Hour)</h3>
       <div id="resource-history" style="background: #1a1a1a; padding: 16px; border-radius: 8px; border: 1px solid #333; min-height: 200px; display: flex; align-items: center; justify-content: center;">
         <div style="color: #9ca3af; text-align: center;">
-          <div>📊</div>
+          <div>\u{1F4CA}</div>
           <div>Click "Load History" to view resource trends</div>
         </div>
       </div>
@@ -590,7 +577,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>⚡ System Health</h2>
+    <h2>\u26A1 System Health</h2>
     <div class="row">
       <button id="systemStatus">Check System Status</button>
       <button id="dbStats">Database Stats</button>
@@ -604,18 +591,18 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🚨 Emergency Controls</h2>
+    <h2>\u{1F6A8} Emergency Controls</h2>
     <div class="row" style="background:#2d1b1b; padding:16px; border-radius:8px; border:1px solid #ef4444;">
-      <span style="color:#ef4444; font-weight:bold;">⚠️ DANGER ZONE</span>
+      <span style="color:#ef4444; font-weight:bold;">\u26A0\uFE0F DANGER ZONE</span>
       <button id="pauseWithdrawals" style="background:#dc2626;">Pause All Withdrawals</button>
       <button id="pauseTipping" style="background:#dc2626;">Pause All Tipping</button>
       <button id="emergencyMode" style="background:#dc2626;">Emergency Mode</button>
       <button id="resumeAll" style="background:#059669;">Resume All Operations</button>
-      <button id="grandReset" style="background:#7c2d12;">💀 GRAND RESET</button>
+      <button id="grandReset" style="background:#7c2d12;">\u{1F480} GRAND RESET</button>
       <span id="emergencyMsg"></span>
     </div>
     <div class="row" style="margin-top:12px;">
-      <span>🔄 System Health</span>
+      <span>\u{1F504} System Health</span>
       <button id="syncStatus">Check Sync Status</button>
       <button id="fixSync">Auto-Fix Sync</button>
       <button id="clearCaches">Clear Caches</button>
@@ -625,7 +612,7 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>📊 House Earnings</h2>
+    <h2>\u{1F4CA} House Earnings</h2>
     <p>Tip fees and match rake collected by the platform</p>
     <div class="row">
       <label for="feesSince">From Date</label>
@@ -646,12 +633,12 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>🏆 Achievement Management</h2>
+    <h2>\u{1F3C6} Achievement Management</h2>
     <p>Manage dynamic achievements and user progress</p>
     <div class="row">
-      <button id="loadAchievements">🔄 Refresh Achievements</button>
-      <button id="createAchievement">➕ Create Achievement</button>
-      <button id="seedAchievements">🌱 Seed Default Achievements</button>
+      <button id="loadAchievements">\u{1F504} Refresh Achievements</button>
+      <button id="createAchievement">\u2795 Create Achievement</button>
+      <button id="seedAchievements">\u{1F331} Seed Default Achievements</button>
       <span id="achievementMsg"></span>
     </div>
     <table id="achievementsTbl">
@@ -666,12 +653,12 @@ adminRouter.get("/ui", (_req, res) => {
   </section>
 
   <section>
-    <h2>💾 Database Backups</h2>
+    <h2>\u{1F4BE} Database Backups</h2>
     <p>Automated hourly backups and manual backup management</p>
     <div class="row">
-      <button id="loadBackupStatus">🔄 Refresh Status</button>
-      <button id="createManualBackup">📦 Create Manual Backup</button>
-      <button id="toggleBackupService">⏯️ Toggle Auto-Backup</button>
+      <button id="loadBackupStatus">\u{1F504} Refresh Status</button>
+      <button id="createManualBackup">\u{1F4E6} Create Manual Backup</button>
+      <button id="toggleBackupService">\u23EF\uFE0F Toggle Auto-Backup</button>
       <span id="backupMsg"></span>
     </div>
     <div id="backupStatus" style="margin-top:16px; padding:16px; background:#1a1a1a; border-radius:8px; display:none;">
@@ -691,638 +678,594 @@ adminRouter.get("/ui", (_req, res) => {
 </body>
 </html>`);
 });
-/* ------------------------------------------------------------------------ */
-/*                      Admin UI (client JS served here)                    */
-/* ------------------------------------------------------------------------ */
 adminRouter.get("/ui.js", async (_req, res) => {
-    try {
-        // Always look in src directory for ui.js since it's not compiled
-        const srcDir = process.cwd();
-        const jsPath = join(srcDir, "src", "web", "admin", "ui.js");
-        console.log("🔍 Trying to read ui.js from:", jsPath);
-        console.log("📁 Working directory:", srcDir);
-        const jsContent = await readFile(jsPath, 'utf-8');
-        console.log("✅ Successfully read ui.js, size:", jsContent.length, "bytes");
-        res.type("application/javascript").send(jsContent);
-    }
-    catch (error) {
-        console.error("❌ Failed to serve admin UI JavaScript:", error);
-        console.error("Error details:", {
-            message: error instanceof Error ? error.message : String(error),
-            code: error && typeof error === 'object' && 'code' in error ? error.code : 'unknown',
-            path: error && typeof error === 'object' && 'path' in error ? error.path : 'unknown'
-        });
-        res.status(500).send("// Failed to load admin JavaScript");
-    }
+  try {
+    const srcDir = process.cwd();
+    const jsPath = join(srcDir, "src", "web", "admin", "ui.js");
+    console.log("\u{1F50D} Trying to read ui.js from:", jsPath);
+    console.log("\u{1F4C1} Working directory:", srcDir);
+    const jsContent = await readFile(jsPath, "utf-8");
+    console.log("\u2705 Successfully read ui.js, size:", jsContent.length, "bytes");
+    res.type("application/javascript").send(jsContent);
+  } catch (error) {
+    console.error("\u274C Failed to serve admin UI JavaScript:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      code: error && typeof error === "object" && "code" in error ? error.code : "unknown",
+      path: error && typeof error === "object" && "path" in error ? error.path : "unknown"
+    });
+    res.status(500).send("// Failed to load admin JavaScript");
+  }
 });
-// Serve modular admin interface
 adminRouter.get("/modular", async (_req, res) => {
-    try {
-        const srcDir = process.cwd();
-        const htmlPath = join(srcDir, "src", "web", "admin", "admin-modular.html");
-        const htmlContent = await readFile(htmlPath, 'utf-8');
-        res.type("text/html").send(htmlContent);
-    }
-    catch (error) {
-        console.error("❌ Failed to serve modular admin HTML:", error);
-        res.status(500).send("Failed to load modular admin interface");
-    }
+  try {
+    const srcDir = process.cwd();
+    const htmlPath = join(srcDir, "src", "web", "admin", "admin-modular.html");
+    const htmlContent = await readFile(htmlPath, "utf-8");
+    res.type("text/html").send(htmlContent);
+  } catch (error) {
+    console.error("\u274C Failed to serve modular admin HTML:", error);
+    res.status(500).send("Failed to load modular admin interface");
+  }
 });
-// Serve JavaScript modules dynamically
-const jsModules = ['security.js', 'validation.js', 'ui-secure-helpers.js', 'tokens.js', 'core.js', 'fees.js', 'dashboard.js', 'ads.js', 'tiers.js', 'tournaments.js', 'config.js', 'servers.js', 'treasury.js', 'fees-data.js', 'special-markets.js'];
-jsModules.forEach(module => {
-    adminRouter.get(`/${module}`, async (_req, res) => {
-        try {
-            const srcDir = process.cwd();
-            const jsPath = join(srcDir, "src", "web", "admin", "js", module);
-            const jsContent = await readFile(jsPath, 'utf-8');
-            res.type("application/javascript").send(jsContent);
-        }
-        catch (error) {
-            console.error(`❌ Failed to serve ${module}:`, error);
-            res.status(500).send(`// Failed to load ${module}`);
-        }
+const jsModules = ["security.js", "validation.js", "ui-secure-helpers.js", "tokens.js", "core.js", "fees.js", "dashboard.js", "ads.js", "tiers.js", "tournaments.js", "config.js", "servers.js", "treasury.js", "fees-data.js", "special-markets.js"];
+jsModules.forEach((module) => {
+  adminRouter.get(`/${module}`, async (_req, res) => {
+    try {
+      const srcDir = process.cwd();
+      const jsPath = join(srcDir, "src", "web", "admin", "js", module);
+      const jsContent = await readFile(jsPath, "utf-8");
+      res.type("application/javascript").send(jsContent);
+    } catch (error) {
+      console.error(`\u274C Failed to serve ${module}:`, error);
+      res.status(500).send(`// Failed to load ${module}`);
+    }
+  });
+});
+adminRouter.post("/auth/login", async (req, res) => {
+  try {
+    const { authenticateAdmin } = await import("../services/admin_auth.js");
+    const bearerToken = req.body.token || "";
+    const result = await authenticateAdmin(bearerToken, req);
+    if (!result.success) {
+      return res.status(401).json({
+        success: false,
+        error: result.error
+      });
+    }
+    res.json({
+      success: true,
+      sessionId: result.session.sessionId,
+      requiresMFA: result.requiresMFA,
+      message: result.requiresMFA ? "MFA verification required" : "Authentication successful"
     });
+  } catch (error) {
+    console.error("Admin login error:", error);
+    res.status(500).json({ success: false, error: "Authentication system error" });
+  }
 });
-/* ------------------------------------------------------------------------ */
-/*                    Enhanced Multi-Factor Authentication                   */
-/* ------------------------------------------------------------------------ */
-// Authentication endpoints (before middleware)
-adminRouter.post('/auth/login', async (req, res) => {
+adminRouter.post("/auth/mfa/initiate", async (req, res) => {
+  try {
+    const { initiateMFA } = await import("../services/admin_auth.js");
+    const { sessionId } = req.body;
+    const result = await initiateMFA(sessionId);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json({
+      success: true,
+      challengeId: result.challengeId,
+      message: "MFA code sent. Check console for code (development mode)."
+    });
+  } catch (error) {
+    console.error("MFA initiation error:", error);
+    res.status(500).json({ success: false, error: "MFA system error" });
+  }
+});
+adminRouter.post("/auth/mfa/verify", async (req, res) => {
+  try {
+    const { verifyMFA } = await import("../services/admin_auth.js");
+    const { challengeId, code, includeJWT } = req.body;
+    const result = await verifyMFA(challengeId, code);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    let jwtTokens = null;
+    if (includeJWT) {
+      try {
+        const { generateTokenPair } = await import("../services/jwt_auth.js");
+        const { adminAuth } = await import("../services/admin_auth.js");
+        const sessionValidation = await adminAuth.validateSession(result.sessionId);
+        if (sessionValidation.valid && sessionValidation.session) {
+          jwtTokens = await generateTokenPair(
+            result.sessionId,
+            sessionValidation.session.adminId,
+            sessionValidation.session.permissions,
+            req
+          );
+        }
+      } catch (jwtError) {
+        console.warn("JWT token generation failed:", jwtError);
+      }
+    }
+    const response = {
+      success: true,
+      sessionId: result.sessionId,
+      message: "MFA verification successful"
+    };
+    if (jwtTokens) {
+      response.tokens = jwtTokens;
+      response.message += " (JWT tokens included)";
+    }
     try {
-        const { authenticateAdmin } = await import('../services/admin_auth.js');
-        const bearerToken = req.body.token || '';
-        const result = await authenticateAdmin(bearerToken, req);
-        if (!result.success) {
-            return res.status(401).json({
-                success: false,
-                error: result.error
-            });
-        }
-        res.json({
-            success: true,
-            sessionId: result.session.sessionId,
-            requiresMFA: result.requiresMFA,
-            message: result.requiresMFA ? 'MFA verification required' : 'Authentication successful'
-        });
+      const { markSessionAsVerified } = await import("../services/session_fingerprinting.js");
+      markSessionAsVerified(result.sessionId);
+    } catch (error) {
+      console.warn("Failed to mark session fingerprint as verified:", error);
     }
-    catch (error) {
-        console.error('Admin login error:', error);
-        res.status(500).json({ success: false, error: 'Authentication system error' });
-    }
+    res.json(response);
+  } catch (error) {
+    console.error("MFA verification error:", error);
+    res.status(500).json({ success: false, error: "MFA verification error" });
+  }
 });
-adminRouter.post('/auth/mfa/initiate', async (req, res) => {
-    try {
-        const { initiateMFA } = await import('../services/admin_auth.js');
-        const { sessionId } = req.body;
-        const result = await initiateMFA(sessionId);
-        if (!result.success) {
-            return res.status(400).json(result);
-        }
-        res.json({
-            success: true,
-            challengeId: result.challengeId,
-            message: 'MFA code sent. Check console for code (development mode).'
-        });
+adminRouter.post("/auth/jwt/refresh", async (req, res) => {
+  try {
+    const { refreshAccessToken } = await import("../services/jwt_auth.js");
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        error: "Refresh token required",
+        code: "MISSING_REFRESH_TOKEN"
+      });
     }
-    catch (error) {
-        console.error('MFA initiation error:', error);
-        res.status(500).json({ success: false, error: 'MFA system error' });
+    const result = await refreshAccessToken(refreshToken, req);
+    if (!result.success) {
+      return res.status(401).json({
+        success: false,
+        error: result.error,
+        code: "REFRESH_FAILED"
+      });
     }
+    res.json({
+      success: true,
+      tokens: result.tokenPair,
+      message: "Access token refreshed successfully"
+    });
+  } catch (error) {
+    console.error("JWT refresh error:", error);
+    res.status(500).json({ success: false, error: "Token refresh system error" });
+  }
 });
-adminRouter.post('/auth/mfa/verify', async (req, res) => {
-    try {
-        const { verifyMFA } = await import('../services/admin_auth.js');
-        const { challengeId, code, includeJWT } = req.body;
-        const result = await verifyMFA(challengeId, code);
-        if (!result.success) {
-            return res.status(400).json(result);
-        }
-        let jwtTokens = null;
-        // Generate JWT tokens if requested
-        if (includeJWT) {
-            try {
-                const { generateTokenPair } = await import('../services/jwt_auth.js');
-                const { adminAuth } = await import('../services/admin_auth.js');
-                const sessionValidation = await adminAuth.validateSession(result.sessionId);
-                if (sessionValidation.valid && sessionValidation.session) {
-                    jwtTokens = await generateTokenPair(result.sessionId, sessionValidation.session.adminId, sessionValidation.session.permissions, req);
-                }
-            }
-            catch (jwtError) {
-                console.warn('JWT token generation failed:', jwtError);
-                // Continue without JWT tokens - don't fail the whole request
-            }
-        }
-        const response = {
-            success: true,
-            sessionId: result.sessionId,
-            message: 'MFA verification successful'
-        };
-        if (jwtTokens) {
-            response.tokens = jwtTokens;
-            response.message += ' (JWT tokens included)';
-        }
-        // Mark session fingerprint as verified after successful MFA
-        try {
-            const { markSessionAsVerified } = await import('../services/session_fingerprinting.js');
-            markSessionAsVerified(result.sessionId);
-        }
-        catch (error) {
-            // Non-critical - don't fail the request
-            console.warn('Failed to mark session fingerprint as verified:', error);
-        }
-        res.json(response);
+adminRouter.post("/auth/jwt/logout", async (req, res) => {
+  try {
+    const { revokeRefreshToken, revokeAllTokensForSession } = await import("../services/jwt_auth.js");
+    const { refreshToken, sessionId, revokeAllSessions } = req.body;
+    let revokedCount = 0;
+    if (revokeAllSessions && sessionId) {
+      revokedCount = revokeAllTokensForSession(sessionId);
+    } else if (refreshToken) {
+      const revoked = revokeRefreshToken(refreshToken);
+      revokedCount = revoked ? 1 : 0;
     }
-    catch (error) {
-        console.error('MFA verification error:', error);
-        res.status(500).json({ success: false, error: 'MFA verification error' });
-    }
+    res.json({
+      success: true,
+      revokedCount,
+      message: revokedCount > 0 ? `Successfully revoked ${revokedCount} token(s)` : "No tokens were revoked"
+    });
+  } catch (error) {
+    console.error("JWT logout error:", error);
+    res.status(500).json({ success: false, error: "Logout system error" });
+  }
 });
-// JWT-specific authentication endpoints
-adminRouter.post('/auth/jwt/refresh', async (req, res) => {
-    try {
-        const { refreshAccessToken } = await import('../services/jwt_auth.js');
-        const { refreshToken } = req.body;
-        if (!refreshToken) {
-            return res.status(400).json({
-                success: false,
-                error: 'Refresh token required',
-                code: 'MISSING_REFRESH_TOKEN'
-            });
-        }
-        const result = await refreshAccessToken(refreshToken, req);
-        if (!result.success) {
-            return res.status(401).json({
-                success: false,
-                error: result.error,
-                code: 'REFRESH_FAILED'
-            });
-        }
-        res.json({
-            success: true,
-            tokens: result.tokenPair,
-            message: 'Access token refreshed successfully'
-        });
+adminRouter.get("/auth/jwt/stats", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Bearer token required for JWT stats",
+        code: "MISSING_BEARER"
+      });
     }
-    catch (error) {
-        console.error('JWT refresh error:', error);
-        res.status(500).json({ success: false, error: 'Token refresh system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid bearer token",
+        code: "INVALID_BEARER"
+      });
     }
+    const { getRefreshTokenStats } = await import("../services/jwt_auth.js");
+    const stats = getRefreshTokenStats();
+    res.json({
+      success: true,
+      stats: {
+        ...stats,
+        lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("JWT stats error:", error);
+    res.status(500).json({ success: false, error: "Stats system error" });
+  }
 });
-adminRouter.post('/auth/jwt/logout', async (req, res) => {
-    try {
-        const { revokeRefreshToken, revokeAllTokensForSession } = await import('../services/jwt_auth.js');
-        const { refreshToken, sessionId, revokeAllSessions } = req.body;
-        let revokedCount = 0;
-        if (revokeAllSessions && sessionId) {
-            // Revoke all refresh tokens for the session
-            revokedCount = revokeAllTokensForSession(sessionId);
-        }
-        else if (refreshToken) {
-            // Revoke specific refresh token
-            const revoked = revokeRefreshToken(refreshToken);
-            revokedCount = revoked ? 1 : 0;
-        }
-        res.json({
-            success: true,
-            revokedCount,
-            message: revokedCount > 0 ?
-                `Successfully revoked ${revokedCount} token(s)` :
-                'No tokens were revoked'
-        });
+adminRouter.get("/security/fingerprint/stats", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Bearer token required for security stats",
+        code: "MISSING_BEARER"
+      });
     }
-    catch (error) {
-        console.error('JWT logout error:', error);
-        res.status(500).json({ success: false, error: 'Logout system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid bearer token",
+        code: "INVALID_BEARER"
+      });
     }
+    const { getSuspiciousActivityStats } = await import("../services/session_fingerprinting.js");
+    const stats = getSuspiciousActivityStats();
+    res.json({
+      success: true,
+      stats: {
+        ...stats,
+        lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Fingerprint stats error:", error);
+    res.status(500).json({ success: false, error: "Security stats system error" });
+  }
 });
-adminRouter.get('/auth/jwt/stats', async (req, res) => {
-    try {
-        // Simple bearer auth check for stats endpoint
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                error: 'Bearer token required for JWT stats',
-                code: 'MISSING_BEARER'
-            });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({
-                success: false,
-                error: 'Invalid bearer token',
-                code: 'INVALID_BEARER'
-            });
-        }
-        const { getRefreshTokenStats } = await import('../services/jwt_auth.js');
-        const stats = getRefreshTokenStats();
-        res.json({
-            success: true,
-            stats: {
-                ...stats,
-                lastUpdated: new Date().toISOString()
-            }
-        });
+adminRouter.get("/security/anomaly/stats", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Bearer token required for anomaly stats",
+        code: "MISSING_BEARER"
+      });
     }
-    catch (error) {
-        console.error('JWT stats error:', error);
-        res.status(500).json({ success: false, error: 'Stats system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid bearer token",
+        code: "INVALID_BEARER"
+      });
     }
+    const { getAnomalyStats } = await import("../services/anomaly_detection.js");
+    const stats = getAnomalyStats();
+    res.json({
+      success: true,
+      stats: {
+        ...stats,
+        lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Anomaly stats error:", error);
+    res.status(500).json({ success: false, error: "Anomaly stats system error" });
+  }
 });
-adminRouter.get('/security/fingerprint/stats', async (req, res) => {
-    try {
-        // Simple bearer auth check for security endpoint
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                error: 'Bearer token required for security stats',
-                code: 'MISSING_BEARER'
-            });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({
-                success: false,
-                error: 'Invalid bearer token',
-                code: 'INVALID_BEARER'
-            });
-        }
-        const { getSuspiciousActivityStats } = await import('../services/session_fingerprinting.js');
-        const stats = getSuspiciousActivityStats();
-        res.json({
-            success: true,
-            stats: {
-                ...stats,
-                lastUpdated: new Date().toISOString()
-            }
-        });
+adminRouter.post("/security/anomaly/resolve/:alertId", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Bearer token required",
+        code: "MISSING_BEARER"
+      });
     }
-    catch (error) {
-        console.error('Fingerprint stats error:', error);
-        res.status(500).json({ success: false, error: 'Security stats system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid bearer token",
+        code: "INVALID_BEARER"
+      });
     }
+    const { alertId } = req.params;
+    const { falsePositive = false } = req.body;
+    const { resolveAnomalyAlert } = await import("../services/anomaly_detection.js");
+    const resolved = resolveAnomalyAlert(alertId, falsePositive);
+    if (!resolved) {
+      return res.status(404).json({
+        success: false,
+        error: "Alert not found"
+      });
+    }
+    res.json({
+      success: true,
+      message: falsePositive ? "Alert marked as false positive" : "Alert resolved",
+      alertId
+    });
+  } catch (error) {
+    console.error("Resolve anomaly alert error:", error);
+    res.status(500).json({ success: false, error: "Alert resolution system error" });
+  }
 });
-// Anomaly detection statistics endpoint
-adminRouter.get('/security/anomaly/stats', async (req, res) => {
-    try {
-        // Simple bearer auth check for security endpoint
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                error: 'Bearer token required for anomaly stats',
-                code: 'MISSING_BEARER'
-            });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({
-                success: false,
-                error: 'Invalid bearer token',
-                code: 'INVALID_BEARER'
-            });
-        }
-        const { getAnomalyStats } = await import('../services/anomaly_detection.js');
-        const stats = getAnomalyStats();
-        res.json({
-            success: true,
-            stats: {
-                ...stats,
-                lastUpdated: new Date().toISOString()
-            }
-        });
+adminRouter.get("/security/anomaly/profile/:userId", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Bearer token required",
+        code: "MISSING_BEARER"
+      });
     }
-    catch (error) {
-        console.error('Anomaly stats error:', error);
-        res.status(500).json({ success: false, error: 'Anomaly stats system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid bearer token",
+        code: "INVALID_BEARER"
+      });
     }
+    const { userId } = req.params;
+    const { getUserBehaviorProfile } = await import("../services/anomaly_detection.js");
+    const profile = getUserBehaviorProfile(userId);
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found"
+      });
+    }
+    const safeProfile = {
+      userId: profile.userId.slice(0, 8) + "...",
+      // Anonymize user ID
+      patterns: {
+        loginTimes: profile.patterns.loginTimes.slice(-20),
+        // Last 20 login times
+        commandFrequency: Object.keys(profile.patterns.commandFrequency).length > 20 ? Object.fromEntries(
+          Object.entries(profile.patterns.commandFrequency).sort(([, a], [, b]) => b - a).slice(0, 20)
+        ) : profile.patterns.commandFrequency,
+        ipAddresses: profile.patterns.ipAddresses.slice(-10),
+        // Last 10 IPs
+        userAgents: profile.patterns.userAgents.slice(-5),
+        // Last 5 user agents
+        geographicRegions: profile.patterns.geographicRegions.slice(-10),
+        // Last 10 regions
+        financialActivity: profile.patterns.financialActivity
+      },
+      riskFactors: profile.riskFactors,
+      lastUpdated: profile.lastUpdated,
+      createdAt: profile.createdAt
+    };
+    res.json({
+      success: true,
+      profile: safeProfile
+    });
+  } catch (error) {
+    console.error("Get user profile error:", error);
+    res.status(500).json({ success: false, error: "Profile system error" });
+  }
 });
-// Resolve anomaly alert endpoint
-adminRouter.post('/security/anomaly/resolve/:alertId', async (req, res) => {
-    try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                error: 'Bearer token required',
-                code: 'MISSING_BEARER'
-            });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({
-                success: false,
-                error: 'Invalid bearer token',
-                code: 'INVALID_BEARER'
-            });
-        }
-        const { alertId } = req.params;
-        const { falsePositive = false } = req.body;
-        const { resolveAnomalyAlert } = await import('../services/anomaly_detection.js');
-        const resolved = resolveAnomalyAlert(alertId, falsePositive);
-        if (!resolved) {
-            return res.status(404).json({
-                success: false,
-                error: 'Alert not found'
-            });
-        }
-        res.json({
-            success: true,
-            message: falsePositive ? 'Alert marked as false positive' : 'Alert resolved',
-            alertId
-        });
+adminRouter.delete("/security/anomaly/profile/:userId", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Bearer token required",
+        code: "MISSING_BEARER"
+      });
     }
-    catch (error) {
-        console.error('Resolve anomaly alert error:', error);
-        res.status(500).json({ success: false, error: 'Alert resolution system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid bearer token",
+        code: "INVALID_BEARER"
+      });
     }
+    const { userId } = req.params;
+    const { resetUserBehaviorProfile } = await import("../services/anomaly_detection.js");
+    const reset = resetUserBehaviorProfile(userId);
+    if (!reset) {
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found"
+      });
+    }
+    res.json({
+      success: true,
+      message: "User behavioral profile reset",
+      userId: userId.slice(0, 8) + "..."
+      // Anonymize in response
+    });
+  } catch (error) {
+    console.error("Reset user profile error:", error);
+    res.status(500).json({ success: false, error: "Profile reset system error" });
+  }
 });
-// Get user behavioral profile endpoint
-adminRouter.get('/security/anomaly/profile/:userId', async (req, res) => {
-    try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                error: 'Bearer token required',
-                code: 'MISSING_BEARER'
-            });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({
-                success: false,
-                error: 'Invalid bearer token',
-                code: 'INVALID_BEARER'
-            });
-        }
-        const { userId } = req.params;
-        const { getUserBehaviorProfile } = await import('../services/anomaly_detection.js');
-        const profile = getUserBehaviorProfile(userId);
-        if (!profile) {
-            return res.status(404).json({
-                success: false,
-                error: 'User profile not found'
-            });
-        }
-        // Remove sensitive data and truncate large arrays for API response
-        const safeProfile = {
-            userId: profile.userId.slice(0, 8) + '...', // Anonymize user ID
-            patterns: {
-                loginTimes: profile.patterns.loginTimes.slice(-20), // Last 20 login times
-                commandFrequency: Object.keys(profile.patterns.commandFrequency).length > 20
-                    ? Object.fromEntries(Object.entries(profile.patterns.commandFrequency)
-                        .sort(([, a], [, b]) => b - a)
-                        .slice(0, 20))
-                    : profile.patterns.commandFrequency,
-                ipAddresses: profile.patterns.ipAddresses.slice(-10), // Last 10 IPs
-                userAgents: profile.patterns.userAgents.slice(-5), // Last 5 user agents
-                geographicRegions: profile.patterns.geographicRegions.slice(-10), // Last 10 regions
-                financialActivity: profile.patterns.financialActivity
-            },
-            riskFactors: profile.riskFactors,
-            lastUpdated: profile.lastUpdated,
-            createdAt: profile.createdAt
-        };
-        res.json({
-            success: true,
-            profile: safeProfile
-        });
+adminRouter.get("/ping", (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      const adminSecret = getSecureAdminSecret();
+      if (token === adminSecret) {
+        return res.json({ ok: true, message: "Authenticated" });
+      }
     }
-    catch (error) {
-        console.error('Get user profile error:', error);
-        res.status(500).json({ success: false, error: 'Profile system error' });
-    }
+    res.status(401).json({ ok: false, error: "Invalid admin secret" });
+  } catch (error) {
+    console.error("Admin ping authentication error:", error);
+    res.status(500).json({ ok: false, error: "Authentication system error" });
+  }
 });
-// Reset user behavioral profile endpoint (admin function)
-adminRouter.delete('/security/anomaly/profile/:userId', async (req, res) => {
-    try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                error: 'Bearer token required',
-                code: 'MISSING_BEARER'
-            });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({
-                success: false,
-                error: 'Invalid bearer token',
-                code: 'INVALID_BEARER'
-            });
-        }
-        const { userId } = req.params;
-        const { resetUserBehaviorProfile } = await import('../services/anomaly_detection.js');
-        const reset = resetUserBehaviorProfile(userId);
-        if (!reset) {
-            return res.status(404).json({
-                success: false,
-                error: 'User profile not found'
-            });
-        }
-        res.json({
-            success: true,
-            message: 'User behavioral profile reset',
-            userId: userId.slice(0, 8) + '...' // Anonymize in response
-        });
+adminRouter.get("/csrf-token", (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Admin authentication required" });
     }
-    catch (error) {
-        console.error('Reset user profile error:', error);
-        res.status(500).json({ success: false, error: 'Profile reset system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({ error: "Invalid admin secret" });
     }
+    const sessionId = req.sessionID;
+    const userId = req.session?.discordId;
+    const csrf = generateCSRFToken(sessionId, userId);
+    res.cookie("csrf-token", csrf.token, {
+      httpOnly: true,
+      secure: req.secure || req.get("X-Forwarded-Proto") === "https",
+      sameSite: "strict",
+      maxAge: 36e5,
+      // 1 hour in ms
+      path: "/admin"
+    });
+    const bindingInfo = [];
+    if (sessionId) bindingInfo.push("session");
+    if (userId) bindingInfo.push("user");
+    const bindingStr = bindingInfo.length > 0 ? ` (bound to ${bindingInfo.join(", ")})` : "";
+    res.json({
+      ok: true,
+      token: csrf.token,
+      secret: csrf.secret,
+      expiresIn: 36e5,
+      // 1 hour in ms
+      usage: "Include token in X-CSRF-Token header and secret in X-CSRF-Secret header for state-changing requests",
+      doubleSubmit: "CSRF token also set as secure cookie for enhanced protection",
+      binding: `Token is bound to current session for maximum security${bindingStr}`
+    });
+  } catch (error) {
+    console.error("CSRF token generation error:", error);
+    res.status(500).json({ error: "CSRF token generation failed" });
+  }
 });
-// Simple ping endpoint for admin auth verification
-adminRouter.get('/ping', (req, res) => {
-    try {
-        // Check Bearer token authentication using secure credential
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            const adminSecret = getSecureAdminSecret();
-            if (token === adminSecret) {
-                return res.json({ ok: true, message: 'Authenticated' });
-            }
-        }
-        res.status(401).json({ ok: false, error: 'Invalid admin secret' });
+adminRouter.get("/csrf-stats", (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Admin authentication required" });
     }
-    catch (error) {
-        console.error('Admin ping authentication error:', error);
-        res.status(500).json({ ok: false, error: 'Authentication system error' });
+    const token = authHeader.substring(7);
+    const adminSecret = getSecureAdminSecret();
+    if (token !== adminSecret) {
+      return res.status(401).json({ error: "Invalid admin secret" });
     }
+    const stats = getCSRFStats();
+    res.json({
+      ok: true,
+      ...stats,
+      averageAgeMinutes: Math.round(stats.averageAge / 6e4),
+      oldestTokenMinutes: Math.round(stats.oldestToken / 6e4)
+    });
+  } catch (error) {
+    console.error("CSRF stats error:", error);
+    res.status(500).json({ error: "CSRF stats retrieval failed" });
+  }
 });
-// CSRF token generation endpoint (requires admin auth)
-adminRouter.get('/csrf-token', (req, res) => {
-    try {
-        // Check Bearer token authentication first using secure credential
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'Admin authentication required' });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({ error: 'Invalid admin secret' });
-        }
-        // Generate session-bound CSRF token with optional user binding
-        const sessionId = req.sessionID;
-        const userId = req.session?.discordId; // For admin panel, we might have Discord user ID from OAuth
-        const csrf = generateCSRFToken(sessionId, userId);
-        // Set secure CSRF cookie for Double Submit Cookie pattern
-        res.cookie('csrf-token', csrf.token, {
-            httpOnly: true,
-            secure: req.secure || req.get('X-Forwarded-Proto') === 'https',
-            sameSite: 'strict',
-            maxAge: 3600000, // 1 hour in ms
-            path: '/admin'
-        });
-        const bindingInfo = [];
-        if (sessionId)
-            bindingInfo.push('session');
-        if (userId)
-            bindingInfo.push('user');
-        const bindingStr = bindingInfo.length > 0 ? ` (bound to ${bindingInfo.join(', ')})` : '';
-        res.json({
-            ok: true,
-            token: csrf.token,
-            secret: csrf.secret,
-            expiresIn: 3600000, // 1 hour in ms
-            usage: 'Include token in X-CSRF-Token header and secret in X-CSRF-Secret header for state-changing requests',
-            doubleSubmit: 'CSRF token also set as secure cookie for enhanced protection',
-            binding: `Token is bound to current session for maximum security${bindingStr}`
-        });
-    }
-    catch (error) {
-        console.error('CSRF token generation error:', error);
-        res.status(500).json({ error: 'CSRF token generation failed' });
-    }
+adminRouter.get("/", (req, res) => {
+  res.redirect("/admin/ui");
 });
-// CSRF statistics endpoint (requires admin auth)
-adminRouter.get('/csrf-stats', (req, res) => {
-    try {
-        // Check Bearer token authentication first using secure credential
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'Admin authentication required' });
-        }
-        const token = authHeader.substring(7);
-        const adminSecret = getSecureAdminSecret();
-        if (token !== adminSecret) {
-            return res.status(401).json({ error: 'Invalid admin secret' });
-        }
-        const stats = getCSRFStats();
-        res.json({
-            ok: true,
-            ...stats,
-            averageAgeMinutes: Math.round(stats.averageAge / 60000),
-            oldestTokenMinutes: Math.round(stats.oldestToken / 60000)
-        });
-    }
-    catch (error) {
-        console.error('CSRF stats error:', error);
-        res.status(500).json({ error: 'CSRF stats retrieval failed' });
-    }
-});
-// Serve admin UI without authentication
-adminRouter.get('/', (req, res) => {
-    res.redirect('/admin/ui');
-});
-// Authentication middleware - apply AFTER UI routes
 function requireAuth(req, res, next) {
-    try {
-        // Check Bearer token authentication using secure credential
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            const adminSecret = getSecureAdminSecret();
-            if (token === adminSecret) {
-                return next();
-            }
-        }
-        res.status(401).json({
-            error: 'Admin authentication required',
-            message: 'Please include Authorization: Bearer <ADMIN_SECRET> header'
-        });
-    }
-    catch (error) {
-        console.error('Admin authentication error:', error);
-        res.status(500).json({
-            error: 'Authentication system error',
-            message: 'Unable to verify admin credentials'
-        });
-    }
-}
-// Serve JavaScript files securely
-const serveJavaScript = (filename) => async (req, res) => {
-    try {
-        const jsPath = join(dirname(fileURLToPath(import.meta.url)), 'admin', 'js', filename);
-        const jsContent = await readFile(jsPath, 'utf-8');
-        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.send(jsContent);
-    }
-    catch (error) {
-        console.error(`Failed to serve ${filename}:`, error);
-        res.status(500).send(`// ${filename} not found`);
-    }
-};
-// Serve admin JavaScript modules
-// adminRouter.get('/ui.js', serveJavaScript('ui.js')); // Commented out - duplicate route already exists above
-adminRouter.get('/security.js', serveJavaScript('security.js'));
-adminRouter.get('/validation.js', serveJavaScript('validation.js'));
-adminRouter.get('/ui-secure-helpers.js', serveJavaScript('ui-secure-helpers.js'));
-adminRouter.get('/tokens.js', serveJavaScript('tokens.js'));
-adminRouter.get('/core.js', serveJavaScript('core.js'));
-adminRouter.get('/fees.js', serveJavaScript('fees.js'));
-adminRouter.get('/dashboard.js', serveJavaScript('dashboard.js'));
-/* ------------------------------------------------------------------------ */
-/*                              Route Modules                               */
-/* ------------------------------------------------------------------------ */
-// Mount route modules
-// Mount API route modules with selective authentication and CSRF protection
-// Note: ping endpoint needs to be excluded from auth since it's used for auth verification
-adminRouter.use((req, res, next) => {
-    // Skip auth for specific endpoints and JavaScript modules
-    const publicPaths = [
-        '/ping', '/ui', '/ui.js', '/', '/modular',
-        '/security.js', '/validation.js', '/ui-secure-helpers.js',
-        '/tokens.js', '/core.js', '/fees.js', '/dashboard.js',
-        '/ads.js', '/tiers.js', '/tournaments.js', '/config.js', '/servers.js', '/treasury.js', '/fees-data.js'
-    ];
-    // Skip auth for public paths
-    if (publicPaths.includes(req.path)) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      const adminSecret = getSecureAdminSecret();
+      if (token === adminSecret) {
         return next();
+      }
     }
-    // Apply admin authentication first
-    const authResult = requireAuth(req, res, (error) => {
-        if (error) {
-            return next(error);
-        }
-        // After successful auth, apply CSRF protection for state-changing operations
-        // Skip CSRF for auth endpoints and read-only operations
-        const skipCSRFPaths = [
-            '/csrf-token', '/csrf-stats', '/auth/login', '/auth/mfa/initiate', '/auth/mfa/verify',
-            '/auth/jwt/refresh', '/auth/jwt/logout', '/auth/jwt/stats', '/security/fingerprint/stats'
-        ];
-        if (skipCSRFPaths.some(path => req.path.endsWith(path)) || req.method === 'GET') {
-            return next();
-        }
-        // Apply CSRF verification for POST, PUT, DELETE, PATCH operations
-        return verifyCSRFToken(req, res, next);
+    res.status(401).json({
+      error: "Admin authentication required",
+      message: "Please include Authorization: Bearer <ADMIN_SECRET> header"
     });
-    return authResult;
+  } catch (error) {
+    console.error("Admin authentication error:", error);
+    res.status(500).json({
+      error: "Authentication system error",
+      message: "Unable to verify admin credentials"
+    });
+  }
+}
+const serveJavaScript = (filename) => async (req, res) => {
+  try {
+    const jsPath = join(dirname(fileURLToPath(import.meta.url)), "admin", "js", filename);
+    const jsContent = await readFile(jsPath, "utf-8");
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.send(jsContent);
+  } catch (error) {
+    console.error(`Failed to serve ${filename}:`, error);
+    res.status(500).send(`// ${filename} not found`);
+  }
+};
+adminRouter.get("/security.js", serveJavaScript("security.js"));
+adminRouter.get("/validation.js", serveJavaScript("validation.js"));
+adminRouter.get("/ui-secure-helpers.js", serveJavaScript("ui-secure-helpers.js"));
+adminRouter.get("/tokens.js", serveJavaScript("tokens.js"));
+adminRouter.get("/core.js", serveJavaScript("core.js"));
+adminRouter.get("/fees.js", serveJavaScript("fees.js"));
+adminRouter.get("/dashboard.js", serveJavaScript("dashboard.js"));
+adminRouter.use((req, res, next) => {
+  const publicPaths = [
+    "/ping",
+    "/ui",
+    "/ui.js",
+    "/",
+    "/modular",
+    "/security.js",
+    "/validation.js",
+    "/ui-secure-helpers.js",
+    "/tokens.js",
+    "/core.js",
+    "/fees.js",
+    "/dashboard.js",
+    "/ads.js",
+    "/tiers.js",
+    "/tournaments.js",
+    "/config.js",
+    "/servers.js",
+    "/treasury.js",
+    "/fees-data.js"
+  ];
+  if (publicPaths.includes(req.path)) {
+    return next();
+  }
+  const authResult = requireAuth(req, res, (error) => {
+    if (error) {
+      return next(error);
+    }
+    const skipCSRFPaths = [
+      "/csrf-token",
+      "/csrf-stats",
+      "/auth/login",
+      "/auth/mfa/initiate",
+      "/auth/mfa/verify",
+      "/auth/jwt/refresh",
+      "/auth/jwt/logout",
+      "/auth/jwt/stats",
+      "/security/fingerprint/stats"
+    ];
+    if (skipCSRFPaths.some((path) => req.path.endsWith(path)) || req.method === "GET") {
+      return next();
+    }
+    return verifyCSRFToken(req, res, next);
+  });
+  return authResult;
 });
 adminRouter.use(configRouter);
 adminRouter.use(tokensRouter);
@@ -1336,7 +1279,6 @@ adminRouter.use(usersRouter);
 adminRouter.use(transactionsRouter);
 adminRouter.use(groupTipsRouter);
 adminRouter.use(systemRouter);
-// adminRouter.use(backupRouter); // Disabled due to environment issues
 adminRouter.use(statsRouter);
 adminRouter.use(pengubookRouter);
 adminRouter.use("/role-tax", roleTaxRouter);
@@ -1350,114 +1292,104 @@ adminRouter.use("/automation", automationAdminRouter);
 adminRouter.use("/pipchips", pipchipsAdminRouter);
 adminRouter.use("/tournaments", tournamentsRouter);
 adminRouter.use(adminMarketsRouter);
-/* ------------------------------------------------------------------------ */
-/*                          Remaining Direct Routes                         */
-/* ------------------------------------------------------------------------ */
-// Treasury endpoint with USD values
 adminRouter.get("/treasury", async (req, res) => {
-    try {
-        const force = req.query.force === "1";
-        const snapshot = await getTreasurySnapshot(force);
-        // Get real-time USD prices from DexTools/CoinGecko/CMC
-        const tokenSymbols = snapshot.tokens.map(token => token.symbol);
-        const priceResult = await priceAPI.getTokenPrices(tokenSymbols);
-        // Add USD value estimates to each token
-        const tokensWithUSD = snapshot.tokens.map(token => {
-            const price = priceResult.prices[token.symbol] || 0.001; // fallback
-            const balanceHuman = parseFloat(token.human);
-            const estimatedUSD = balanceHuman * price;
-            return {
-                ...token,
-                priceUSD: price,
-                estimatedUSD: estimatedUSD,
-                formattedUSD: `$${estimatedUSD.toFixed(2)}`,
-                priceSource: priceResult.source
-            };
-        });
-        // Calculate total treasury USD value
-        const totalTreasuryUSD = tokensWithUSD.reduce((sum, token) => sum + token.estimatedUSD, 0);
-        res.json({
-            ok: true,
-            ...snapshot,
-            tokens: tokensWithUSD,
-            totalTreasuryUSD,
-            formattedTotalUSD: `$${totalTreasuryUSD.toFixed(2)}`,
-            priceDisclaimer: `USD values from ${priceResult.source.toUpperCase()}${priceResult.source === 'fallback' ? ' (estimates only)' : ' (live prices)'}`
-        });
-    }
-    catch (error) {
-        console.error("Failed to load treasury:", error);
-        res.status(500).json({ ok: false, error: "Failed to load treasury" });
-    }
+  try {
+    const force = req.query.force === "1";
+    const snapshot = await getTreasurySnapshot(force);
+    const tokenSymbols = snapshot.tokens.map((token) => token.symbol);
+    const priceResult = await priceAPI.getTokenPrices(tokenSymbols);
+    const tokensWithUSD = snapshot.tokens.map((token) => {
+      const price = priceResult.prices[token.symbol] || 1e-3;
+      const balanceHuman = parseFloat(token.human);
+      const estimatedUSD = balanceHuman * price;
+      return {
+        ...token,
+        priceUSD: price,
+        estimatedUSD,
+        formattedUSD: `$${estimatedUSD.toFixed(2)}`,
+        priceSource: priceResult.source
+      };
+    });
+    const totalTreasuryUSD = tokensWithUSD.reduce((sum, token) => sum + token.estimatedUSD, 0);
+    res.json({
+      ok: true,
+      ...snapshot,
+      tokens: tokensWithUSD,
+      totalTreasuryUSD,
+      formattedTotalUSD: `$${totalTreasuryUSD.toFixed(2)}`,
+      priceDisclaimer: `USD values from ${priceResult.source.toUpperCase()}${priceResult.source === "fallback" ? " (estimates only)" : " (live prices)"}`
+    });
+  } catch (error) {
+    console.error("Failed to load treasury:", error);
+    res.status(500).json({ ok: false, error: "Failed to load treasury" });
+  }
 });
-// Fees by server endpoint
 adminRouter.get("/fees/by-server", async (req, res) => {
-    try {
-        const since = req.query.since ? new Date(req.query.since) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const until = req.query.until ? new Date(req.query.until) : new Date();
-        const guildId = req.query.guildId ? String(req.query.guildId) : undefined;
-        const transactions = await prisma.transaction.groupBy({
-            by: ["guildId", "tokenId"],
-            where: {
-                OR: [{ type: "TIP" }, { type: "MATCH_RAKE" }],
-                ...(guildId && { guildId }),
-                createdAt: { gte: since, lte: until }
-            },
-            _sum: { fee: true, amount: true }
-        });
-        const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
-        const tokenMap = new Map(tokens.map(t => [t.id, t.symbol]));
-        const rows = transactions.map(tr => ({
-            guildId: tr.guildId || "Unknown",
-            token: tr.tokenId ? (tokenMap.get(tr.tokenId) ?? `Token#${tr.tokenId}`) : "Unknown",
-            tipFees: tr._sum.fee || 0,
-            matchRake: tr._sum.amount || 0
-        }));
-        res.json({ ok: true, rows });
-    }
-    catch {
-        res.status(500).json({ ok: false, error: "Failed to load fees" });
-    }
+  try {
+    const since = req.query.since ? new Date(req.query.since) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
+    const until = req.query.until ? new Date(req.query.until) : /* @__PURE__ */ new Date();
+    const guildId = req.query.guildId ? String(req.query.guildId) : void 0;
+    const transactions = await prisma.transaction.groupBy({
+      by: ["guildId", "tokenId"],
+      where: {
+        OR: [{ type: "TIP" }, { type: "MATCH_RAKE" }],
+        ...guildId && { guildId },
+        createdAt: { gte: since, lte: until }
+      },
+      _sum: { fee: true, amount: true }
+    });
+    const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
+    const tokenMap = new Map(tokens.map((t) => [t.id, t.symbol]));
+    const rows = transactions.map((tr) => ({
+      guildId: tr.guildId || "Unknown",
+      token: tr.tokenId ? tokenMap.get(tr.tokenId) ?? `Token#${tr.tokenId}` : "Unknown",
+      tipFees: tr._sum.fee || 0,
+      matchRake: tr._sum.amount || 0
+    }));
+    res.json({ ok: true, rows });
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to load fees" });
+  }
 });
-// CSV export for fees
 adminRouter.get("/fees/export.csv", async (req, res) => {
-    try {
-        const since = req.query.since ? new Date(req.query.since) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const until = req.query.until ? new Date(req.query.until) : new Date();
-        const guildId = req.query.guildId ? String(req.query.guildId) : undefined;
-        const transactions = await prisma.transaction.groupBy({
-            by: ["guildId", "tokenId"],
-            where: {
-                OR: [{ type: "TIP" }, { type: "MATCH_RAKE" }],
-                ...(guildId && { guildId }),
-                createdAt: { gte: since, lte: until }
-            },
-            _sum: { fee: true, amount: true },
-        });
-        const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
-        const tokenMap = new Map(tokens.map(t => [t.id, t.symbol]));
-        let csv = "guildId,token,tipFees,matchRake,total,dateRange\\n";
-        transactions.forEach(tr => {
-            const tipFees = String(tr._sum.fee || 0);
-            const matchRake = String(tr._sum.amount || 0);
-            const total = (parseFloat(tipFees) + parseFloat(matchRake)).toString();
-            const tokenLabel = tr.tokenId ? (tokenMap.get(tr.tokenId) ?? `Token#${tr.tokenId}`) : "Unknown";
-            const dateRange = `${since.toDateString()} to ${until.toDateString()}`;
-            csv += `"${tr.guildId || ""}","${tokenLabel}","${tipFees}","${matchRake}","${total}","${dateRange}"\\n`;
-        });
-        res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", 'attachment; filename="house_fees_export.csv"');
-        res.send(csv);
-    }
-    catch {
-        res.status(500).json({ ok: false, error: "Failed to export CSV" });
-    }
+  try {
+    const since = req.query.since ? new Date(req.query.since) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
+    const until = req.query.until ? new Date(req.query.until) : /* @__PURE__ */ new Date();
+    const guildId = req.query.guildId ? String(req.query.guildId) : void 0;
+    const transactions = await prisma.transaction.groupBy({
+      by: ["guildId", "tokenId"],
+      where: {
+        OR: [{ type: "TIP" }, { type: "MATCH_RAKE" }],
+        ...guildId && { guildId },
+        createdAt: { gte: since, lte: until }
+      },
+      _sum: { fee: true, amount: true }
+    });
+    const tokens = await prisma.token.findMany({ select: { id: true, symbol: true } });
+    const tokenMap = new Map(tokens.map((t) => [t.id, t.symbol]));
+    let csv = "guildId,token,tipFees,matchRake,total,dateRange\\n";
+    transactions.forEach((tr) => {
+      const tipFees = String(tr._sum.fee || 0);
+      const matchRake = String(tr._sum.amount || 0);
+      const total = (parseFloat(tipFees) + parseFloat(matchRake)).toString();
+      const tokenLabel = tr.tokenId ? tokenMap.get(tr.tokenId) ?? `Token#${tr.tokenId}` : "Unknown";
+      const dateRange = `${since.toDateString()} to ${until.toDateString()}`;
+      csv += `"${tr.guildId || ""}","${tokenLabel}","${tipFees}","${matchRake}","${total}","${dateRange}"\\n`;
+    });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="house_fees_export.csv"');
+    res.send(csv);
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to export CSV" });
+  }
 });
-// Favicon route to prevent 404 errors
 adminRouter.get("/favicon.ico", (_req, res) => {
-    // Return a simple 1x1 transparent PNG
-    const favicon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
-    res.send(favicon);
+  const favicon = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==", "base64");
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(favicon);
 });
+export {
+  adminRouter
+};
+//# sourceMappingURL=admin.js.map

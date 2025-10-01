@@ -4,93 +4,75 @@ import { getUnreadMessageCount } from "../../../interactions/buttons/pengubook.j
 import { generateBaseHTML } from "../templates.js";
 import { prisma } from "../../../services/db.js";
 import { getDiscordClient } from "../../../services/discord_users.js";
-// HTML escaping function to prevent XSS
 function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+  return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-export async function inboxHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser)
-            return res.redirect("/auth/discord");
-        const user = await findOrCreateUser(currentUser.discordId);
-        // Get current unread count before marking as read
-        const currentUnreadCount = await getUnreadMessageCount(currentUser.discordId);
-        // Get messages with sender info
-        const messages = await prisma.penguBookMessage.findMany({
-            where: { toUserId: user.id },
-            include: {
-                from: true,
-                tip: {
-                    include: { Token: true }
-                }
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 50
-        });
-        // Batch fetch Discord usernames to avoid N+1 queries
-        const client = getDiscordClient();
-        // Get unique Discord IDs that need fetching (excluding system messages)
-        const discordIdsToFetch = messages
-            .filter(msg => msg.from?.discordId && msg.from.discordId !== msg.from.id.toString())
-            .map(msg => msg.from.discordId);
-        const uniqueDiscordIds = [...new Set(discordIdsToFetch)];
-        // Batch fetch Discord users
-        const discordUserMap = new Map();
-        if (client && client.isReady() && uniqueDiscordIds.length > 0) {
-            await Promise.allSettled(uniqueDiscordIds.map(async (discordId) => {
-                try {
-                    const discordUser = await client.users.fetch(discordId);
-                    const displayName = discordUser.displayName || discordUser.username;
-                    if (displayName) {
-                        discordUserMap.set(discordId, displayName);
-                    }
-                }
-                catch (error) {
-                    // Individual user fetch failed, use fallback
-                    discordUserMap.set(discordId, `Player ${discordId.slice(-4)}`);
-                }
-            }));
+async function inboxHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) return res.redirect("/auth/discord");
+    const user = await findOrCreateUser(currentUser.discordId);
+    const currentUnreadCount = await getUnreadMessageCount(currentUser.discordId);
+    const messages = await prisma.penguBookMessage.findMany({
+      where: { toUserId: user.id },
+      include: {
+        from: true,
+        tip: {
+          include: { Token: true }
         }
-        // Enhance messages with batched Discord usernames
-        const enhancedMessages = messages.map((msg) => {
-            let senderName = 'Unknown User';
-            if (msg.from?.discordId) {
-                if (msg.from.discordId === msg.from.id.toString()) {
-                    senderName = 'System';
-                }
-                else {
-                    // Use batched Discord data or fallback
-                    senderName = discordUserMap.get(msg.from.discordId) || `Player ${msg.from.discordId.slice(-4)}`;
-                }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    const client = getDiscordClient();
+    const discordIdsToFetch = messages.filter((msg) => msg.from?.discordId && msg.from.discordId !== msg.from.id.toString()).map((msg) => msg.from.discordId);
+    const uniqueDiscordIds = [...new Set(discordIdsToFetch)];
+    const discordUserMap = /* @__PURE__ */ new Map();
+    if (client && client.isReady() && uniqueDiscordIds.length > 0) {
+      await Promise.allSettled(
+        uniqueDiscordIds.map(async (discordId) => {
+          try {
+            const discordUser = await client.users.fetch(discordId);
+            const displayName = discordUser.displayName || discordUser.username;
+            if (displayName) {
+              discordUserMap.set(discordId, displayName);
             }
-            return {
-                ...msg,
-                senderName
-            };
-        });
-        // Mark messages as read
-        await prisma.penguBookMessage.updateMany({
-            where: { toUserId: user.id, read: false },
-            data: { read: true }
-        });
-        const content = `
+          } catch (error) {
+            discordUserMap.set(discordId, `Player ${discordId.slice(-4)}`);
+          }
+        })
+      );
+    }
+    const enhancedMessages = messages.map((msg) => {
+      let senderName = "Unknown User";
+      if (msg.from?.discordId) {
+        if (msg.from.discordId === msg.from.id.toString()) {
+          senderName = "System";
+        } else {
+          senderName = discordUserMap.get(msg.from.discordId) || `Player ${msg.from.discordId.slice(-4)}`;
+        }
+      }
+      return {
+        ...msg,
+        senderName
+      };
+    });
+    await prisma.penguBookMessage.updateMany({
+      where: { toUserId: user.id, read: false },
+      data: { read: true }
+    });
+    const content = `
     <div class="pg-container">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-6);">
-            <h1 style="margin: 0; color: var(--pg-dark-800);">📨 Your Messages</h1>
+            <h1 style="margin: 0; color: var(--pg-dark-800);">\u{1F4E8} Your Messages</h1>
             <button onclick="showComposeModal()" class="pg-btn pg-btn--primary">
-                ✍️ Compose Message
+                \u270D\uFE0F Compose Message
             </button>
         </div>
 
         ${messages.length === 0 ? `
         <div class="pg-empty-state">
-            <div class="pg-empty-state__icon">📭</div>
+            <div class="pg-empty-state__icon">\u{1F4ED}</div>
             <h2 class="pg-empty-state__title">No messages yet</h2>
             <p class="pg-empty-state__description">
                 Your tip notifications and messages will appear here! Start by browsing users and sending some tips.
@@ -100,7 +82,7 @@ export async function inboxHandler(req, res) {
             </div>
         </div>
         ` : enhancedMessages.map((msg) => `
-        <div class="pg-message ${msg.tip ? 'pg-message--tip' : ''}">
+        <div class="pg-message ${msg.tip ? "pg-message--tip" : ""}">
             <div class="pg-message-header">
                 <span class="pg-message-sender">
                     ${msg.senderName}
@@ -112,20 +94,20 @@ export async function inboxHandler(req, res) {
             <div class="pg-message-content">
                 ${msg.tip ? `
                 <div class="pg-tip-amount">
-                    💰 Received ${Number(msg.tip.amountAtomic / Math.pow(10, msg.tip.Token.decimals)).toFixed(2)} ${msg.tip.Token.symbol}
+                    \u{1F4B0} Received ${Number(msg.tip.amountAtomic / Math.pow(10, msg.tip.Token.decimals)).toFixed(2)} ${msg.tip.Token.symbol}
                 </div>
-                ` : ''}
-                ${escapeHtml(msg.message || '')}
+                ` : ""}
+                ${escapeHtml(msg.message || "")}
             </div>
             ${msg.from && msg.from.discordId && msg.from.discordId !== msg.from.id ? `
             <div class="pg-message-actions">
                 <button onclick="replyToMessage('${msg.from.discordId}', '${msg.from.discordId.slice(-4)}')" class="pg-btn pg-btn--sm pg-btn--outline">
-                    ↩️ Reply
+                    \u21A9\uFE0F Reply
                 </button>
             </div>
-            ` : ''}
+            ` : ""}
         </div>
-        `).join('')}
+        `).join("")}
     </div>
 
     <script>
@@ -136,7 +118,7 @@ export async function inboxHandler(req, res) {
             modal.innerHTML = \`
                 <div class="pg-modal">
                     <div class="pg-modal-header">
-                        <h2>✍️ Compose Message</h2>
+                        <h2>\u270D\uFE0F Compose Message</h2>
                         <button onclick="closeComposeModal()" class="pg-modal-close">&times;</button>
                     </div>
                     <form id="composeForm" class="pg-modal-body">
@@ -296,7 +278,7 @@ export async function inboxHandler(req, res) {
             modal.innerHTML = \`
                 <div class="pg-modal">
                     <div class="pg-modal-header">
-                        <h2>↩️ Reply to User#\${userHandle}</h2>
+                        <h2>\u21A9\uFE0F Reply to User#\${userHandle}</h2>
                         <button onclick="closeComposeModal()" class="pg-modal-close">&times;</button>
                     </div>
                     <form id="composeForm" class="pg-modal-body">
@@ -463,13 +445,16 @@ export async function inboxHandler(req, res) {
         window.closeComposeModal = closeComposeModal;
         window.replyToMessage = replyToMessage;
     </script>`;
-        res.send(generateBaseHTML(content, '📨 Inbox - PenguBook', 'inbox', {
-            user: currentUser,
-            unreadCount: currentUnreadCount
-        }));
-    }
-    catch (error) {
-        console.error("PenguBook inbox error:", error);
-        res.status(500).send("Error loading inbox");
-    }
+    res.send(generateBaseHTML(content, "\u{1F4E8} Inbox - PenguBook", "inbox", {
+      user: currentUser,
+      unreadCount: currentUnreadCount
+    }));
+  } catch (error) {
+    console.error("PenguBook inbox error:", error);
+    res.status(500).send("Error loading inbox");
+  }
 }
+export {
+  inboxHandler
+};
+//# sourceMappingURL=inbox.js.map

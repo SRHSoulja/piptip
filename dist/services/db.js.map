@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/services/db.ts"],
+  "sourcesContent": ["// src/services/db.ts\nimport { PrismaClient } from \"@prisma/client\";\nimport { prismaWithLogging } from \"./prisma_logger.js\";\n\n// Use the logging-enabled Prisma client for production monitoring\nexport const prisma = prismaWithLogging;\n\nexport async function ensurePrisma() { await prisma.$connect(); }\n"],
+  "mappings": "AAEA,SAAS,yBAAyB;AAG3B,MAAM,SAAS;AAEtB,eAAsB,eAAe;AAAE,QAAM,OAAO,SAAS;AAAG;",
+  "names": []
+}

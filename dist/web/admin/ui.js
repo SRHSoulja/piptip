@@ -183,13 +183,102 @@ const createTierTableRow = (tier) => {
 
 // ---------- Utility helpers ----------
 const $ = (id) => document.getElementById(id);
+
+// CSRF token management
+let csrfToken = null;
+let csrfSecret = null;
+let csrfExpiry = null;
+
+const refreshCSRFToken = async () => {
+  const secret = localStorage.getItem("pip_admin_secret") || "";
+  if (!secret) {
+    console.warn("⚠️ No admin secret available for CSRF token generation");
+    return false;
+  }
+
+  try {
+    console.log("🔄 Refreshing CSRF token...");
+    const response = await fetch("/admin/csrf-token", {
+      headers: { "Authorization": `Bearer ${secret}` }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get CSRF token: ${response.status}`);
+    }
+
+    const data = await response.json();
+    csrfToken = data.token;
+    csrfSecret = data.secret;
+    csrfExpiry = Date.now() + data.expiresIn;
+
+    console.log("✅ CSRF token refreshed successfully");
+    return true;
+  } catch (error) {
+    console.error("❌ Failed to refresh CSRF token:", error);
+    return false;
+  }
+};
+
+const ensureCSRFToken = async () => {
+  // Check if we have a valid token
+  if (csrfToken && csrfSecret && csrfExpiry && Date.now() < (csrfExpiry - 60000)) {
+    return true; // Token still valid (with 1 minute buffer)
+  }
+
+  // Token expired or missing, refresh it
+  return await refreshCSRFToken();
+};
+
 const API = async (path, opts = {}) => {
   const secret = localStorage.getItem("pip_admin_secret") || "";
   const headers = { "Authorization": `Bearer ${secret}`, ...(opts.headers || {}) };
+
+  // Add CSRF protection for state-changing requests
+  if (opts.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(opts.method.toUpperCase())) {
+    const hasCSRF = await ensureCSRFToken();
+    if (hasCSRF && csrfToken && csrfSecret) {
+      headers['X-CSRF-Token'] = csrfToken;
+      headers['X-CSRF-Secret'] = csrfSecret;
+      console.log("🔐 Added CSRF protection to", opts.method, "request");
+
+      // Mark token as used (will need refresh for next request)
+      csrfToken = null;
+      csrfSecret = null;
+      csrfExpiry = null;
+    } else {
+      console.warn("⚠️ Could not obtain CSRF token for state-changing request");
+    }
+  }
+
   console.log(`🌐 Making API call to: ${path}`);
-  try { 
-    const response = await fetch(path, { ...opts, headers }); 
+  try {
+    const response = await fetch(path, { ...opts, headers });
     console.log(`📡 API response status: ${response.status}`);
+
+    // If CSRF error, try to refresh and retry once
+    if (response.status === 403 && opts.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(opts.method.toUpperCase())) {
+      const errorText = await response.text();
+      if (errorText.includes('CSRF')) {
+        console.warn("🔄 CSRF error detected, refreshing token and retrying...");
+
+        const refreshed = await refreshCSRFToken();
+        if (refreshed && csrfToken && csrfSecret) {
+          headers['X-CSRF-Token'] = csrfToken;
+          headers['X-CSRF-Secret'] = csrfSecret;
+
+          // Clear token after use
+          csrfToken = null;
+          csrfSecret = null;
+          csrfExpiry = null;
+
+          // Retry the request
+          const retryResponse = await fetch(path, { ...opts, headers });
+          console.log(`🔄 Retry response status: ${retryResponse.status}`);
+          return retryResponse;
+        }
+      }
+    }
+
     return response;
   }
   catch (error) { console.error("API request failed:", error); throw error; }

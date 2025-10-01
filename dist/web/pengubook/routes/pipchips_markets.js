@@ -4,240 +4,224 @@ import { prisma } from "../../../services/db.js";
 import { PIPChipsLMSR } from "../../../services/pipchips_lmsr.js";
 import { pipchipsService } from "../../../services/pipchips_service.js";
 import { findOrCreateUser } from "../../../services/user_helpers.js";
-import { Decimal } from 'decimal.js';
-export async function pipchipsMarketsHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.redirect("/auth/discord");
+import { Decimal } from "decimal.js";
+async function pipchipsMarketsHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.redirect("/auth/discord");
+    }
+    const { status = "active", limit = "20", offset = "0" } = req.query;
+    const limitNum = Math.min(parseInt(limit) || 20, 50);
+    const offsetNum = parseInt(offset) || 0;
+    const where = {
+      tokenSymbol: "PIPCHIPS"
+    };
+    if (status === "active") {
+      where.status = "ACTIVE";
+      where.resolveAt = { gt: /* @__PURE__ */ new Date() };
+    } else if (status === "resolved") {
+      where.status = "RESOLVED";
+    }
+    const dbUser = await findOrCreateUser(currentUser.discordId);
+    const [markets, totalMarkets, userBalance, tierPerms] = await Promise.all([
+      prisma.predictionMarket.findMany({
+        where,
+        orderBy: [
+          { totalPipchipsVolume: "desc" },
+          { createdAt: "desc" }
+        ],
+        take: limitNum,
+        skip: offsetNum,
+        include: {
+          _count: {
+            select: { participations: { where: { tokenSymbol: "PIPCHIPS" } } }
+          }
         }
-        const { status = "active", limit = "20", offset = "0" } = req.query;
-        const limitNum = Math.min(parseInt(limit) || 20, 50);
-        const offsetNum = parseInt(offset) || 0;
-        // Build query filters - only show PIPChips markets (all markets now use PIPChips)
-        const where = {
-            tokenSymbol: 'PIPCHIPS'
+      }),
+      prisma.predictionMarket.count({ where }),
+      pipchipsService.getUserBalance(currentUser.discordId),
+      // Get user tier permissions for market creation
+      import("../../../services/tiers.js").then((mod) => mod.checkMarketCreationPermission(currentUser.discordId))
+    ]);
+    const marketsWithPrices = markets.map((market) => {
+      const lmsr = new PIPChipsLMSR(
+        Number(market.liquidity) || 1e3,
+        market.marketOutcomes
+      );
+      const currentShares = {};
+      if (market.lmsrShares && typeof market.lmsrShares === "object") {
+        for (const outcome of market.marketOutcomes) {
+          const shares = market.lmsrShares[outcome] || "0";
+          currentShares[outcome] = new Decimal(shares);
+        }
+      } else {
+        for (const outcome of market.marketOutcomes) {
+          currentShares[outcome] = new Decimal(0);
+        }
+      }
+      const prices = lmsr.calculateAllPrices(currentShares);
+      const pricesMap = prices.reduce((acc, p) => {
+        acc[p.outcome] = {
+          price: p.price.toNumber(),
+          confidence: p.confidence.toNumber(),
+          impliedProbability: (p.price.toNumber() * 100).toFixed(1)
         };
-        if (status === "active") {
-            where.status = 'ACTIVE';
-            where.resolveAt = { gt: new Date() };
-        }
-        else if (status === "resolved") {
-            where.status = 'RESOLVED';
-        }
-        // Ensure user exists in database
-        const dbUser = await findOrCreateUser(currentUser.discordId);
-        const [markets, totalMarkets, userBalance, tierPerms] = await Promise.all([
-            prisma.predictionMarket.findMany({
-                where,
-                orderBy: [
-                    { totalPipchipsVolume: 'desc' },
-                    { createdAt: 'desc' }
-                ],
-                take: limitNum,
-                skip: offsetNum,
-                include: {
-                    _count: {
-                        select: { participations: { where: { tokenSymbol: 'PIPCHIPS' } } }
-                    }
-                }
-            }),
-            prisma.predictionMarket.count({ where }),
-            pipchipsService.getUserBalance(currentUser.discordId),
-            // Get user tier permissions for market creation
-            import('../../../services/tiers.js').then(mod => mod.checkMarketCreationPermission(currentUser.discordId))
-        ]);
-        // Calculate live LMSR prices for each market
-        const marketsWithPrices = markets.map(market => {
-            const lmsr = new PIPChipsLMSR(Number(market.liquidity) || 1000, market.marketOutcomes);
-            // Parse current shares
-            const currentShares = {};
-            if (market.lmsrShares && typeof market.lmsrShares === 'object') {
-                for (const outcome of market.marketOutcomes) {
-                    const shares = market.lmsrShares[outcome] || '0';
-                    currentShares[outcome] = new Decimal(shares);
-                }
-            }
-            else {
-                // Default to zero shares for all outcomes
-                for (const outcome of market.marketOutcomes) {
-                    currentShares[outcome] = new Decimal(0);
-                }
-            }
-            // Calculate current prices
-            const prices = lmsr.calculateAllPrices(currentShares);
-            const pricesMap = prices.reduce((acc, p) => {
-                acc[p.outcome] = {
-                    price: p.price.toNumber(),
-                    confidence: p.confidence.toNumber(),
-                    impliedProbability: (p.price.toNumber() * 100).toFixed(1)
-                };
-                return acc;
-            }, {});
-            const timeLeft = market.resolveAt.getTime() - Date.now();
-            const bettingClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
-            return {
-                ...market,
-                totalVolume: market.totalPipchipsVolume || 0,
-                totalBets: market._count.participations,
-                timeLeftMs: Math.max(0, timeLeft),
-                bettingClosed,
-                prices: pricesMap,
-                outcomes: market.marketOutcomes,
-                currency: 'PIPCHIPS'
-            };
-        });
-        const content = generatePIPChipsMarketsPageContent(marketsWithPrices, {
-            currentFilter: { status },
-            pagination: {
-                total: totalMarkets,
-                limit: limitNum,
-                offset: offsetNum,
-                hasMore: offsetNum + limitNum < totalMarkets
-            },
-            userBalance: Number(userBalance.balance),
-            tierPerms,
-            currentUser
-        });
-        const html = generateBaseHTML(content, "PIPChips Predictions - PenguBook", "pipchips-markets", { user: currentUser });
-        res.send(html);
-    }
-    catch (error) {
-        console.error('PIPChips markets page error:', error);
-        res.status(500).send('Error loading PIPChips prediction markets');
-    }
+        return acc;
+      }, {});
+      const timeLeft = market.resolveAt.getTime() - Date.now();
+      const bettingClosed = timeLeft <= 0 || market.status !== "ACTIVE";
+      return {
+        ...market,
+        totalVolume: market.totalPipchipsVolume || 0,
+        totalBets: market._count.participations,
+        timeLeftMs: Math.max(0, timeLeft),
+        bettingClosed,
+        prices: pricesMap,
+        outcomes: market.marketOutcomes,
+        currency: "PIPCHIPS"
+      };
+    });
+    const content = generatePIPChipsMarketsPageContent(marketsWithPrices, {
+      currentFilter: { status },
+      pagination: {
+        total: totalMarkets,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + limitNum < totalMarkets
+      },
+      userBalance: Number(userBalance.balance),
+      tierPerms,
+      currentUser
+    });
+    const html = generateBaseHTML(content, "PIPChips Predictions - PenguBook", "pipchips-markets", { user: currentUser });
+    res.send(html);
+  } catch (error) {
+    console.error("PIPChips markets page error:", error);
+    res.status(500).send("Error loading PIPChips prediction markets");
+  }
 }
-export async function pipchipsMarketDetailHandler(req, res) {
-    try {
-        const currentUser = getCurrentUser(req);
-        if (!currentUser) {
-            return res.redirect("/auth/discord");
-        }
-        // Ensure user exists in database
-        const dbUser = await findOrCreateUser(currentUser.discordId);
-        const { marketId } = req.params;
-        const market = await prisma.predictionMarket.findUnique({
-            where: {
-                id: marketId,
-                tokenSymbol: 'PIPCHIPS'
-            },
-            include: {
-                _count: {
-                    select: {
-                        participations: { where: { tokenSymbol: 'PIPCHIPS' } }
-                    }
-                }
-            }
-        });
-        if (!market) {
-            return res.status(404).send('PIPChips market not found');
-        }
-        // Get user's participations on this market
-        const userParticipations = await prisma.predictionParticipation.findMany({
-            where: {
-                marketId: marketId,
-                userId: currentUser.discordId,
-                tokenSymbol: 'PIPCHIPS'
-            },
-            orderBy: { createdAt: 'desc' }
-        });
-        // Get recent participation history
-        const recentParticipations = await prisma.predictionParticipation.findMany({
-            where: {
-                marketId,
-                tokenSymbol: 'PIPCHIPS'
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 20
-        });
-        // Get user balance, streak info, and tier permissions
-        const [userBalance, streakInfo, tierPerms] = await Promise.all([
-            pipchipsService.getUserBalance(currentUser.discordId),
-            pipchipsService.getStreakInfo(currentUser.discordId),
-            // Import tiers service to check market creation permissions
-            import('../../../services/tiers.js').then(mod => mod.checkMarketCreationPermission(currentUser.discordId))
-        ]);
-        // Initialize LMSR for pricing
-        const lmsr = new PIPChipsLMSR(Number(market.liquidity) || 1000, market.marketOutcomes);
-        // Parse current shares
-        const currentShares = {};
-        if (market.lmsrShares && typeof market.lmsrShares === 'object') {
-            for (const outcome of market.marketOutcomes) {
-                const shares = market.lmsrShares[outcome] || '0';
-                currentShares[outcome] = new Decimal(shares);
-            }
-        }
-        else {
-            // Default to zero shares for all outcomes
-            for (const outcome of market.marketOutcomes) {
-                currentShares[outcome] = new Decimal(0);
-            }
-        }
-        // Calculate current prices and market depth
-        const prices = lmsr.calculateAllPrices(currentShares);
-        const marketDepth = lmsr.getMarketDepth(currentShares);
-        const pricesMap = prices.reduce((acc, p) => {
-            acc[p.outcome] = {
-                price: p.price.toNumber(),
-                confidence: p.confidence.toNumber(),
-                impliedProbability: (p.price.toNumber() * 100).toFixed(1)
-            };
-            return acc;
-        }, {});
-        const timeLeft = market.resolveAt.getTime() - Date.now();
-        const bettingClosed = timeLeft <= 0 || market.status !== 'ACTIVE';
-        // Calculate potential payouts for different bet amounts
-        const potentialBets = await Promise.all([10, 50, 100, 500, 1000].map(async (amount) => {
-            const results = {};
-            for (const outcome of market.marketOutcomes) {
-                try {
-                    const costCalc = await lmsr.calculateBetCost(currentShares, outcome, BigInt(amount));
-                    results[outcome] = {
-                        amount,
-                        cost: Number(costCalc.actualCost),
-                        shares: costCalc.sharesPurchased.toNumber(),
-                        payout: costCalc.sharesPurchased.times(1000).toNumber(),
-                        odds: costCalc.sharesPurchased.times(1000).div(new Decimal(Number(costCalc.actualCost))).toNumber()
-                    };
-                }
-                catch (error) {
-                    results[outcome] = { amount, error: 'Cannot calculate' };
-                }
-            }
-            return results;
-        }));
-        const content = generatePIPChipsMarketDetailContent({
-            market: {
-                ...market,
-                totalVolume: market.totalPipchipsVolume || 0,
-                totalBets: market._count.participations,
-                timeLeftMs: Math.max(0, timeLeft),
-                bettingClosed,
-                prices: pricesMap,
-                outcomes: market.marketOutcomes,
-                marketDepth,
-                currency: 'PIPCHIPS'
-            },
-            userParticipations,
-            recentParticipations,
-            userBalance: Number(userBalance.balance),
-            streakInfo,
-            potentialBets,
-            tierPerms,
-            currentUser
-        });
-        const html = generateBaseHTML(content, `${market.title} - PIPChips Market`, "pipchips-market-detail", { user: currentUser });
-        res.send(html);
+async function pipchipsMarketDetailHandler(req, res) {
+  try {
+    const currentUser = getCurrentUser(req);
+    if (!currentUser) {
+      return res.redirect("/auth/discord");
     }
-    catch (error) {
-        console.error('PIPChips market detail error:', error);
-        res.status(500).send('Error loading PIPChips market details');
+    const dbUser = await findOrCreateUser(currentUser.discordId);
+    const { marketId } = req.params;
+    const market = await prisma.predictionMarket.findUnique({
+      where: {
+        id: marketId,
+        tokenSymbol: "PIPCHIPS"
+      },
+      include: {
+        _count: {
+          select: {
+            participations: { where: { tokenSymbol: "PIPCHIPS" } }
+          }
+        }
+      }
+    });
+    if (!market) {
+      return res.status(404).send("PIPChips market not found");
     }
+    const userParticipations = await prisma.predictionParticipation.findMany({
+      where: {
+        marketId,
+        userId: currentUser.discordId,
+        tokenSymbol: "PIPCHIPS"
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    const recentParticipations = await prisma.predictionParticipation.findMany({
+      where: {
+        marketId,
+        tokenSymbol: "PIPCHIPS"
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20
+    });
+    const [userBalance, streakInfo, tierPerms] = await Promise.all([
+      pipchipsService.getUserBalance(currentUser.discordId),
+      pipchipsService.getStreakInfo(currentUser.discordId),
+      // Import tiers service to check market creation permissions
+      import("../../../services/tiers.js").then((mod) => mod.checkMarketCreationPermission(currentUser.discordId))
+    ]);
+    const lmsr = new PIPChipsLMSR(
+      Number(market.liquidity) || 1e3,
+      market.marketOutcomes
+    );
+    const currentShares = {};
+    if (market.lmsrShares && typeof market.lmsrShares === "object") {
+      for (const outcome of market.marketOutcomes) {
+        const shares = market.lmsrShares[outcome] || "0";
+        currentShares[outcome] = new Decimal(shares);
+      }
+    } else {
+      for (const outcome of market.marketOutcomes) {
+        currentShares[outcome] = new Decimal(0);
+      }
+    }
+    const prices = lmsr.calculateAllPrices(currentShares);
+    const marketDepth = lmsr.getMarketDepth(currentShares);
+    const pricesMap = prices.reduce((acc, p) => {
+      acc[p.outcome] = {
+        price: p.price.toNumber(),
+        confidence: p.confidence.toNumber(),
+        impliedProbability: (p.price.toNumber() * 100).toFixed(1)
+      };
+      return acc;
+    }, {});
+    const timeLeft = market.resolveAt.getTime() - Date.now();
+    const bettingClosed = timeLeft <= 0 || market.status !== "ACTIVE";
+    const potentialBets = await Promise.all([10, 50, 100, 500, 1e3].map(async (amount) => {
+      const results = {};
+      for (const outcome of market.marketOutcomes) {
+        try {
+          const costCalc = await lmsr.calculateBetCost(currentShares, outcome, BigInt(amount));
+          results[outcome] = {
+            amount,
+            cost: Number(costCalc.actualCost),
+            shares: costCalc.sharesPurchased.toNumber(),
+            payout: costCalc.sharesPurchased.times(1e3).toNumber(),
+            odds: costCalc.sharesPurchased.times(1e3).div(new Decimal(Number(costCalc.actualCost))).toNumber()
+          };
+        } catch (error) {
+          results[outcome] = { amount, error: "Cannot calculate" };
+        }
+      }
+      return results;
+    }));
+    const content = generatePIPChipsMarketDetailContent({
+      market: {
+        ...market,
+        totalVolume: market.totalPipchipsVolume || 0,
+        totalBets: market._count.participations,
+        timeLeftMs: Math.max(0, timeLeft),
+        bettingClosed,
+        prices: pricesMap,
+        outcomes: market.marketOutcomes,
+        marketDepth,
+        currency: "PIPCHIPS"
+      },
+      userParticipations,
+      recentParticipations,
+      userBalance: Number(userBalance.balance),
+      streakInfo,
+      potentialBets,
+      tierPerms,
+      currentUser
+    });
+    const html = generateBaseHTML(content, `${market.title} - PIPChips Market`, "pipchips-market-detail", { user: currentUser });
+    res.send(html);
+  } catch (error) {
+    console.error("PIPChips market detail error:", error);
+    res.status(500).send("Error loading PIPChips market details");
+  }
 }
-// HTML content generators
 function generatePIPChipsMarketsPageContent(markets, options) {
-    const { currentFilter, pagination, userBalance, tierPerms, currentUser } = options;
-    return `
+  const { currentFilter, pagination, userBalance, tierPerms, currentUser } = options;
+  return `
     <div class="pipchips-markets-page">
       <!-- PIPChips Balance Header -->
       <div class="pipchips-balance-header">
@@ -249,8 +233,8 @@ function generatePIPChipsMarketsPageContent(markets, options) {
           </div>
         </div>
         <div class="balance-actions">
-          <button onclick="claimDailyBonus()" class="btn btn-primary">📅 Claim Daily</button>
-          <button onclick="showBuyChipsModal()" class="btn btn-secondary">💰 Buy More</button>
+          <button onclick="claimDailyBonus()" class="btn btn-primary">\u{1F4C5} Claim Daily</button>
+          <button onclick="showBuyChipsModal()" class="btn btn-secondary">\u{1F4B0} Buy More</button>
         </div>
       </div>
 
@@ -258,8 +242,8 @@ function generatePIPChipsMarketsPageContent(markets, options) {
       ${tierPerms.allowed && tierPerms.permissions.canCreateMarkets ? `
         <div class="create-market-section">
           <div class="create-market-header">
-            <h2>🎯 Create Prediction Market</h2>
-            <p>Tier: <strong>${tierPerms.tierName || 'Free'}</strong></p>
+            <h2>\u{1F3AF} Create Prediction Market</h2>
+            <p>Tier: <strong>${tierPerms.tierName || "Free"}</strong></p>
             <button onclick="toggleCreateMarketForm()" class="btn btn-primary" id="createMarketToggle">+ Create Market</button>
           </div>
 
@@ -299,7 +283,7 @@ function generatePIPChipsMarketsPageContent(markets, options) {
                 <h4>Market Preview:</h4>
                 <p><strong>Base Liquidity:</strong> 1,000+ PIPChips (tier bonus applied)</p>
                 <p><strong>Market Fee:</strong> ${tierPerms.permissions?.customRakePercent || 3}%</p>
-                <p><strong>Daily Limit:</strong> ${tierPerms.permissions?.dailyMarketLimit === 0 ? 'Unlimited' : tierPerms.permissions?.dailyMarketLimit || 1} markets</p>
+                <p><strong>Daily Limit:</strong> ${tierPerms.permissions?.dailyMarketLimit === 0 ? "Unlimited" : tierPerms.permissions?.dailyMarketLimit || 1} markets</p>
               </div>
 
               <div class="form-actions">
@@ -311,18 +295,18 @@ function generatePIPChipsMarketsPageContent(markets, options) {
         </div>
       ` : tierPerms.allowed ? `
         <div class="create-market-disabled">
-          <p>💡 <strong>Want to create prediction markets?</strong> Upgrade your tier to unlock market creation with liquidity bonuses!</p>
+          <p>\u{1F4A1} <strong>Want to create prediction markets?</strong> Upgrade your tier to unlock market creation with liquidity bonuses!</p>
         </div>
-      ` : ''}
+      ` : ""}
 
       <!-- Market Filters -->
       <div class="market-filters">
-        <h1>🎯 PIPChips Prediction Markets</h1>
+        <h1>\u{1F3AF} PIPChips Prediction Markets</h1>
         <div class="filter-tabs">
-          <a href="?status=active" class="tab ${currentFilter.status === 'active' ? 'active' : ''}">
+          <a href="?status=active" class="tab ${currentFilter.status === "active" ? "active" : ""}">
             Active Markets
           </a>
-          <a href="?status=resolved" class="tab ${currentFilter.status === 'resolved' ? 'active' : ''}">
+          <a href="?status=resolved" class="tab ${currentFilter.status === "resolved" ? "active" : ""}">
             Resolved
           </a>
         </div>
@@ -331,9 +315,9 @@ function generatePIPChipsMarketsPageContent(markets, options) {
       <!-- Low Balance Warning -->
       ${userBalance < 100 ? `
         <div class="low-balance-warning">
-          <p>⚠️ Running low on PIPChips! Claim your daily bonus or buy more to continue predicting.</p>
+          <p>\u26A0\uFE0F Running low on PIPChips! Claim your daily bonus or buy more to continue predicting.</p>
         </div>
-      ` : ''}
+      ` : ""}
 
       <!-- Markets Grid -->
       <div class="markets-grid">
@@ -342,7 +326,7 @@ function generatePIPChipsMarketsPageContent(markets, options) {
             <h3>No ${currentFilter.status} PIPChips markets found</h3>
             <p>Check back later for new prediction opportunities!</p>
           </div>
-        ` : markets.map(market => generateMarketCard(market)).join('')}
+        ` : markets.map((market) => generateMarketCard(market)).join("")}
       </div>
 
       <!-- Pagination -->
@@ -350,7 +334,7 @@ function generatePIPChipsMarketsPageContent(markets, options) {
 
       <!-- Info Box -->
       <div class="pipchips-info-box">
-        <h3>💡 How PIPChips Predictions Work</h3>
+        <h3>\u{1F4A1} How PIPChips Predictions Work</h3>
         <ul>
           <li>Use your PIPChips to predict outcomes on various markets</li>
           <li>Prices adjust based on market activity using automated market making</li>
@@ -720,7 +704,7 @@ function generatePIPChipsMarketsPageContent(markets, options) {
 
             modalDiv.innerHTML = modalContent + \`
               <div style="text-align: center; margin-top: 16px;">
-                <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Close</button>
+                <button onclick="this.closest('div[style*="position: fixed"]').remove()" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Close</button>
               </div>
             \`;
 
@@ -847,70 +831,56 @@ function generatePIPChipsMarketsPageContent(markets, options) {
   `;
 }
 function generateMarketCard(market) {
-    const timeLeft = market.timeLeftMs;
-    const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
-    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    // Better time formatting
-    let timeText = '';
-    if (market.bettingClosed) {
-        timeText = 'Betting Closed';
+  const timeLeft = market.timeLeftMs;
+  const hours = Math.floor(timeLeft / (1e3 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  const minutes = Math.floor(timeLeft % (1e3 * 60 * 60) / (1e3 * 60));
+  let timeText = "";
+  if (market.bettingClosed) {
+    timeText = "Betting Closed";
+  } else if (days > 0) {
+    timeText = `${days}d ${hours % 24}h`;
+  } else if (hours > 0) {
+    timeText = `${hours}h ${minutes}m`;
+  } else {
+    timeText = `${minutes}m`;
+  }
+  const resolveAtTime = new Date(market.resolveAt).getTime();
+  const predictionCutoffTime = market.marketData?.bettingCutoffTime || market.marketData?.bettingClosesAt || Math.max(resolveAtTime - timeLeft * 0.2, Date.now() + 5 * 60 * 1e3);
+  const predictionTimeLeft = predictionCutoffTime - Date.now();
+  const predictionsClosed = predictionTimeLeft <= 0;
+  let predictionStatus = "";
+  if (predictionsClosed) {
+    predictionStatus = '<span style="color: #dc2626;">\u{1F512} Predictions closed</span>';
+  } else {
+    const predictionHours = Math.floor(Math.max(0, predictionTimeLeft) / (1e3 * 60 * 60));
+    const predictionMins = Math.floor(Math.max(0, predictionTimeLeft) % (1e3 * 60 * 60) / (1e3 * 60));
+    if (predictionHours > 0) {
+      predictionStatus = `<span style="color: #059669;">\u2705 Predictions close in ${predictionHours}h ${predictionMins}m</span>`;
+    } else {
+      predictionStatus = `<span style="color: #ea580c;">\u26A0\uFE0F Predictions close in ${predictionMins}m</span>`;
     }
-    else if (days > 0) {
-        timeText = `${days}d ${hours % 24}h`;
-    }
-    else if (hours > 0) {
-        timeText = `${hours}h ${minutes}m`;
-    }
-    else {
-        timeText = `${minutes}m`;
-    }
-    // Calculate prediction cutoff time (20% before resolution or from marketData)
-    const resolveAtTime = new Date(market.resolveAt).getTime();
-    const predictionCutoffTime = market.marketData?.bettingCutoffTime ||
-        market.marketData?.bettingClosesAt ||
-        Math.max(resolveAtTime - (timeLeft * 0.2), Date.now() + (5 * 60 * 1000)); // At least 5 min buffer
-    const predictionTimeLeft = predictionCutoffTime - Date.now();
-    const predictionsClosed = predictionTimeLeft <= 0;
-    let predictionStatus = '';
-    if (predictionsClosed) {
-        predictionStatus = '<span style="color: #dc2626;">🔒 Predictions closed</span>';
-    }
-    else {
-        const predictionHours = Math.floor(Math.max(0, predictionTimeLeft) / (1000 * 60 * 60));
-        const predictionMins = Math.floor((Math.max(0, predictionTimeLeft) % (1000 * 60 * 60)) / (1000 * 60));
-        if (predictionHours > 0) {
-            predictionStatus = `<span style="color: #059669;">✅ Predictions close in ${predictionHours}h ${predictionMins}m</span>`;
-        }
-        else {
-            predictionStatus = `<span style="color: #ea580c;">⚠️ Predictions close in ${predictionMins}m</span>`;
-        }
-    }
-    // Calculate how long ago market was created
-    const createdAt = new Date(market.createdAt);
-    const marketAge = Date.now() - createdAt.getTime();
-    const ageHours = Math.floor(marketAge / (1000 * 60 * 60));
-    const ageDays = Math.floor(ageHours / 24);
-    let ageText = '';
-    if (ageDays > 0) {
-        ageText = `${ageDays}d ago`;
-    }
-    else if (ageHours > 0) {
-        ageText = `${ageHours}h ago`;
-    }
-    else {
-        const ageMins = Math.floor(marketAge / (1000 * 60));
-        ageText = `${ageMins}m ago`;
-    }
-    // Market type badge
-    const marketTypeBadge = market.marketData?.templateBased ?
-        '<span class="market-badge" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">AUTO</span>' : '';
-    return `
+  }
+  const createdAt = new Date(market.createdAt);
+  const marketAge = Date.now() - createdAt.getTime();
+  const ageHours = Math.floor(marketAge / (1e3 * 60 * 60));
+  const ageDays = Math.floor(ageHours / 24);
+  let ageText = "";
+  if (ageDays > 0) {
+    ageText = `${ageDays}d ago`;
+  } else if (ageHours > 0) {
+    ageText = `${ageHours}h ago`;
+  } else {
+    const ageMins = Math.floor(marketAge / (1e3 * 60));
+    ageText = `${ageMins}m ago`;
+  }
+  const marketTypeBadge = market.marketData?.templateBased ? '<span class="market-badge" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">AUTO</span>' : "";
+  return `
     <div class="market-card">
       <div class="market-header">
         <h3><a href="/pengubook/pipchips/market/${market.id}">${market.title}</a></h3>
         <div class="market-meta">
-          <span class="created-time" style="color: #94a3b8; font-size: 12px;">📅 Created ${ageText}</span>
+          <span class="created-time" style="color: #94a3b8; font-size: 12px;">\u{1F4C5} Created ${ageText}</span>
           ${marketTypeBadge}
         </div>
       </div>
@@ -919,8 +889,8 @@ function generateMarketCard(market) {
 
       <div class="market-timing" style="background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 12px; border-radius: 8px; margin: 12px 0;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-          <span style="color: #cbd5e1;">⏰ Resolution: <strong style="color: #f1f5f9;">${timeText}</strong></span>
-          <span style="color: #cbd5e1;">💰 Volume: <strong style="color: #f1f5f9;">${market.totalVolume.toLocaleString()} PIPChips</strong></span>
+          <span style="color: #cbd5e1;">\u23F0 Resolution: <strong style="color: #f1f5f9;">${timeText}</strong></span>
+          <span style="color: #cbd5e1;">\u{1F4B0} Volume: <strong style="color: #f1f5f9;">${market.totalVolume.toLocaleString()} PIPChips</strong></span>
         </div>
         <div style="font-size: 14px;">
           ${predictionStatus}
@@ -931,22 +901,22 @@ function generateMarketCard(market) {
         ${market.outcomes.map((outcome) => `
           <div class="outcome-chip" onclick="location.href='/pengubook/pipchips/market/${market.id}#bet-${outcome}'">
             <div class="outcome-name">${outcome}</div>
-            <div class="outcome-probability">${market.prices[outcome]?.impliedProbability || '50.0'}%</div>
+            <div class="outcome-probability">${market.prices[outcome]?.impliedProbability || "50.0"}%</div>
           </div>
-        `).join('')}
+        `).join("")}
       </div>
 
       <div class="market-stats" style="display: flex; justify-content: space-between; color: #cbd5e1; font-size: 14px;">
-        <span>👥 ${market.totalBets} prediction${market.totalBets !== 1 ? 's' : ''}</span>
-        <span>💧 Liquidity: ${market.liquidityParameter || 1000}</span>
-        <span>📊 LMSR Market</span>
+        <span>\u{1F465} ${market.totalBets} prediction${market.totalBets !== 1 ? "s" : ""}</span>
+        <span>\u{1F4A7} Liquidity: ${market.liquidityParameter || 1e3}</span>
+        <span>\u{1F4CA} LMSR Market</span>
       </div>
     </div>
   `;
 }
 function generatePIPChipsMarketDetailContent(data) {
-    const { market, userParticipations, userBalance, streakInfo, potentialBets } = data;
-    return `
+  const { market, userParticipations, userBalance, streakInfo, potentialBets } = data;
+  return `
     <style>
       .pipchips-market-detail {
         max-width: 800px;
@@ -1171,8 +1141,8 @@ function generatePIPChipsMarketDetailContent(data) {
     <div class="pipchips-market-detail">
       <div class="market-header">
         <h1>${market.title}</h1>
-        <div class="market-status ${market.bettingClosed ? 'closed' : 'active'}">
-          ${market.bettingClosed ? '⏰ Betting Closed' : '🟢 Active'}
+        <div class="market-status ${market.bettingClosed ? "closed" : "active"}">
+          ${market.bettingClosed ? "\u23F0 Betting Closed" : "\u{1F7E2} Active"}
         </div>
       </div>
 
@@ -1196,7 +1166,7 @@ function generatePIPChipsMarketDetailContent(data) {
         <span>Your Balance: <strong>${userBalance.toLocaleString()} PIPChips</strong></span>
         ${userBalance < 100 ? `
           <a href="discord://pip_daily" class="btn-small">Get More</a>
-        ` : ''}
+        ` : ""}
       </div>
 
       <!-- Betting Interface -->
@@ -1208,25 +1178,25 @@ function generatePIPChipsMarketDetailContent(data) {
               <div class="outcome-bet-card">
                 <h4>${outcome}</h4>
                 <div class="current-price">
-                  <span class="probability">${market.prices[outcome]?.impliedProbability || '50.0'}%</span>
+                  <span class="probability">${market.prices[outcome]?.impliedProbability || "50.0"}%</span>
                   <span class="price-label">Current Probability</span>
                 </div>
 
                 <div class="bet-amounts">
-                  ${[10, 50, 100, 500].map(amount => `
+                  ${[10, 50, 100, 500].map((amount) => `
                     <button class="bet-amount-btn"
                             onclick="placeBet('${market.id}', '${outcome}', ${amount})"
-                            ${userBalance < amount ? 'disabled' : ''}>
+                            ${userBalance < amount ? "disabled" : ""}>
                       ${amount} PIPChips
-                      ${userBalance < amount ? '(Insufficient)' : ''}
+                      ${userBalance < amount ? "(Insufficient)" : ""}
                     </button>
-                  `).join('')}
+                  `).join("")}
                 </div>
               </div>
-            `).join('')}
+            `).join("")}
           </div>
         </div>
-      ` : ''}
+      ` : ""}
 
       <!-- User's Participations -->
       ${userParticipations.length > 0 ? `
@@ -1237,13 +1207,13 @@ function generatePIPChipsMarketDetailContent(data) {
               <div class="user-participation">
                 <span class="participation-outcome">${participation.side}</span>
                 <span class="participation-amount">${participation.amount} PIPChips</span>
-                <span class="potential-payout">→ ${participation.potentialPayout.toLocaleString()} PIPChips</span>
+                <span class="potential-payout">\u2192 ${participation.potentialPayout.toLocaleString()} PIPChips</span>
                 <span class="participation-date">${new Date(participation.createdAt).toLocaleDateString()}</span>
               </div>
-            `).join('')}
+            `).join("")}
           </div>
         </div>
-      ` : ''}
+      ` : ""}
     </div>
 
     <script>
@@ -1272,7 +1242,7 @@ function generatePIPChipsMarketDetailContent(data) {
           // Check if response is ok
           if (!response.ok) {
             if (response.status === 401) {
-              alert('⚠️ You need to log in first! Please sign in with Discord to place predictions.');
+              alert('\u26A0\uFE0F You need to log in first! Please sign in with Discord to place predictions.');
               window.location.href = '/auth/discord';
               return;
             } else {
@@ -1292,7 +1262,7 @@ function generatePIPChipsMarketDetailContent(data) {
             // Show success message without blocking the UI
             const successMsg = document.createElement('div');
             successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #065f46; color: #d1fae5; padding: 16px; border-radius: 8px; border: 1px solid #10b981; z-index: 1000; font-weight: 600;';
-            successMsg.textContent = \`✅ Prediction placed successfully! Spent \${amount} PIPChips on \${outcome}\`;
+            successMsg.textContent = \`\u2705 Prediction placed successfully! Spent \${amount} PIPChips on \${outcome}\`;
             document.body.appendChild(successMsg);
 
             // Remove success message after 5 seconds
@@ -1333,14 +1303,19 @@ function generatePIPChipsMarketDetailContent(data) {
   `;
 }
 function generatePagination(pagination) {
-    const { total, limit, offset, hasMore } = pagination;
-    const currentPage = Math.floor(offset / limit) + 1;
-    const totalPages = Math.ceil(total / limit);
-    return `
+  const { total, limit, offset, hasMore } = pagination;
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(total / limit);
+  return `
     <div class="pagination">
-      ${offset > 0 ? `<a href="?offset=${Math.max(0, offset - limit)}" class="btn">← Previous</a>` : ''}
+      ${offset > 0 ? `<a href="?offset=${Math.max(0, offset - limit)}" class="btn">\u2190 Previous</a>` : ""}
       <span class="page-info">Page ${currentPage} of ${totalPages}</span>
-      ${hasMore ? `<a href="?offset=${offset + limit}" class="btn">Next →</a>` : ''}
+      ${hasMore ? `<a href="?offset=${offset + limit}" class="btn">Next \u2192</a>` : ""}
     </div>
   `;
 }
+export {
+  pipchipsMarketDetailHandler,
+  pipchipsMarketsHandler
+};
+//# sourceMappingURL=pipchips_markets.js.map

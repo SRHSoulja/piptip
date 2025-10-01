@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/services/matches.ts"],
+  "sourcesContent": ["export type PipMove = \"penguin\" | \"ice\" | \"pebble\";\n\nexport function judge(a: PipMove, b: PipMove): -1 | 0 | 1 {\n  if (a === b) return 0;\n  if ((a===\"penguin\" && b===\"ice\") || (a===\"ice\" && b===\"pebble\") || (a===\"pebble\" && b===\"penguin\")) return 1;\n  return -1;\n}\n\nexport function label(m: PipMove) {\n  return m===\"penguin\" ? \"\uD83D\uDC27 Penguin\" : m===\"ice\" ? \"\uD83E\uDDCA Ice\" : \"\uD83E\uDEA8 Pebble\";\n}\n"],
+  "mappings": "AAEO,SAAS,MAAM,GAAY,GAAwB;AACxD,MAAI,MAAM,EAAG,QAAO;AACpB,MAAK,MAAI,aAAa,MAAI,SAAW,MAAI,SAAS,MAAI,YAAc,MAAI,YAAY,MAAI,UAAY,QAAO;AAC3G,SAAO;AACT;AAEO,SAAS,MAAM,GAAY;AAChC,SAAO,MAAI,YAAY,sBAAe,MAAI,QAAQ,kBAAW;AAC/D;",
+  "names": []
+}

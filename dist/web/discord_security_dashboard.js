@@ -1,127 +1,116 @@
-import { prisma } from '../services/database';
-import { apiKeyManager } from '../services/api_key_management';
-import { getUserIncidents, getUnresolvedIncidents } from '../services/incident_notification.js';
-export async function getDiscordSecurityDashboard(req, res) {
-    try {
-        const { discordId } = req.params;
-        if (!discordId) {
-            return res.status(400).json({ error: 'Discord ID required' });
-        }
-        // Get user profile
-        const user = await prisma.user.findUnique({
-            where: { discordId },
-            select: {
-                id: true,
-                discordId: true,
-                createdAt: true,
-                updatedAt: true,
-                agwAddress: true,
-                isBanned: true
-            }
-        });
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        // Build security profile
-        const profile = await buildDiscordSecurityProfile(user);
-        // Calculate security score
-        const securityScore = calculateDiscordSecurityScore(profile);
-        // Get security incidents
-        const recentIncidents = getUserIncidents(user.id.toString(), 5);
-        const unresolvedIncidents = getUnresolvedIncidents(user.id.toString());
-        // Get OAuth session history
-        const sessionHistory = await getDiscordSessionHistory(discordId);
-        // Get API key usage
-        const apiKeyStats = await getApiKeyStats(user.id.toString());
-        res.send(generateDiscordSecurityDashboard({
-            profile,
-            securityScore,
-            recentIncidents,
-            unresolvedIncidents,
-            sessionHistory,
-            apiKeyStats
-        }));
+import { prisma } from "../services/database";
+import { apiKeyManager } from "../services/api_key_management";
+import { getUserIncidents, getUnresolvedIncidents } from "../services/incident_notification.js";
+async function getDiscordSecurityDashboard(req, res) {
+  try {
+    const { discordId } = req.params;
+    if (!discordId) {
+      return res.status(400).json({ error: "Discord ID required" });
     }
-    catch (error) {
-        console.error('Discord security dashboard error:', error);
-        res.status(500).json({ error: 'Failed to load security dashboard' });
+    const user = await prisma.user.findUnique({
+      where: { discordId },
+      select: {
+        id: true,
+        discordId: true,
+        createdAt: true,
+        updatedAt: true,
+        agwAddress: true,
+        isBanned: true
+      }
+    });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
+    const profile = await buildDiscordSecurityProfile(user);
+    const securityScore = calculateDiscordSecurityScore(profile);
+    const recentIncidents = getUserIncidents(user.id.toString(), 5);
+    const unresolvedIncidents = getUnresolvedIncidents(user.id.toString());
+    const sessionHistory = await getDiscordSessionHistory(discordId);
+    const apiKeyStats = await getApiKeyStats(user.id.toString());
+    res.send(generateDiscordSecurityDashboard({
+      profile,
+      securityScore,
+      recentIncidents,
+      unresolvedIncidents,
+      sessionHistory,
+      apiKeyStats
+    }));
+  } catch (error) {
+    console.error("Discord security dashboard error:", error);
+    res.status(500).json({ error: "Failed to load security dashboard" });
+  }
 }
 async function buildDiscordSecurityProfile(user) {
-    // In a real implementation, you'd check Discord's API for 2FA status
-    // For now, we'll simulate this data
-    return {
-        discordId: user.discordId,
-        discordUsername: `User#${user.discordId.slice(-4)}`, // Mock username
-        discordHas2FA: Math.random() > 0.3, // 70% chance of having Discord 2FA
-        adminHas2FA: false, // TODO: Check admin 2FA status
-        hasActiveApiKeys: false, // TODO: Check API key status
-        hasRecentSessions: true,
-        lastOAuthLogin: user.updatedAt,
-        totalLogins: Math.floor(Math.random() * 50) + 10,
-        suspiciousActivity: Math.floor(Math.random() * 3)
-    };
+  return {
+    discordId: user.discordId,
+    discordUsername: `User#${user.discordId.slice(-4)}`,
+    // Mock username
+    discordHas2FA: Math.random() > 0.3,
+    // 70% chance of having Discord 2FA
+    adminHas2FA: false,
+    // TODO: Check admin 2FA status
+    hasActiveApiKeys: false,
+    // TODO: Check API key status
+    hasRecentSessions: true,
+    lastOAuthLogin: user.updatedAt,
+    totalLogins: Math.floor(Math.random() * 50) + 10,
+    suspiciousActivity: Math.floor(Math.random() * 3)
+  };
 }
 function calculateDiscordSecurityScore(profile) {
-    let score = 30; // Base Discord OAuth score
-    if (profile.discordHas2FA)
-        score += 25; // Discord 2FA
-    if (profile.adminHas2FA)
-        score += 20; // Admin panel 2FA
-    if (profile.hasActiveApiKeys)
-        score += 10; // API key management
-    if (profile.hasRecentSessions && profile.suspiciousActivity === 0)
-        score += 15; // Clean session history
-    return Math.min(score, 100);
+  let score = 30;
+  if (profile.discordHas2FA) score += 25;
+  if (profile.adminHas2FA) score += 20;
+  if (profile.hasActiveApiKeys) score += 10;
+  if (profile.hasRecentSessions && profile.suspiciousActivity === 0) score += 15;
+  return Math.min(score, 100);
 }
 async function getDiscordSessionHistory(discordId) {
-    // Mock session history - in production, track OAuth sessions
-    return [
-        {
-            timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-            location: 'San Francisco, US',
-            ipAddress: '192.168.1.1',
-            userAgent: 'Chrome 120.0.0.0',
-            status: 'active'
-        },
-        {
-            timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-            location: 'San Francisco, US',
-            ipAddress: '192.168.1.1',
-            userAgent: 'Firefox 119.0',
-            status: 'expired'
-        },
-        {
-            timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-            location: 'New York, US',
-            ipAddress: '203.0.113.1',
-            userAgent: 'Chrome 119.0.0.0',
-            status: 'expired'
-        }
-    ];
+  return [
+    {
+      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1e3),
+      location: "San Francisco, US",
+      ipAddress: "192.168.1.1",
+      userAgent: "Chrome 120.0.0.0",
+      status: "active"
+    },
+    {
+      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1e3),
+      location: "San Francisco, US",
+      ipAddress: "192.168.1.1",
+      userAgent: "Firefox 119.0",
+      status: "expired"
+    },
+    {
+      timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1e3),
+      location: "New York, US",
+      ipAddress: "203.0.113.1",
+      userAgent: "Chrome 119.0.0.0",
+      status: "expired"
+    }
+  ];
 }
 async function getApiKeyStats(userId) {
-    try {
-        const keys = await apiKeyManager.getUserApiKeys(userId);
-        return {
-            totalKeys: keys.length,
-            activeKeys: keys.filter((k) => k.isActive).length,
-            totalRequests: keys.reduce((sum, k) => sum + k.requestCount, 0),
-            lastUsed: keys.length > 0 ? new Date() : null
-        };
-    }
-    catch (error) {
-        return {
-            totalKeys: 0,
-            activeKeys: 0,
-            totalRequests: 0,
-            lastUsed: null
-        };
-    }
+  try {
+    const keys = await apiKeyManager.getUserApiKeys(userId);
+    return {
+      totalKeys: keys.length,
+      activeKeys: keys.filter((k) => k.isActive).length,
+      totalRequests: keys.reduce((sum, k) => sum + k.requestCount, 0),
+      lastUsed: keys.length > 0 ? /* @__PURE__ */ new Date() : null
+    };
+  } catch (error) {
+    return {
+      totalKeys: 0,
+      activeKeys: 0,
+      totalRequests: 0,
+      lastUsed: null
+    };
+  }
 }
 function generateDiscordSecurityDashboard(data) {
-    const { profile, securityScore, recentIncidents, unresolvedIncidents, sessionHistory, apiKeyStats } = data;
-    return `
+  const { profile, securityScore, recentIncidents, unresolvedIncidents, sessionHistory, apiKeyStats } = data;
+  return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -136,10 +125,10 @@ function generateDiscordSecurityDashboard(data) {
       <div class="dashboard-container">
         <header class="dashboard-header">
           <div class="header-content">
-            <h1>🛡️ Discord Security Dashboard</h1>
+            <h1>\u{1F6E1}\uFE0F Discord Security Dashboard</h1>
             <div class="user-info">
               <div class="discord-user">
-                <span class="discord-avatar">👤</span>
+                <span class="discord-avatar">\u{1F464}</span>
                 <div>
                   <div class="username">${profile.discordUsername}</div>
                   <div class="discord-id">${profile.discordId}</div>
@@ -161,27 +150,27 @@ function generateDiscordSecurityDashboard(data) {
               <p class="score-status ${getScoreClass(securityScore)}">${getScoreStatus(securityScore)}</p>
               <div class="score-breakdown">
                 <div class="breakdown-item complete">
-                  <span class="icon">✅</span>
+                  <span class="icon">\u2705</span>
                   <span>Discord OAuth Connected</span>
                   <span class="points">+30</span>
                 </div>
-                <div class="breakdown-item ${profile.discordHas2FA ? 'complete' : 'incomplete'}">
-                  <span class="icon">${profile.discordHas2FA ? '✅' : '❌'}</span>
+                <div class="breakdown-item ${profile.discordHas2FA ? "complete" : "incomplete"}">
+                  <span class="icon">${profile.discordHas2FA ? "\u2705" : "\u274C"}</span>
                   <span>Discord 2FA Enabled</span>
                   <span class="points">+25</span>
                 </div>
-                <div class="breakdown-item ${profile.adminHas2FA ? 'complete' : 'incomplete'}">
-                  <span class="icon">${profile.adminHas2FA ? '✅' : '❌'}</span>
+                <div class="breakdown-item ${profile.adminHas2FA ? "complete" : "incomplete"}">
+                  <span class="icon">${profile.adminHas2FA ? "\u2705" : "\u274C"}</span>
                   <span>Admin Panel 2FA</span>
                   <span class="points">+20</span>
                 </div>
-                <div class="breakdown-item ${profile.hasActiveApiKeys ? 'complete' : 'incomplete'}">
-                  <span class="icon">${profile.hasActiveApiKeys ? '✅' : '❌'}</span>
+                <div class="breakdown-item ${profile.hasActiveApiKeys ? "complete" : "incomplete"}">
+                  <span class="icon">${profile.hasActiveApiKeys ? "\u2705" : "\u274C"}</span>
                   <span>API Keys Managed</span>
                   <span class="points">+10</span>
                 </div>
-                <div class="breakdown-item ${profile.hasRecentSessions && profile.suspiciousActivity === 0 ? 'complete' : 'incomplete'}">
-                  <span class="icon">${profile.hasRecentSessions && profile.suspiciousActivity === 0 ? '✅' : '❌'}</span>
+                <div class="breakdown-item ${profile.hasRecentSessions && profile.suspiciousActivity === 0 ? "complete" : "incomplete"}">
+                  <span class="icon">${profile.hasRecentSessions && profile.suspiciousActivity === 0 ? "\u2705" : "\u274C"}</span>
                   <span>Clean Session History</span>
                   <span class="points">+15</span>
                 </div>
@@ -191,31 +180,31 @@ function generateDiscordSecurityDashboard(data) {
 
           <!-- Discord Actions -->
           <div class="card">
-            <h3>🔐 Security Actions</h3>
+            <h3>\u{1F510} Security Actions</h3>
             <div class="actions-grid">
               <a href="https://discord.com/channels/@me" class="action-button primary" target="_blank">
-                <div class="action-icon">🔗</div>
+                <div class="action-icon">\u{1F517}</div>
                 <div class="action-content">
                   <h4>Discord Settings</h4>
                   <p>Manage Discord 2FA & security</p>
                 </div>
               </a>
-              <a href="/admin/2fa-setup" class="action-button ${profile.adminHas2FA ? 'complete' : 'secondary'}">
-                <div class="action-icon">🔒</div>
+              <a href="/admin/2fa-setup" class="action-button ${profile.adminHas2FA ? "complete" : "secondary"}">
+                <div class="action-icon">\u{1F512}</div>
                 <div class="action-content">
                   <h4>Admin Panel 2FA</h4>
-                  <p>${profile.adminHas2FA ? 'Enabled' : 'Setup required'}</p>
+                  <p>${profile.adminHas2FA ? "Enabled" : "Setup required"}</p>
                 </div>
               </a>
               <a href="/admin/api-keys" class="action-button secondary">
-                <div class="action-icon">🗝️</div>
+                <div class="action-icon">\u{1F5DD}\uFE0F</div>
                 <div class="action-content">
                   <h4>API Keys</h4>
                   <p>${apiKeyStats.totalKeys} keys managed</p>
                 </div>
               </a>
               <a href="/security/sessions" class="action-button secondary">
-                <div class="action-icon">📱</div>
+                <div class="action-icon">\u{1F4F1}</div>
                 <div class="action-content">
                   <h4>Session History</h4>
                   <p>${profile.totalLogins} total logins</p>
@@ -226,28 +215,28 @@ function generateDiscordSecurityDashboard(data) {
 
           <!-- Recent Sessions -->
           <div class="card">
-            <h3>📱 Discord OAuth Sessions</h3>
+            <h3>\u{1F4F1} Discord OAuth Sessions</h3>
             <div class="sessions-list">
               ${sessionHistory.map((session) => `
                 <div class="session-item">
                   <div class="session-info">
                     <div class="session-location">${session.location}</div>
                     <div class="session-details">
-                      ${session.userAgent} • ${session.ipAddress}
+                      ${session.userAgent} \u2022 ${session.ipAddress}
                     </div>
                     <div class="session-time">${formatTimeAgo(session.timestamp)}</div>
                   </div>
                   <div class="session-status ${session.status}">
-                    ${session.status === 'active' ? '🟢 Active' : '⚫ Expired'}
+                    ${session.status === "active" ? "\u{1F7E2} Active" : "\u26AB Expired"}
                   </div>
                 </div>
-              `).join('')}
+              `).join("")}
             </div>
           </div>
 
           <!-- API Usage -->
           <div class="card">
-            <h3>🗝️ API Key Usage</h3>
+            <h3>\u{1F5DD}\uFE0F API Key Usage</h3>
             <div class="api-stats">
               <div class="stat-item">
                 <div class="stat-value">${apiKeyStats.totalKeys}</div>
@@ -262,7 +251,7 @@ function generateDiscordSecurityDashboard(data) {
                 <div class="stat-label">Total Requests</div>
               </div>
               <div class="stat-item">
-                <div class="stat-value">${apiKeyStats.lastUsed ? formatTimeAgo(apiKeyStats.lastUsed) : 'Never'}</div>
+                <div class="stat-value">${apiKeyStats.lastUsed ? formatTimeAgo(apiKeyStats.lastUsed) : "Never"}</div>
                 <div class="stat-label">Last Used</div>
               </div>
             </div>
@@ -270,10 +259,10 @@ function generateDiscordSecurityDashboard(data) {
 
           <!-- Security Alerts -->
           <div class="card">
-            <h3>🚨 Security Alerts</h3>
+            <h3>\u{1F6A8} Security Alerts</h3>
             <div class="alerts-summary">
               <div class="alert-stat">
-                <span class="alert-count ${unresolvedIncidents.length > 0 ? 'warning' : 'success'}">${unresolvedIncidents.length}</span>
+                <span class="alert-count ${unresolvedIncidents.length > 0 ? "warning" : "success"}">${unresolvedIncidents.length}</span>
                 <span>Unresolved</span>
               </div>
               <div class="alert-stat">
@@ -289,11 +278,11 @@ function generateDiscordSecurityDashboard(data) {
                     <div class="incident-title">${incident.userMessage}</div>
                     <div class="incident-time">${formatTimeAgo(new Date(incident.timestamp))}</div>
                   </div>
-                  <div class="incident-status ${incident.resolved ? 'resolved' : 'unresolved'}">
-                    ${incident.resolved ? '✅' : '⚠️'}
+                  <div class="incident-status ${incident.resolved ? "resolved" : "unresolved"}">
+                    ${incident.resolved ? "\u2705" : "\u26A0\uFE0F"}
                   </div>
                 </div>
-              `).join('')}
+              `).join("")}
             </div>
           </div>
         </div>
@@ -307,7 +296,7 @@ function generateDiscordSecurityDashboard(data) {
   `;
 }
 function getDiscordSecurityStyles() {
-    return `
+  return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
@@ -656,48 +645,41 @@ function getDiscordSecurityStyles() {
   `;
 }
 function getScoreClass(score) {
-    if (score >= 80)
-        return 'excellent';
-    if (score >= 60)
-        return 'good';
-    return 'needs-improvement';
+  if (score >= 80) return "excellent";
+  if (score >= 60) return "good";
+  return "needs-improvement";
 }
 function getScoreStatus(score) {
-    if (score >= 80)
-        return 'Excellent Security';
-    if (score >= 60)
-        return 'Good Security';
-    return 'Needs Improvement';
+  if (score >= 80) return "Excellent Security";
+  if (score >= 60) return "Good Security";
+  return "Needs Improvement";
 }
 function getIncidentIcon(type) {
-    const icons = {
-        'session_hijack': '🔓',
-        'brute_force': '🔨',
-        'anomaly_detected': '⚠️',
-        'suspicious_transaction': '💰',
-        'account_locked': '🔒',
-        'password_change': '🔑',
-        '2fa_enabled': '🔐',
-        '2fa_disabled': '🚨'
-    };
-    return icons[type] || '❓';
+  const icons = {
+    "session_hijack": "\u{1F513}",
+    "brute_force": "\u{1F528}",
+    "anomaly_detected": "\u26A0\uFE0F",
+    "suspicious_transaction": "\u{1F4B0}",
+    "account_locked": "\u{1F512}",
+    "password_change": "\u{1F511}",
+    "2fa_enabled": "\u{1F510}",
+    "2fa_disabled": "\u{1F6A8}"
+  };
+  return icons[type] || "\u2753";
 }
 function formatTimeAgo(date) {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    if (days > 0)
-        return `${days} day${days > 1 ? 's' : ''} ago`;
-    if (hours > 0)
-        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-    if (minutes > 0)
-        return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-    return 'Just now';
+  const now = /* @__PURE__ */ new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 6e4);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days} day${days > 1 ? "s" : ""} ago`;
+  if (hours > 0) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  if (minutes > 0) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+  return "Just now";
 }
 function getDiscordSecurityScript() {
-    return `
+  return `
     // Auto-refresh every 30 seconds
     setTimeout(() => {
       location.reload();
@@ -714,3 +696,7 @@ function getDiscordSecurityScript() {
     });
   `;
 }
+export {
+  getDiscordSecurityDashboard
+};
+//# sourceMappingURL=discord_security_dashboard.js.map

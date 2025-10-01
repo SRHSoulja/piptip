@@ -1,19 +1,15 @@
-// src/web/pengubook/templates.ts - PenguBook HTML template generators
 import fs from "fs";
 import path from "path";
-// Load the enhanced CSS file
-const cssPath = path.join(process.cwd(), 'src/web/static/pengubook.css');
-let enhancedCSS = '';
+const cssPath = path.join(process.cwd(), "src/web/static/pengubook.css");
+let enhancedCSS = "";
 try {
-    enhancedCSS = fs.readFileSync(cssPath, 'utf8');
+  enhancedCSS = fs.readFileSync(cssPath, "utf8");
+} catch (error) {
+  console.warn("Enhanced CSS file not found, falling back to inline styles");
+  enhancedCSS = "/* Enhanced CSS not available - falling back to basic styles */";
 }
-catch (error) {
-    console.warn('Enhanced CSS file not found, falling back to inline styles');
-    enhancedCSS = '/* Enhanced CSS not available - falling back to basic styles */';
-}
-// Base HTML template with enhanced design system
-export function generateBaseHTML(content, title = 'PenguBook', currentPage = '', userData = null) {
-    return `<!DOCTYPE html>
+function generateBaseHTML(content, title = "PenguBook", currentPage = "", userData = null) {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -24,7 +20,7 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
     <meta name="theme-color" content="#1f2937">
     <title>${title}</title>
     <meta name="description" content="PenguBook - Social crypto tipping on Abstract Chain">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐧</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>\u{1F427}</text></svg>">
 
     <style>
     ${enhancedCSS}
@@ -43,7 +39,7 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
     <!-- Enhanced Header -->
     <header class="pg-header">
         <a href="/pengubook" class="pg-header__logo">
-            🐧 PenguBook
+            \u{1F427} PenguBook
         </a>
         ${userData ? `
         <div class="pg-header__user">
@@ -51,37 +47,37 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
             <img src="${userData.user.avatar}" alt="Avatar" class="pg-avatar" loading="lazy">
             <a href="/auth/logout" class="pg-btn pg-btn--secondary pg-btn--sm">Logout</a>
         </div>
-        ` : ''}
+        ` : ""}
     </header>
 
     <!-- Enhanced Navigation -->
     <nav class="pg-nav" role="navigation" aria-label="Main navigation">
-        <a href="/pengubook" class="pg-nav__link ${currentPage === 'home' ? 'pg-nav__link--active' : ''}" aria-current="${currentPage === 'home' ? 'page' : 'false'}">
-            🏠 Home
+        <a href="/pengubook" class="pg-nav__link ${currentPage === "home" ? "pg-nav__link--active" : ""}" aria-current="${currentPage === "home" ? "page" : "false"}">
+            \u{1F3E0} Home
         </a>
-        <a href="/pengubook/inbox" class="pg-nav__link ${currentPage === 'inbox' ? 'pg-nav__link--active' : ''}">
-            📨 Inbox${userData?.unreadCount > 0 ? `<span class="pg-nav__badge">${userData.unreadCount}</span>` : ''}
+        <a href="/pengubook/inbox" class="pg-nav__link ${currentPage === "inbox" ? "pg-nav__link--active" : ""}">
+            \u{1F4E8} Inbox${userData?.unreadCount > 0 ? `<span class="pg-nav__badge">${userData.unreadCount}</span>` : ""}
         </a>
-        <a href="/pengubook/browse" class="pg-nav__link ${currentPage === 'browse' ? 'pg-nav__link--active' : ''}">
-            👥 Browse Users
+        <a href="/pengubook/browse" class="pg-nav__link ${currentPage === "browse" ? "pg-nav__link--active" : ""}">
+            \u{1F465} Browse Users
         </a>
-        <a href="/pengubook/markets" class="pg-nav__link ${currentPage === 'markets' ? 'pg-nav__link--active' : ''}">
-            🔮 Prediction Markets
+        <a href="/pengubook/markets" class="pg-nav__link ${currentPage === "markets" ? "pg-nav__link--active" : ""}">
+            \u{1F52E} Prediction Markets
         </a>
-        <a href="/pengubook/stats" class="pg-nav__link ${currentPage === 'stats' ? 'pg-nav__link--active' : ''}">
-            📊 Stats
+        <a href="/pengubook/stats" class="pg-nav__link ${currentPage === "stats" ? "pg-nav__link--active" : ""}">
+            \u{1F4CA} Stats
         </a>
-        <a href="/pengubook/transactions" class="pg-nav__link ${currentPage === 'transactions' ? 'pg-nav__link--active' : ''}">
-            📋 Transactions
+        <a href="/pengubook/transactions" class="pg-nav__link ${currentPage === "transactions" ? "pg-nav__link--active" : ""}">
+            \u{1F4CB} Transactions
         </a>
-        <a href="/pengubook/apply" class="pg-nav__link ${currentPage === 'apply' ? 'pg-nav__link--active' : ''}">
-            📝 Apply
+        <a href="/pengubook/apply" class="pg-nav__link ${currentPage === "apply" ? "pg-nav__link--active" : ""}">
+            \u{1F4DD} Apply
         </a>
-        <a href="/pengubook/profile" class="pg-nav__link ${currentPage === 'profile' ? 'pg-nav__link--active' : ''}">
-            ⚙️ Profile
+        <a href="/pengubook/profile" class="pg-nav__link ${currentPage === "profile" ? "pg-nav__link--active" : ""}">
+            \u2699\uFE0F Profile
         </a>
         <a href="/server" class="pg-nav__link">
-            🛡️ Server Admin
+            \u{1F6E1}\uFE0F Server Admin
         </a>
     </nav>
 
@@ -102,7 +98,7 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
     <script>
         // Performance monitoring
         window.addEventListener('load', () => {
-            console.log('🐧 PenguBook Enhanced loaded in', performance.now().toFixed(2), 'ms');
+            console.log('\u{1F427} PenguBook Enhanced loaded in', performance.now().toFixed(2), 'ms');
         });
 
         // Global loading state management
@@ -186,7 +182,7 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
                 console.error('Failed to refresh unread count:', error);
             }
         }, 30000);
-        ` : ''}
+        ` : ""}
 
         // ===== Global Aesthetic Persistence System =====
         // Load and apply user aesthetic preferences on every page
@@ -358,21 +354,20 @@ export function generateBaseHTML(content, title = 'PenguBook', currentPage = '',
                 applyFont(prefs.font);
             };
 
-            console.log('🎨 PenguBook Aesthetics loaded:', preferences);
+            console.log('\u{1F3A8} PenguBook Aesthetics loaded:', preferences);
         })();
     </script>
 </body>
 </html>`;
 }
-// Generate home page content
-export function generateHomeContent(user, currentUser) {
-    return `
+function generateHomeContent(user, currentUser) {
+  return `
     <div class="pg-container">
         <!-- Hero Welcome Section -->
         <div class="pg-card pg-card--gradient">
             <div style="text-align: center;">
                 <h1 style="margin: 0 0 1rem 0; font-size: var(--pg-text-4xl); font-weight: 900;">
-                    🐧 Welcome to PenguBook Web!
+                    \u{1F427} Welcome to PenguBook Web!
                 </h1>
                 <p style="margin: 0; font-size: var(--pg-text-lg); opacity: 0.9; max-width: 600px; margin: 0 auto;">
                     Your crypto tipping companion is now available on the web. Send tips, manage your profile, and stay connected with your community!
@@ -383,9 +378,9 @@ export function generateHomeContent(user, currentUser) {
         <!-- Wallet Balance Card -->
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
-                <h2 style="margin: 0; color: var(--pg-dark-800);">💰 Wallet Balance</h2>
+                <h2 style="margin: 0; color: var(--pg-dark-800);">\u{1F4B0} Wallet Balance</h2>
                 <button onclick="window.refreshBalances()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshBalanceBtn">
-                    🔄 Refresh
+                    \u{1F504} Refresh
                 </button>
             </div>
             <div id="balanceContainer" style="min-height: 60px;">
@@ -396,9 +391,9 @@ export function generateHomeContent(user, currentUser) {
         <!-- Recent Activity Feed -->
         <div class="pg-card" style="margin-bottom: var(--pg-space-6);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--pg-space-4);">
-                <h2 style="margin: 0; color: var(--pg-dark-800);">🔥 Recent Activity</h2>
+                <h2 style="margin: 0; color: var(--pg-dark-800);">\u{1F525} Recent Activity</h2>
                 <button onclick="window.refreshActivity()" class="pg-btn pg-btn--secondary pg-btn--sm" id="refreshActivityBtn">
-                    🔄 Refresh
+                    \u{1F504} Refresh
                 </button>
             </div>
             <div id="activityContainer" style="min-height: 200px;">
@@ -409,7 +404,7 @@ export function generateHomeContent(user, currentUser) {
         <!-- Feature Cards Grid -->
         <div class="pg-grid pg-grid--3">
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">💸</span>
+                <span class="pg-feature-icon">\u{1F4B8}</span>
                 <h3 class="pg-feature-title">Send Tips</h3>
                 <p class="pg-feature-description">
                     Tip users across your servers with our multi-token support. Fast, secure, and fun!
@@ -418,7 +413,7 @@ export function generateHomeContent(user, currentUser) {
             </div>
 
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">📨</span>
+                <span class="pg-feature-icon">\u{1F4E8}</span>
                 <h3 class="pg-feature-title">Message Center</h3>
                 <p class="pg-feature-description">
                     View your tip notifications and messages in one organized place.
@@ -427,7 +422,7 @@ export function generateHomeContent(user, currentUser) {
             </div>
 
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">📊</span>
+                <span class="pg-feature-icon">\u{1F4CA}</span>
                 <h3 class="pg-feature-title">Statistics</h3>
                 <p class="pg-feature-description">
                     Comprehensive gaming stats, win rates, and financial analytics.
@@ -436,7 +431,7 @@ export function generateHomeContent(user, currentUser) {
             </div>
 
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">📋</span>
+                <span class="pg-feature-icon">\u{1F4CB}</span>
                 <h3 class="pg-feature-title">Transactions</h3>
                 <p class="pg-feature-description">
                     Complete history of all your tips, deposits, and withdrawals.
@@ -445,7 +440,7 @@ export function generateHomeContent(user, currentUser) {
             </div>
 
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">🛡️</span>
+                <span class="pg-feature-icon">\u{1F6E1}\uFE0F</span>
                 <h3 class="pg-feature-title">Server Admin</h3>
                 <p class="pg-feature-description">
                     Manage PIPTip settings for your Discord servers.
@@ -454,7 +449,7 @@ export function generateHomeContent(user, currentUser) {
             </div>
 
             <div class="pg-feature-card">
-                <span class="pg-feature-icon">⚙️</span>
+                <span class="pg-feature-icon">\u2699\uFE0F</span>
                 <h3 class="pg-feature-title">Profile Settings</h3>
                 <p class="pg-feature-description">
                     Manage your bio, social links, and preferences with ease.
@@ -474,10 +469,12 @@ export function generateHomeContent(user, currentUser) {
             <div>
                 <strong style="color: var(--pg-dark-800); margin-bottom: var(--pg-space-3); display: block;">Social Links:</strong>
                 <div class="pg-social-links">
-                    ${JSON.parse(user.socials).map((social) => `<a href="${social.url}" target="_blank" rel="noopener noreferrer" class="pg-social-link">${social.platform}</a>`).join('')}
+                    ${JSON.parse(user.socials).map(
+    (social) => `<a href="${social.url}" target="_blank" rel="noopener noreferrer" class="pg-social-link">${social.platform}</a>`
+  ).join("")}
                 </div>
             </div>
-            ` : ''}
+            ` : ""}
         </div>
         ` : `
         <!-- Getting Started CTA -->
@@ -510,14 +507,14 @@ export function generateHomeContent(user, currentUser) {
 
             // Prevent multiple simultaneous calls (local and global)
             if (balanceLoading || window.balanceLoadingGlobal) {
-                console.log('🚫 Balance load already in progress (local or global), skipping...');
+                console.log('\u{1F6AB} Balance load already in progress (local or global), skipping...');
                 return;
             }
 
             // Debounce rapid calls
             const now = Date.now();
             if (now - lastBalanceLoad < BALANCE_DEBOUNCE_MS) {
-                console.log(\`🚫 Balance load debounced (last load \${now - lastBalanceLoad}ms ago)\`);
+                console.log(\`\u{1F6AB} Balance load debounced (last load \${now - lastBalanceLoad}ms ago)\`);
                 return;
             }
 
@@ -526,9 +523,9 @@ export function generateHomeContent(user, currentUser) {
                 window.balanceLoadingGlobal = true;
                 lastBalanceLoad = now;
                 refreshBtn.disabled = true;
-                refreshBtn.textContent = '🔄 Loading...';
+                refreshBtn.textContent = '\u{1F504} Loading...';
 
-                console.log('📊 Loading balances from API...');
+                console.log('\u{1F4CA} Loading balances from API...');
                 const response = await fetch('/pengubook/api/balance');
                 const data = await response.json();
 
@@ -562,7 +559,7 @@ export function generateHomeContent(user, currentUser) {
                     container.innerHTML = \`
                         <div class="pg-empty-state" style="padding: var(--pg-space-4); text-align: center;">
                             <div style="color: var(--pg-dark-600); margin-bottom: var(--pg-space-2);">
-                                💳 No wallet balances found
+                                \u{1F4B3} No wallet balances found
                             </div>
                             <div style="font-size: var(--pg-text-sm); color: var(--pg-dark-500);">
                                 Make a deposit or receive tips to see your balances here
@@ -574,14 +571,14 @@ export function generateHomeContent(user, currentUser) {
                 console.error('Failed to load balances:', error);
                 container.innerHTML = \`
                     <div class="pg-error" style="padding: var(--pg-space-4); text-align: center;">
-                        ❌ Failed to load wallet balances
+                        \u274C Failed to load wallet balances
                     </div>
                 \`;
             } finally {
                 balanceLoading = false;
                 window.balanceLoadingGlobal = false;
                 refreshBtn.disabled = false;
-                refreshBtn.textContent = '🔄 Refresh';
+                refreshBtn.textContent = '\u{1F504} Refresh';
             }
         }
 
@@ -600,7 +597,7 @@ export function generateHomeContent(user, currentUser) {
 
             try {
                 refreshBtn.disabled = true;
-                refreshBtn.textContent = '🔄 Loading...';
+                refreshBtn.textContent = '\u{1F504} Loading...';
 
                 // Fetch real activity feed
                 const response = await fetch('/pengubook/api/activity-feed');
@@ -625,7 +622,7 @@ export function generateHomeContent(user, currentUser) {
                     container.innerHTML = \`
                         <div class="pg-empty-state" style="padding: var(--pg-space-4); text-align: center;">
                             <div style="color: var(--pg-dark-600); margin-bottom: var(--pg-space-2);">
-                                🌟 No recent activity
+                                \u{1F31F} No recent activity
                             </div>
                             <div style="font-size: var(--pg-text-sm); color: var(--pg-dark-500);">
                                 Be the first to react, follow, or tip someone to start the activity feed!
@@ -638,12 +635,12 @@ export function generateHomeContent(user, currentUser) {
                 console.error('Failed to load activity:', error);
                 container.innerHTML = \`
                     <div class="pg-error" style="padding: var(--pg-space-4); text-align: center;">
-                        ❌ Failed to load activity feed
+                        \u274C Failed to load activity feed
                     </div>
                 \`;
             } finally {
                 refreshBtn.disabled = false;
-                refreshBtn.textContent = '🔄 Refresh';
+                refreshBtn.textContent = '\u{1F504} Refresh';
             }
         }
 
@@ -662,9 +659,8 @@ export function generateHomeContent(user, currentUser) {
         window.refreshActivity = refreshActivity;
     </script>`;
 }
-// Generate empty state content
-export function generateEmptyState(icon, title, description, buttonText, buttonLink) {
-    return `
+function generateEmptyState(icon, title, description, buttonText, buttonLink) {
+  return `
     <div class="pg-empty-state">
         <div class="pg-empty-state__icon">${icon}</div>
         <h2 class="pg-empty-state__title">${title}</h2>
@@ -673,6 +669,12 @@ export function generateEmptyState(icon, title, description, buttonText, buttonL
         <div style="margin-top: var(--pg-space-6);">
             <a href="${buttonLink}" class="pg-btn pg-btn--primary">${buttonText}</a>
         </div>
-        ` : ''}
+        ` : ""}
     </div>`;
 }
+export {
+  generateBaseHTML,
+  generateEmptyState,
+  generateHomeContent
+};
+//# sourceMappingURL=templates.js.map

@@ -1,110 +1,95 @@
-// src/utils/safe_conversions.ts - Safe number conversion utilities for financial operations
-export class ValidationError extends Error {
-    value;
-    constructor(message, value) {
-        super(message);
-        this.value = value;
-        this.name = 'ValidationError';
-    }
+class ValidationError extends Error {
+  constructor(message, value) {
+    super(message);
+    this.value = value;
+    this.name = "ValidationError";
+  }
 }
-/**
- * Safely convert value to number with validation for financial operations
- */
-export function safeToNumber(value, options = {}) {
-    const { min, max, allowZero = true, label = 'value' } = options;
-    // Handle null/undefined
-    if (value == null) {
-        throw new ValidationError(`${label} cannot be null or undefined`, value);
+function safeToNumber(value, options = {}) {
+  const { min, max, allowZero = true, label = "value" } = options;
+  if (value == null) {
+    throw new ValidationError(`${label} cannot be null or undefined`, value);
+  }
+  let num;
+  if (typeof value === "number") {
+    num = value;
+  } else if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      throw new ValidationError(`${label} cannot be empty string`, value);
     }
-    // Convert to number
-    let num;
-    if (typeof value === 'number') {
-        num = value;
-    }
-    else if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed === '') {
-            throw new ValidationError(`${label} cannot be empty string`, value);
-        }
-        num = Number(trimmed);
-    }
-    else if (typeof value === 'bigint') {
-        num = Number(value);
-    }
-    else {
-        num = Number(value);
-    }
-    // Check for NaN
-    if (isNaN(num)) {
-        throw new ValidationError(`${label} must be a valid number, got: ${value}`, value);
-    }
-    // Check for infinity
-    if (!isFinite(num)) {
-        throw new ValidationError(`${label} must be finite, got: ${value}`, value);
-    }
-    // Check zero
-    if (!allowZero && num === 0) {
-        throw new ValidationError(`${label} cannot be zero`, value);
-    }
-    // Check min/max bounds
-    if (min !== undefined && num < min) {
-        throw new ValidationError(`${label} must be at least ${min}, got: ${num}`, value);
-    }
-    if (max !== undefined && num > max) {
-        throw new ValidationError(`${label} cannot exceed ${max}, got: ${num}`, value);
-    }
-    return num;
+    num = Number(trimmed);
+  } else if (typeof value === "bigint") {
+    num = Number(value);
+  } else {
+    num = Number(value);
+  }
+  if (isNaN(num)) {
+    throw new ValidationError(`${label} must be a valid number, got: ${value}`, value);
+  }
+  if (!isFinite(num)) {
+    throw new ValidationError(`${label} must be finite, got: ${value}`, value);
+  }
+  if (!allowZero && num === 0) {
+    throw new ValidationError(`${label} cannot be zero`, value);
+  }
+  if (min !== void 0 && num < min) {
+    throw new ValidationError(`${label} must be at least ${min}, got: ${num}`, value);
+  }
+  if (max !== void 0 && num > max) {
+    throw new ValidationError(`${label} cannot exceed ${max}, got: ${num}`, value);
+  }
+  return num;
 }
-/**
- * Safely convert balance values with financial constraints
- */
-export function safeBalanceToNumber(value, label = 'balance') {
-    return safeToNumber(value, {
-        min: 0,
-        allowZero: true,
-        max: Number.MAX_SAFE_INTEGER,
-        label
-    });
+function safeBalanceToNumber(value, label = "balance") {
+  return safeToNumber(value, {
+    min: 0,
+    allowZero: true,
+    max: Number.MAX_SAFE_INTEGER,
+    label
+  });
 }
-/**
- * Safely convert amount values for tips/transfers with financial constraints
- */
-export function safeAmountToNumber(value, label = 'amount') {
-    return safeToNumber(value, {
-        min: 0,
-        allowZero: false, // Amounts should be positive for financial operations
-        max: 1000000000, // 1 billion limit
-        label
-    });
+function safeAmountToNumber(value, label = "amount") {
+  return safeToNumber(value, {
+    min: 0,
+    allowZero: false,
+    // Amounts should be positive for financial operations
+    max: 1e9,
+    // 1 billion limit
+    label
+  });
 }
-/**
- * Safely convert percentage values (0-100)
- */
-export function safePercentageToNumber(value, label = 'percentage') {
-    return safeToNumber(value, {
-        min: 0,
-        max: 100,
-        allowZero: true,
-        label
-    });
+function safePercentageToNumber(value, label = "percentage") {
+  return safeToNumber(value, {
+    min: 0,
+    max: 100,
+    allowZero: true,
+    label
+  });
 }
-/**
- * Safely parse integer with radix for consistent parsing
- */
-export function safeParseInt(value, radix = 10, label = 'integer') {
-    if (typeof value === 'number') {
-        if (!Number.isInteger(value)) {
-            throw new ValidationError(`${label} must be an integer, got: ${value}`, value);
-        }
-        return value;
+function safeParseInt(value, radix = 10, label = "integer") {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value)) {
+      throw new ValidationError(`${label} must be an integer, got: ${value}`, value);
     }
-    const trimmed = String(value).trim();
-    if (trimmed === '') {
-        throw new ValidationError(`${label} cannot be empty`, value);
-    }
-    const parsed = parseInt(trimmed, radix);
-    if (isNaN(parsed)) {
-        throw new ValidationError(`${label} must be a valid integer, got: ${value}`, value);
-    }
-    return parsed;
+    return value;
+  }
+  const trimmed = String(value).trim();
+  if (trimmed === "") {
+    throw new ValidationError(`${label} cannot be empty`, value);
+  }
+  const parsed = parseInt(trimmed, radix);
+  if (isNaN(parsed)) {
+    throw new ValidationError(`${label} must be a valid integer, got: ${value}`, value);
+  }
+  return parsed;
 }
+export {
+  ValidationError,
+  safeAmountToNumber,
+  safeBalanceToNumber,
+  safeParseInt,
+  safePercentageToNumber,
+  safeToNumber
+};
+//# sourceMappingURL=safe_conversions.js.map

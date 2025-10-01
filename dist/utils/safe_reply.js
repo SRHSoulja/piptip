@@ -1,66 +1,38 @@
-/**
- * Safely reply to an interaction, automatically choosing between reply() and editReply()
- * based on whether the interaction has already been acknowledged/deferred.
- *
- * This prevents "Interaction has already been acknowledged" errors when middleware
- * has already called deferReply().
- *
- * @param interaction - The Discord interaction
- * @param options - Reply options
- * @returns Promise that resolves when the reply is sent
- */
-export async function safeReply(interaction, options) {
-    // Normalize options to object format
-    const replyOptions = typeof options === 'string'
-        ? { content: options }
-        : options;
-    try {
-        // Check if interaction has already been deferred or replied to
-        if (interaction.deferred || interaction.replied) {
-            // Use editReply for deferred/replied interactions
-            await interaction.editReply(replyOptions);
-        }
-        else {
-            // Use reply for fresh interactions
-            await interaction.reply(replyOptions);
-        }
+async function safeReply(interaction, options) {
+  const replyOptions = typeof options === "string" ? { content: options } : options;
+  try {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(replyOptions);
+    } else {
+      await interaction.reply(replyOptions);
     }
-    catch (error) {
-        // Handle edge cases where Discord state doesn't match our expectation
-        if (error.code === 40060) {
-            // "Interaction has already been acknowledged" - try editReply as fallback
-            console.warn(`safeReply: Interaction already acknowledged, falling back to editReply for ${interaction.commandName}`);
-            try {
-                await interaction.editReply(replyOptions);
-            }
-            catch (editError) {
-                console.error(`safeReply: Both reply and editReply failed for ${interaction.commandName}:`, editError);
-                throw editError;
-            }
-        }
-        else {
-            // Re-throw other errors
-            throw error;
-        }
+  } catch (error) {
+    if (error.code === 40060) {
+      console.warn(`safeReply: Interaction already acknowledged, falling back to editReply for ${interaction.commandName}`);
+      try {
+        await interaction.editReply(replyOptions);
+      } catch (editError) {
+        console.error(`safeReply: Both reply and editReply failed for ${interaction.commandName}:`, editError);
+        throw editError;
+      }
+    } else {
+      throw error;
     }
+  }
 }
-/**
- * Safely defer an interaction reply if it hasn't been deferred/replied already
- *
- * @param interaction - The Discord interaction
- * @param options - Optional defer options (e.g., ephemeral flag)
- */
-export async function safeDeferReply(interaction, options) {
-    try {
-        // Only defer if not already deferred or replied
-        if (!interaction.deferred && !interaction.replied) {
-            await interaction.deferReply(options);
-        }
+async function safeDeferReply(interaction, options) {
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply(options);
     }
-    catch (error) {
-        // Silently ignore if already acknowledged
-        if (error.code !== 40060) {
-            throw error;
-        }
+  } catch (error) {
+    if (error.code !== 40060) {
+      throw error;
     }
+  }
 }
+export {
+  safeDeferReply,
+  safeReply
+};
+//# sourceMappingURL=safe_reply.js.map
