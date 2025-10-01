@@ -157,6 +157,7 @@ adminRouter.get("/ui", (_req: Request, res: Response) => {
     <h2>🔗 Admin Interfaces</h2>
     <div class="row">
       <a href="/admin/achievements" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px;">🏆 Achievement Management</a>
+      <a href="/admin/pipchips" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #f59e0b; color: white; text-decoration: none; border-radius: 4px;">🎰 PIPChips & TPIP Management</a>
       <a href="/admin/role-tax" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #10b981; color: white; text-decoration: none; border-radius: 4px;">💰 Role Tax Exemptions</a>
       <a href="/admin/role-rake" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #f59e0b; color: white; text-decoration: none; border-radius: 4px;">🎲 Role Rake Reductions</a>
       <a href="/admin/resources" target="_blank" style="margin-right: 10px; padding: 8px 12px; background: #ef4444; color: white; text-decoration: none; border-radius: 4px;">📈 Resource Monitor</a>

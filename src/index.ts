@@ -238,18 +238,60 @@ app.get("/", (req: Request, res: Response) => {
   <div class="container">
     ${isReplit ? '<div class="replit-badge">🚀 Running on Replit</div>' : ''}
     <h1>🐧 PIPTip</h1>
-    <p>Multi-token Discord tipping bot for Abstract Chain</p>
+    <p style="font-size: 1.2em; margin-bottom: 10px;">The Penguin Ice Pebble Tip Bot</p>
+    <p style="opacity: 0.9; margin-bottom: 20px;">Multi-token tipping, rock-paper-scissors gaming, and prediction markets on Abstract Chain</p>
 
     <div class="status">Bot Status: ${botStatus}</div>
 
+    <!-- Features Overview -->
+    <div style="margin: 30px 0; padding: 20px; background: rgba(255,255,255,0.08); border-radius: 12px; text-align: left;">
+      <h3 style="margin: 0 0 15px; text-align: center;">✨ Features</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+        <div>
+          <strong>🎮 Rock-Paper-Scissors</strong><br/>
+          <span style="opacity: 0.8; font-size: 0.9em;">Challenge friends in Penguin Ice Pebble matches</span>
+        </div>
+        <div>
+          <strong>💸 Multi-Token Tipping</strong><br/>
+          <span style="opacity: 0.8; font-size: 0.9em;">Tip any ERC-20 token on Abstract Chain</span>
+        </div>
+        <div>
+          <strong>🔮 Prediction Markets</strong><br/>
+          <span style="opacity: 0.8; font-size: 0.9em;">Trade on crypto prices, sports, and events</span>
+        </div>
+        <div>
+          <strong>🏆 Achievements & XP</strong><br/>
+          <span style="opacity: 0.8; font-size: 0.9em;">Level up and climb the colony leaderboards</span>
+        </div>
+        <div>
+          <strong>🎯 Tournament System</strong><br/>
+          <span style="opacity: 0.8; font-size: 0.9em;">Compete for prizes with TPIP tokens</span>
+        </div>
+        <div>
+          <strong>🎁 Group Tips</strong><br/>
+          <span style="opacity: 0.8; font-size: 0.9em;">Create tip pools anyone can claim</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Start -->
+    <div style="margin: 20px 0; padding: 15px; background: rgba(16, 185, 129, 0.2); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.3);">
+      <strong>🚀 Getting Started:</strong> Use <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">/pip_help</code> in Discord to see all commands!
+    </div>
+
+    <h3 style="margin: 30px 0 15px;">🔗 Quick Links</h3>
     <div class="links">
       <a href="/admin/ui" class="link">
         <div class="link-title">🛠️ Admin Panel</div>
         <div class="link-desc">Manage tokens, users, and settings</div>
       </a>
+      <a href="/admin/pipchips" class="link">
+        <div class="link-title">🎰 PIPChips & TPIP</div>
+        <div class="link-desc">Prediction market token management</div>
+      </a>
       <a href="/admin/modular" class="link">
         <div class="link-title">🔧 Modular Admin</div>
-        <div class="link-desc">Streamlined admin interface with focused modules</div>
+        <div class="link-desc">Streamlined admin interface</div>
       </a>
       <a href="/pengubook" class="link">
         <div class="link-title">📖 PenguBook</div>

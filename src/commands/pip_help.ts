@@ -8,7 +8,7 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
   const config = await getConfig();
   const embed = new EmbedBuilder()
     .setTitle("🐧🧊🪨 PIPTip Bot Help")
-    .setDescription("**Welcome to PIPTip!** Your Discord bot for tipping Abstract Chain tokens (Penguin, Ice, Pebble)")
+    .setDescription("**Welcome to PIPTip!** The Penguin Ice Pebble Tip Bot - tip tokens, play games, and climb the colony ranks on Abstract Chain")
     .setColor(0x5865F2)
     .addFields(
       {
@@ -73,6 +73,21 @@ export default async function pipHelp(i: ChatInputCommandInteraction) {
           "**Achievements**: `/pip_achievements` - View your unlocked achievements and progress\n" +
           "**Leaderboards**: `/pip_leaderboard category:streaks` - See top players (streaks, wins, tips, etc.)\n" +
           "**Withdraw Funds**: `/pip_withdraw` - Interactive withdrawal interface with your holdings and limits",
+        inline: false
+      },
+      {
+        name: "📈 Progression System",
+        value:
+          "**🎖️ Penguin Levels**: Earn XP from tips, games, and activities to level up\n" +
+          "• Higher levels unlock perks and show your colony status\n" +
+          "• Check your level progress in `/pip_profile`\n\n" +
+          "**🌟 Social Score**: Your overall colony contribution ranking\n" +
+          "• Earn points from tipping, winning matches, achievements, and more\n" +
+          "• View your rank on the social leaderboard\n" +
+          "• Active participation = higher standing in the colony\n\n" +
+          "**🏆 Achievements**: Complete challenges to unlock badges and rewards\n" +
+          "• View your progress with `/pip_achievements`\n" +
+          "• Some achievements grant XP bonuses and special perks",
         inline: false
       },
       {

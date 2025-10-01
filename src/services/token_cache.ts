@@ -56,15 +56,19 @@ export class TokenCache {
 
   /**
    * Filter tokens for autocomplete with caching
+   * Excludes internal accounting tokens (PIPChips, TPIP) from user-facing commands
    */
   async getFilteredTokens(query: string): Promise<Array<{ name: string; value: string }>> {
     const tokens = await this.getActiveTokens();
     const q = query.toLowerCase();
 
+    // Internal accounting tokens that users cannot deposit/withdraw
+    const internalTokens = ['PIPCHIPS', 'TPIP'];
+
     const filtered = tokens
       .filter(t =>
-        t.symbol.toLowerCase().includes(q) ||
-        t.address.toLowerCase().includes(q)
+        !internalTokens.includes(t.symbol.toUpperCase()) && // Exclude internal tokens
+        (t.symbol.toLowerCase().includes(q) || t.address.toLowerCase().includes(q))
       )
       .slice(0, 25) // Discord autocomplete limit
       .map(t => ({
