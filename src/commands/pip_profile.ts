@@ -6,19 +6,25 @@ export default async function pipProfile(i: ChatInputCommandInteraction) {
   
   // Check if user already has a profile request processing
   if (activeProfileRequests.has(userId)) {
-    return await i.reply({
-      content: "⏳ Your profile is already loading! Please wait for it to complete before requesting another.",
-      flags: 64 // Ephemeral
-    });
+    // Check if interaction is already deferred (from middleware)
+    if (i.deferred) {
+      return await i.editReply({
+        content: "⏳ Your profile is already loading! Please wait for it to complete before requesting another."
+      });
+    } else {
+      return await i.reply({
+        content: "⏳ Your profile is already loading! Please wait for it to complete before requesting another.",
+        flags: 64 // Ephemeral
+      });
+    }
   }
-  
+
   // Add user to active requests with timeout
   trackProfileRequest(userId);
-  
-  // Reply immediately with a enhanced loading response
-  await i.reply({
-    content: "🔄 **Loading your profile...** \n⏳ *This may take a moment while we gather your stats*",
-    flags: 64 // Ephemeral flag
+
+  // Update deferred reply with loading message (interaction already deferred by middleware)
+  await i.editReply({
+    content: "🔄 **Loading your profile...** \n⏳ *This may take a moment while we gather your stats*"
   });
 
   try {
