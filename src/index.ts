@@ -714,6 +714,17 @@ async function main() {
     await bot.login(TOKEN);
     console.log("Bot login initiated");
 
+    // Pre-warm guild settings cache to prevent first-interaction timeouts
+    try {
+      const { getGuildSettings } = await import('./services/channel_manager.js');
+      if (FALLBACK_GUILD_ID) {
+        await getGuildSettings(FALLBACK_GUILD_ID);
+        console.log("✅ Guild settings cache warmed");
+      }
+    } catch (error) {
+      console.warn("Guild settings cache warm-up failed:", error);
+    }
+
     // Validate crypto markets have API guarantees (startup check)
     try {
       const { validateCryptoMarketsOnStartup } = await import('./services/crypto_market_validator.js');
