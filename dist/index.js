@@ -496,7 +496,11 @@ async function main() {
     const sessionStore = new PgSession({
       conString: process.env.DATABASE_URL,
       tableName: "session",
-      createTableIfMissing: true
+      createTableIfMissing: true,
+      pool: {
+        min: 1,
+        max: 3
+      }
     });
     console.log("\u2705 PostgreSQL session store configured");
     sessionMiddleware = session({

@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../services/db.js";
 import { getTokenByAddress, toAtomicDirect } from "../services/token.js";
 import { creditToken } from "../services/balances.js";
+import { cancelNonApiMarkets } from "../web/admin/cancel_non_api_markets.js";
 const internalRouter = Router();
 const INTERNAL_BEARER = process.env.INTERNAL_BEARER ?? process.env.NODE_INTERNAL_BEARER ?? "";
 const TREASURY = (process.env.TREASURY_AGW_ADDRESS || "").toLowerCase();
@@ -124,6 +125,13 @@ internalRouter.post("/credit", async (req, res) => {
       error: err?.message ?? "server error"
     });
   }
+});
+internalRouter.post("/cancel-non-api-markets", async (req, res) => {
+  const auth = req.headers.authorization ?? "";
+  if (!INTERNAL_BEARER || auth !== `Bearer ${INTERNAL_BEARER}`) {
+    return unauthorized(res);
+  }
+  return cancelNonApiMarkets(req, res);
 });
 export {
   internalRouter

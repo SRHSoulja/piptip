@@ -1,7 +1,7 @@
 {
   "version": 3,
   "sources": ["../../src/services/db.ts"],
-  "sourcesContent": ["// src/services/db.ts\nimport { PrismaClient } from \"@prisma/client\";\nimport { prismaWithLogging } from \"./prisma_logger.js\";\n\n// Use the logging-enabled Prisma client for production monitoring\nexport const prisma = prismaWithLogging;\n\nexport async function ensurePrisma() { await prisma.$connect(); }\n"],
-  "mappings": "AAEA,SAAS,yBAAyB;AAG3B,MAAM,SAAS;AAEtB,eAAsB,eAAe;AAAE,QAAM,OAAO,SAAS;AAAG;",
+  "sourcesContent": ["// src/services/db.ts\nimport { PrismaClient } from \"@prisma/client\";\nimport { prismaWithLogging } from \"./prisma_logger.js\";\n\n// Use the logging-enabled Prisma client for production monitoring\nexport const prisma = prismaWithLogging;\n\nexport async function ensurePrisma() {\n  console.log(`\uD83D\uDD0D DATABASE_URL set: ${process.env.DATABASE_URL ? 'YES' : 'NO'}`);\n  if (process.env.DATABASE_URL) {\n    const url = new URL(process.env.DATABASE_URL);\n    console.log(`\uD83D\uDD0D Connecting to: ${url.hostname}:${url.port}`);\n  }\n  await prisma.$connect();\n  // Keep connection alive with a test query\n  await prisma.$queryRaw`SELECT 1 as keepalive`;\n}\n"],
+  "mappings": "AAEA,SAAS,yBAAyB;AAG3B,MAAM,SAAS;AAEtB,eAAsB,eAAe;AACnC,UAAQ,IAAI,+BAAwB,QAAQ,IAAI,eAAe,QAAQ,IAAI,EAAE;AAC7E,MAAI,QAAQ,IAAI,cAAc;AAC5B,UAAM,MAAM,IAAI,IAAI,QAAQ,IAAI,YAAY;AAC5C,YAAQ,IAAI,4BAAqB,IAAI,QAAQ,IAAI,IAAI,IAAI,EAAE;AAAA,EAC7D;AACA,QAAM,OAAO,SAAS;AAEtB,QAAM,OAAO;AACf;",
   "names": []
 }

@@ -188,7 +188,7 @@ await queueNotice(user.id, "deposit", {
   }
 });
 
-// Cancel non-API markets endpoint (no CSRF required)
+// Cancel non-API markets endpoint (no CSRF protection required)
 internalRouter.post("/cancel-non-api-markets", async (req: Request, res: Response) => {
   const auth = req.headers.authorization ?? "";
   if (!INTERNAL_BEARER || auth !== `Bearer ${INTERNAL_BEARER}`) {
