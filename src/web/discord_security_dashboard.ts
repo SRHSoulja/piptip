@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { prisma } from '../services/database';
 import { sessionFingerprinting } from '../services/session_fingerprinting';
 import { apiKeyManager } from '../services/api_key_management';
-import { getUserIncidents, getUnresolvedIncidents } from '../services/incident_notification';
+import { getUserIncidents, getUnresolvedIncidents } from '../services/incident_notification.js';
 
 interface DiscordSecurityProfile {
   discordId: string;

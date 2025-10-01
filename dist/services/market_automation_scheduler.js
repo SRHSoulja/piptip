@@ -712,6 +712,7 @@ export class MarketAutomationScheduler {
                 opportunityScore: opportunity.score,
                 bettingCutoffTime: new Date(resolveAt.getTime() - (resolveAt.getTime() - Date.now()) * 0.20).toISOString(),
                 templateBased: true,
+                apiGuaranteed: true, // ✅ CRITICAL: Mark as API-settleable
                 dataGuaranteed: true
             };
             let market;

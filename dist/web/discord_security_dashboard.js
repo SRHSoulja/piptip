@@ -1,6 +1,6 @@
 import { prisma } from '../services/database';
 import { apiKeyManager } from '../services/api_key_management';
-import { getUserIncidents, getUnresolvedIncidents } from '../services/incident_notification';
+import { getUserIncidents, getUnresolvedIncidents } from '../services/incident_notification.js';
 export async function getDiscordSecurityDashboard(req, res) {
     try {
         const { discordId } = req.params;

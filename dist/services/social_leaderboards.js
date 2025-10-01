@@ -91,21 +91,53 @@ export async function getSocialLeaderboard(limit = 10) {
             },
             take: 500 // Limit for performance
         });
-        // Calculate scores for all users
+        // Circuit breaker: If database connection fails, stop immediately
+        let dbFailed = false;
+        let failedCount = 0;
+        // Calculate scores for all users with timeout and error handling
         const userScores = await Promise.all(users.map(async (user) => {
-            const scoreData = await calculateSocialScore(user.discordId);
-            const levelInfo = await getUserLevel(user.discordId);
-            return {
-                discordId: user.discordId,
-                totalScore: scoreData.totalScore,
-                level: levelInfo.currentLevel,
-                achievements: user.unlockedAchievements.length,
-                streak: user.streak?.currentWins || 0,
-                tips: user.tipsSent.length + user.tipsReceived.length
-            };
+            // Circuit breaker: Stop processing if DB is down
+            if (dbFailed) {
+                return null;
+            }
+            try {
+                // Add timeout to prevent hanging
+                const scoreData = await Promise.race([
+                    calculateSocialScore(user.discordId),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Score calculation timeout')), 5000))
+                ]);
+                const levelInfo = await Promise.race([
+                    getUserLevel(user.discordId),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Level fetch timeout')), 5000))
+                ]);
+                return {
+                    discordId: user.discordId,
+                    totalScore: scoreData.totalScore,
+                    level: levelInfo.currentLevel,
+                    achievements: user.unlockedAchievements.length,
+                    streak: user.streak?.currentWins || 0,
+                    tips: user.tipsSent.length + user.tipsReceived.length
+                };
+            }
+            catch (error) {
+                // Circuit breaker: If we get database errors, stop processing
+                if (error?.message?.includes('database') || error?.message?.includes('connection')) {
+                    dbFailed = true;
+                }
+                failedCount++;
+                return null;
+            }
         }));
-        // Sort by total score and add ranks
-        const sorted = userScores
+        // Log batch error once instead of 500 times
+        if (failedCount > 0) {
+            console.error(`Social leaderboard: ${failedCount} user score calculations failed${dbFailed ? ' (database connection lost)' : ''}`);
+        }
+        // Filter out null results and sort
+        const validScores = userScores.filter((score) => score !== null);
+        if (validScores.length === 0) {
+            return [];
+        }
+        const sorted = validScores
             .sort((a, b) => b.totalScore - a.totalScore)
             .slice(0, limit)
             .map((user, index) => ({ ...user, rank: index + 1 }));

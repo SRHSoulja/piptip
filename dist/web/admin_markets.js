@@ -189,6 +189,24 @@ adminMarketsRouter.post("/markets/create", async (req, res) => {
                 error: 'Resolve date must be in the future'
             });
         }
+        // ✅ CRITICAL: Validate crypto markets must have API guarantees
+        const cryptoMarketTypes = [
+            'CRYPTO_PRICE_DIRECTION',
+            'CRYPTO_DAILY_CHANGE',
+            'CRYPTO_VOLUME',
+            'CRYPTO_PRICE_TARGET',
+            'CRYPTO_PRICE_RANGE',
+            'CRYPTO_RANK_TARGET',
+            'PRICE_UP_DOWN',
+            'PRICE_ABOVE_BELOW',
+            'VOLUME_RANKING'
+        ];
+        if (cryptoMarketTypes.includes(marketType)) {
+            return res.status(400).json({
+                success: false,
+                error: '🚫 BLOCKED: Crypto markets cannot be created directly from admin panel. Use template-based creation to ensure API settlement guarantees.'
+            });
+        }
         // Create market
         const market = await prisma.predictionMarket.create({
             data: {

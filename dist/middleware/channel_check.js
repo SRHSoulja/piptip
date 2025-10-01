@@ -3,10 +3,8 @@ import { checkChannelPermissions, logChannelActivity } from "../services/channel
 export async function withChannelCheck(interaction, commandCategory, commandHandler) {
     const commandName = interaction.commandName;
     try {
-        // Defer the interaction IMMEDIATELY to prevent 3-second timeout
-        // This must happen before any async operations (DB queries, etc.)
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         // Check channel permissions (may involve DB queries)
+        // Note: This is now cached so it should be fast (<100ms)
         const permissionCheck = await checkChannelPermissions(interaction, commandCategory);
         if (!permissionCheck.allowed) {
             // Log failed attempt
@@ -51,9 +49,10 @@ export async function withChannelCheck(interaction, commandCategory, commandHand
                 }
                 components.push(actionRow);
             }
-            await interaction.editReply({
+            await interaction.reply({
                 content: errorMessage,
-                components
+                components,
+                flags: MessageFlags.Ephemeral
             });
             return;
         }
