@@ -4,6 +4,7 @@ import { Router, type Request, type Response } from "express";
 import { prisma } from "../services/db.js";
 import { getTokenByAddress, toAtomicDirect } from "../services/token.js";
 import { creditToken } from "../services/balances.js";
+import { cancelNonApiMarkets } from "../web/admin/cancel_non_api_markets.js";
 
 const internalRouter = Router();
 
@@ -185,6 +186,15 @@ await queueNotice(user.id, "deposit", {
       error: err?.message ?? "server error" 
     });
   }
+});
+
+// Cancel non-API markets endpoint (no CSRF required)
+internalRouter.post("/cancel-non-api-markets", async (req: Request, res: Response) => {
+  const auth = req.headers.authorization ?? "";
+  if (!INTERNAL_BEARER || auth !== `Bearer ${INTERNAL_BEARER}`) {
+    return unauthorized(res);
+  }
+  return cancelNonApiMarkets(req, res);
 });
 
 export { internalRouter };
