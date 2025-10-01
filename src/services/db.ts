@@ -12,4 +12,6 @@ export async function ensurePrisma() {
     console.log(`🔍 Connecting to: ${url.hostname}:${url.port}`);
   }
   await prisma.$connect();
+  // Keep connection alive with a test query
+  await prisma.$queryRaw`SELECT 1 as keepalive`;
 }
