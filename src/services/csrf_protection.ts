@@ -247,6 +247,13 @@ export function verifyCSRFToken(req: Request, res: Response, next: NextFunction)
     return next();
   }
 
+  // Skip CSRF for admin bearer-authenticated requests (bearer tokens prevent CSRF)
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ') && req.path.startsWith('/admin/')) {
+    console.log('🔓 Skipping CSRF for admin bearer-auth request to', req.path);
+    return next();
+  }
+
   // Get token from header or body (primary method)
   const headerToken = req.get('X-CSRF-Token') || req.body._csrf || req.query._csrf;
   const secret = req.get('X-CSRF-Secret') || req.body._csrfSecret || req.query._csrfSecret;
