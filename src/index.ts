@@ -459,7 +459,7 @@ bot.on(Events.InteractionCreate, withAutoAck(async (i: Interaction) => {
 
     switch ((i as any).commandName) {
       case "pip_withdraw": return withAutoChannelCheck(i as any, pipWithdraw);
-      case "pip_profile":  return pipProfile(i as any); // Skip middleware - command defers immediately
+      case "pip_profile":  return withAutoChannelCheck(i as any, pipProfile);
       case "pip_deposit":  return withAutoChannelCheck(i as any, pipDeposit);
       case "pip_game":     return withAutoChannelCheck(i as any, pipGame);
       case "pip_link":     return withAutoChannelCheck(i as any, pipLink);
