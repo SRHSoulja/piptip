@@ -11,6 +11,9 @@ export async function withChannelCheck<T extends ChatInputCommandInteraction>(
   const commandName = interaction.commandName;
 
   try {
+    // Defer immediately to prevent 3-second timeout
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     // Check channel permissions (may involve DB queries)
     // Note: This is now cached so it should be fast (<100ms)
     const permissionCheck = await checkChannelPermissions(interaction, commandCategory);
@@ -76,10 +79,9 @@ export async function withChannelCheck<T extends ChatInputCommandInteraction>(
         components.push(actionRow);
       }
 
-      await interaction.reply({
+      await interaction.editReply({
         content: errorMessage,
-        components,
-        flags: MessageFlags.Ephemeral
+        components
       });
       return;
     }
