@@ -33,6 +33,7 @@ import { automationAdminRouter } from "./admin/automation.js";
 import pipchipsAdminRouter from "./admin/pipchips_admin.js";
 import { tournamentsRouter } from "./admin/tournaments.js";
 import { adminMarketsRouter } from "./admin_markets.js";
+import { cancelNonApiMarkets } from "./admin/cancel_non_api_markets.js";
 
 // Import remaining services and utilities
 import { Prisma } from "@prisma/client";
@@ -1449,6 +1450,9 @@ adminRouter.use("/automation", automationAdminRouter);
 adminRouter.use("/pipchips", pipchipsAdminRouter);
 adminRouter.use("/tournaments", tournamentsRouter);
 adminRouter.use(adminMarketsRouter);
+
+// Cancel non-API markets endpoint
+adminRouter.post("/cancel-non-api-markets", cancelNonApiMarkets);
 
 /* ------------------------------------------------------------------------ */
 /*                          Remaining Direct Routes                         */
