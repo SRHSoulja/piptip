@@ -113,7 +113,7 @@ export async function getSocialLeaderboard(limit: number = 10): Promise<Array<{
         },
         createdAt: true
       },
-      take: 500 // Limit for performance
+      take: Math.min(limit * 3, 150) // Only fetch 3x what we need, max 150
     });
 
     // Circuit breaker: If database connection fails, stop immediately
