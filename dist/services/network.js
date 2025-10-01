@@ -121,28 +121,12 @@ function getFullNetworkInfo() {
     displayName: getNetworkDisplayName()
   };
 }
-let _cachedRpcUrl;
-function getLegacyAbstractRpcUrl() {
-  if (!_cachedRpcUrl) {
-    _cachedRpcUrl = getAbstractRpcUrl();
-  }
-  return _cachedRpcUrl;
+function ABSTRACT_RPC_URL() {
+  return getAbstractRpcUrl();
 }
-Object.defineProperty(exports, "ABSTRACT_RPC_URL", {
-  get: getLegacyAbstractRpcUrl,
-  enumerable: true
-});
-let _cachedChainId;
-function getLegacyAbstractChainId() {
-  if (!_cachedChainId) {
-    _cachedChainId = getAbstractChainId();
-  }
-  return _cachedChainId;
+function ABSTRACT_CHAIN_ID() {
+  return getAbstractChainId();
 }
-Object.defineProperty(exports, "ABSTRACT_CHAIN_ID", {
-  get: getLegacyAbstractChainId,
-  enumerable: true
-});
 try {
   const config = getNetworkConfig();
   console.log(`\u{1F310} Network configured: ${getNetworkDisplayName()}`);
@@ -162,12 +146,12 @@ try {
   throw error;
 }
 export {
+  ABSTRACT_CHAIN_ID,
+  ABSTRACT_RPC_URL,
   getAbstractChainId,
   getAbstractRpcUrl,
   getDatabaseUrl,
   getFullNetworkInfo,
-  getLegacyAbstractChainId,
-  getLegacyAbstractRpcUrl,
   getNetworkConfig,
   getNetworkDisplayName,
   getNetworkType,

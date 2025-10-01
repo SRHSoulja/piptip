@@ -215,40 +215,24 @@ export function getFullNetworkInfo() {
 /**
  * Legacy compatibility - provides ABSTRACT_RPC_URL value
  * @deprecated Use getAbstractRpcUrl() instead
- * Note: Uses lazy evaluation to avoid module load-time errors
+ *
+ * NOTE: This is exported as a getter function to maintain lazy evaluation.
+ * Import and call it: `import { ABSTRACT_RPC_URL } from './network.js'; const url = ABSTRACT_RPC_URL();`
  */
-let _cachedRpcUrl: string | undefined;
-export function getLegacyAbstractRpcUrl(): string {
-  if (!_cachedRpcUrl) {
-    _cachedRpcUrl = getAbstractRpcUrl();
-  }
-  return _cachedRpcUrl;
+export function ABSTRACT_RPC_URL(): string {
+  return getAbstractRpcUrl();
 }
-
-// Lazy getter for backward compatibility
-Object.defineProperty(exports, 'ABSTRACT_RPC_URL', {
-  get: getLegacyAbstractRpcUrl,
-  enumerable: true
-});
 
 /**
  * Legacy compatibility - provides ABSTRACT_CHAIN_ID value
  * @deprecated Use getAbstractChainId() instead
- * Note: Uses lazy evaluation to avoid module load-time errors
+ *
+ * NOTE: This is exported as a getter function to maintain lazy evaluation.
+ * Import and call it: `import { ABSTRACT_CHAIN_ID } from './network.js'; const chainId = ABSTRACT_CHAIN_ID();`
  */
-let _cachedChainId: number | undefined;
-export function getLegacyAbstractChainId(): number {
-  if (!_cachedChainId) {
-    _cachedChainId = getAbstractChainId();
-  }
-  return _cachedChainId;
+export function ABSTRACT_CHAIN_ID(): number {
+  return getAbstractChainId();
 }
-
-// Lazy getter for backward compatibility
-Object.defineProperty(exports, 'ABSTRACT_CHAIN_ID', {
-  get: getLegacyAbstractChainId,
-  enumerable: true
-});
 
 // Log network configuration on module load (with error handling)
 try {
