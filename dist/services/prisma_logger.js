@@ -1,6 +1,5 @@
 import { PrismaClient } from "@prisma/client";
 import { incrementSlowQueries } from "./metrics.js";
-import { getDatabaseUrl } from "./network.js";
 const SLOW_QUERY_THRESHOLD_MS = parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || "300");
 const prismaWithLogging = new PrismaClient({
   log: [
@@ -20,13 +19,7 @@ const prismaWithLogging = new PrismaClient({
       emit: "event",
       level: "error"
     }
-  ],
-  // Dynamic database URL based on network (testnet/mainnet isolation)
-  datasources: {
-    db: {
-      url: getDatabaseUrl()
-    }
-  }
+  ]
 });
 prismaWithLogging.$on("query", (e) => {
   const duration = e.duration;
