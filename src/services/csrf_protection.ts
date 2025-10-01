@@ -247,6 +247,15 @@ export function verifyCSRFToken(req: Request, res: Response, next: NextFunction)
     return next();
   }
 
+  // Debug: Log all relevant request info for CSRF debugging
+  console.log('🔍 CSRF middleware check:', {
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    hasAuthHeader: !!req.headers.authorization,
+    authHeaderStart: req.headers.authorization?.substring(0, 10) + '...'
+  });
+
   // Skip CSRF for admin bearer-authenticated requests (bearer tokens prevent CSRF)
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
