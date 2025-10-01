@@ -7,6 +7,9 @@ const CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const FALLBACK_GUILD_ID = process.env.GUILD_ID;
 
 async function getApprovedGuildIds(): Promise<string[]> {
+  // Keepalive query before actual query
+  await prisma.$queryRaw`SELECT 1`;
+
   const rows = await prisma.approvedServer.findMany({
     where: { enabled: true },
     select: { guildId: true },
