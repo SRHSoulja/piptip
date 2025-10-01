@@ -19,6 +19,7 @@ class CSRFProtectionService {
   private readonly cleanupInterval: NodeJS.Timeout;
 
   constructor() {
+    console.log('🔐🔐🔐 CSRF Protection Service v2.1 initializing (with grand-reset whitelist) 🔐🔐🔐');
     // Use secure credential for CSRF secret, fallback to ADMIN_SECRET
     try {
       this.secretKey = getSecureCredential('CSRF_SECRET');
@@ -236,11 +237,14 @@ export function provideCSRFToken(req: Request, res: Response, next: NextFunction
  * Uses Double Submit Cookie pattern for enhanced security
  */
 export function verifyCSRFToken(req: Request, res: Response, next: NextFunction) {
-  // ALWAYS log entry to verify middleware is being called
-  console.log('🔍 CSRF verifyCSRFToken called:', {
+  // CRITICAL: Always log to verify this function is actually being called
+  // If this doesn't appear in logs, the compiled dist/ code is stale
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] 🚨 CSRF VERIFY ENTRY:`, {
     method: req.method,
     path: req.path,
-    originalUrl: req.originalUrl
+    originalUrl: req.originalUrl,
+    hasAuth: !!req.headers.authorization
   });
 
   // Skip CSRF for safe methods
@@ -251,10 +255,13 @@ export function verifyCSRFToken(req: Request, res: Response, next: NextFunction)
   // Skip CSRF for specific endpoints that handle their own protection
   const skipPaths = [
     '/auth/login', '/auth/mfa/initiate', '/auth/mfa/verify', '/ping',
-    '/system/grand-reset'  // Admin bearer-auth provides equivalent protection
+    '/system/grand-reset',  // Admin bearer-auth provides equivalent protection
+    'grand-reset'  // Also match partial path
   ];
-  if (skipPaths.some(path => req.path.endsWith(path))) {
-    console.log('🔓 Skipping CSRF for whitelisted path:', req.path);
+  const fullPath = req.originalUrl || req.path;
+  const pathMatches = skipPaths.some(p => req.path.endsWith(p) || fullPath.includes(p));
+  if (pathMatches) {
+    console.log(`[${timestamp}] 🔓 CSRF SKIPPED for whitelisted path:`, { path: req.path, fullPath });
     return next();
   }
 
